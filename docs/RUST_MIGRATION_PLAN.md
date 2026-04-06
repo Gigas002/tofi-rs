@@ -121,7 +121,7 @@ tofi/
 
 **Tofi-specific adaptation:** Install **system** libraries needed for **Wayland**, **Cairo**, **Pango**, **HarfBuzz**, **xkbcommon** (and friends) before `cargo build` / `cargo test` — mirror the dependency set you will document for packagers. Wayshot uses an **`archlinux:latest`** container + **`pacman`**; you may use **`ubuntu-latest`** + **`apt`** instead if maintenance is simpler — either is fine; **document the choice in workflow comments**.
 
-**Legacy Meson CI removal (same milestone as Rust CI):** When **Phase 0 Step 0.2** adds the Rust workflows, **remove** the old C/Meson-only workflow(s) in the **same** change set (e.g. [`build-test.yml`](../.github/workflows/build-test.yml)). Do **not** keep Meson and Rust CI running in parallel—switch CI to Cargo immediately. The **C source tree** stays in-repo as reference until **Phase 9** (sources vs CI are different: **CI = Rust-only from Step 0.2 onward**).
+**Legacy Meson CI removal (same milestone as Rust CI):** When **Phase 0 Step 0.2** adds the Rust workflows, **remove** the old C/Meson-only workflow(s) in the **same** change set (this repo previously used a Meson/`ninja` **build-test** workflow). Do **not** keep Meson and Rust CI running in parallel—switch CI to Cargo immediately. The **C source tree** stays in-repo as reference until **Phase 9** (sources vs CI are different: **CI = Rust-only from Step 0.2 onward**).
 
 **Scheduling:** Implement as **Phase 0 Step 0.2** (immediately after the empty workspace compiles — **Step 0.1**). Do not defer “proper” CI to §9; §9 lists **deploy enablement**, **`cargo deny`**, and other **late** polish—not the baseline fmt/clippy/build/test/Dependabot stack.
 
@@ -351,7 +351,7 @@ Each step: **Goal** · **Scope** · **Deliverables** · **Verification** · **C 
   - **C reference:** N/A
   - **Notes:** Set **`edition = "2024"`** in `[workspace.package]` and/or per-crate `Cargo.toml`. **Do not** set `rust-version`—track latest stable (see §2.1).
 
-- [ ] **Step 0.2 — GitHub Actions CI (wayshot-style)**
+- [x] **Step 0.2 — GitHub Actions CI (wayshot-style)**
   - **Goal:** **Automated checks on every push/PR** as soon as Rust code exists—**fmt**, **clippy**, **build** (feature matrix), **test** (once tests exist), optional **typos** / **coverage**; plus **Dependabot** (`.github/dependabot.yml` for **Cargo** and **github-actions**). Add a **`deploy.yml`** (match [wayshot](https://github.com/waycrate/wayshot) layout) **without** enabling publishes yet—see §9 **Deploy**.
   - **Scope:** Add `.github/workflows/*.yml` per §2.2 (**no** `deny.yml` / **`docs.yml`** in Phase 0). Add **`.github/dependabot.yml`**. Copy **`deploy.yml`** from wayshot (or minimal stub with the same triggers **disabled** / **`workflow_dispatch` only**). Adapt install steps and feature matrix for **`libtofi-rs`** / **`tofi-rs`**. Trigger active jobs on **`push`** and **`pull_request`**.
   - **Deliverables:** Green CI on a branch containing **Step 0.1**; Dependabot enabled on the repo; deploy workflow **present** but **not** auto-publishing; **legacy Meson-only workflow(s) removed** from `.github/workflows/` (§2.2). Minimal **`cargo test`** job can **`continue-on-error: true`** only until **Step 0.5** adds real tests—prefer **not** skipping the test job: let Step 0.5 land in the same milestone if needed so **`cargo test --workspace`** is required from day one.
@@ -696,6 +696,8 @@ These are **not** required to declare the C→Rust migration “done” for §5.
 
 ### Revision history
 
+- **2026-04-06:** Typos config file: **`_typos.toml`** → **`.typos.toml`** (same contents).
+- **2026-04-06:** **Phase 0 Step 0.2** — Rust CI (`build.yml`, `fmt-clippy.yml`, `test.yml`, `typos.yml`, idle `deploy.yml`), **`dependabot.yml`**, **`.typos.toml`** (exclude legacy trees); removed Meson **`build-test.yml`**; §6 checkbox.
 - **2026-04-06:** **Phase 0 Step 0.1** complete — empty workspace (`libtofi-rs` + `tofi-rs`), §6 checkbox.
 - **2026-04-06:** **§1 / §5–6 / §10:** Playbook priority — **read plan → implement → update plan**; intro + **Step 0.1** verification include **§5.2** fmt/clippy; **§5.2** clarifies tests required **after Step 0.5**; **Step 0.2** deliverables/verification include **Meson CI removal**; fix **Step 9.2** typo; **§10** — re-read for contradictions after policy changes.
 - **2026-04-06:** **§2.2:** CI **`uses:`** pins — **major only** (`x`), not **`x.y`** / patch; contrast **§2.1** **`Cargo.toml`** **`x.y`**.

@@ -1,0 +1,51 @@
+# Ubuntu + apt: same idea as wayshot’s Arch container, easier to maintain (see docs/RUST_MIGRATION_PLAN.md §2.2).
+name: Build
+
+on:
+  push:
+  pull_request:
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  build:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - name: all-features
+            cargo_args: --workspace --release --all-features
+          - name: default
+            cargo_args: --workspace --release
+          - name: minimal
+            cargo_args: --workspace --release --no-default-features
+
+    name: ${{ matrix.name }}
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - uses: dtolnay/rust-toolchain@stable
+
+      - name: Build cache
+        uses: Swatinem/rust-cache@v2
+        with:
+          key: ${{ matrix.name }}
+
+      # For upcoming libtofi-rs: Wayland, Cairo, Pango, HarfBuzz, xkbcommon.
+      - name: Install system dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            pkg-config \
+            libwayland-dev \
+            libcairo2-dev \
+            libpango1.0-dev \
+            libharfbuzz-dev \
+            libxkbcommon-dev
+
+      - name: Build (${{ matrix.name }})
+        run: cargo build ${{ matrix.cargo_args }}

@@ -1,0 +1,29 @@
+# Present for layout parity with wayshot; publishing disabled until migration §9 Deploy.
+name: Deploy
+
+on:
+  workflow_dispatch:
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  smoke:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - name: Build cache
+        uses: Swatinem/rust-cache@v2
+      - name: Install system dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            pkg-config \
+            libwayland-dev \
+            libcairo2-dev \
+            libpango1.0-dev \
+            libharfbuzz-dev \
+            libxkbcommon-dev
+      - name: Build release (manual smoke)
+        run: cargo build --workspace --release
