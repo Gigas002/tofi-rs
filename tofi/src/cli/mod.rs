@@ -7,3 +7,6 @@ use clap::Parser;
 #[derive(Parser)]
 #[command(name = "tofi", version, about)]
 pub struct Cli {}
+
+#[cfg(test)]
+mod tests;

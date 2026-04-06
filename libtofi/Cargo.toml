@@ -7,17 +7,18 @@ edition.workspace = true
 [features]
 default = [
     "wayland",
-    "renderer-cairo",
+    "renderer",
     "drun",
-    "clipboard-wayland",
+    "clipboard",
     "history",
     "single-instance-lock",
-    "run-command-cache",
+    "run-commands",
 ]
 wayland = []
-renderer-cairo = []
+renderer = []
 drun = []
-run-command-cache = []
-clipboard-wayland = []
+run-commands = []
+# Paste implementation lives under `wayland::clipboard`; enabling implies `wayland`.
+clipboard = ["wayland"]
 history = []
 single-instance-lock = []

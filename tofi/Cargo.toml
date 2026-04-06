@@ -16,17 +16,17 @@ libtofi-rs = { path = "../libtofi", default-features = false }
 [features]
 default = [
     "wayland",
-    "renderer-cairo",
+    "renderer",
     "drun",
-    "clipboard-wayland",
+    "clipboard",
     "history",
     "single-instance-lock",
-    "run-command-cache",
+    "run-commands",
 ]
 wayland = ["libtofi-rs/wayland"]
-renderer-cairo = ["libtofi-rs/renderer-cairo"]
+renderer = ["libtofi-rs/renderer"]
 drun = ["libtofi-rs/drun"]
-run-command-cache = ["libtofi-rs/run-command-cache"]
-clipboard-wayland = ["libtofi-rs/clipboard-wayland"]
+run-commands = ["libtofi-rs/run-commands"]
+clipboard = ["libtofi-rs/clipboard"]
 history = ["libtofi-rs/history"]
 single-instance-lock = ["libtofi-rs/single-instance-lock"]

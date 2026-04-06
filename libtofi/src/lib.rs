@@ -5,27 +5,25 @@
 //! | Feature | Role |
 //! | --- | --- |
 //! | `wayland` | Core Wayland client, SHM, surfaces |
-//! | `renderer-cairo` | Cairo + Pango + HarfBuzz drawing |
+//! | `renderer` | Drawing / text layout (Cairo stack under [`crate::renderer`]) |
 //! | `drun` | `.desktop` scanning / `tofi-drun` |
-//! | `run-command-cache` | Cached PATH command list for `tofi-run` |
-//! | `clipboard-wayland` | Wayland paste |
+//! | `run-commands` | Cached `$PATH` executable list for `tofi-run` |
+//! | `clipboard` | Paste (`wayland::clipboard`; implies **`wayland`**) |
 //! | `history` | History file |
 //! | `single-instance-lock` | Single-instance lock file |
 //!
 //! With `--no-default-features`, only [`noop`] is guaranteed; optional modules are omitted.
 
-#[cfg(feature = "clipboard-wayland")]
-pub mod clipboard_wayland;
 #[cfg(feature = "drun")]
 pub mod drun;
 #[cfg(feature = "history")]
 pub mod history;
 #[cfg(feature = "single-instance-lock")]
 pub mod lock;
-#[cfg(feature = "renderer-cairo")]
-pub mod renderer_cairo;
-#[cfg(feature = "run-command-cache")]
-pub mod run_command_cache;
+#[cfg(feature = "renderer")]
+pub mod renderer;
+#[cfg(feature = "run-commands")]
+pub mod run_commands;
 #[cfg(feature = "wayland")]
 pub mod wayland;
 
