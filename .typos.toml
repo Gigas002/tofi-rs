@@ -1,0 +1,9 @@
+# Spell check for docs and Rust; legacy C/Meson trees are excluded until Phase 9.
+[files]
+extend-exclude = [
+  "src/**",
+  "test/**",
+  "protocols/**",
+  "themes/**",
+  "doc/**",
+]

@@ -62,3 +62,6 @@ tags
 # Project specific files
 build/
 .cache
+
+# Rust (workspace)
+/target

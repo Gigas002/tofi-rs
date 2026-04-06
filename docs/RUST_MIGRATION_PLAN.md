@@ -1,6 +1,6 @@
 # Tofi → Rust migration plan
 
-This document is both a **human roadmap** and an **agent playbook**: each step is small enough to implement in one focused session, ends in a **compilable** state, and defines **how to verify** it. It assumes parity with the current C implementation ([`meson.build`](../meson.build), [`src/`](../src/)). **Porting the existing C tests is not required**; a **new Rust test suite** for **both `libtofi-rs` and `tofi-rs`** is (see §5.3).
+This document is both a **human roadmap** and an **agent playbook**: each step is small enough to implement in one focused session, ends in a **verified** state (**build** + §5.2 **fmt/clippy**; **tests** per §5.2 / §5.3 once they exist), and defines **how to verify** it. **Reading this plan, implementing accordingly, and updating it** (checkboxes, revision history when policy changes) is the primary execution discipline. It assumes parity with the current C implementation ([`meson.build`](../meson.build), [`src/`](../src/)). **Porting the existing C tests is not required**; a **new Rust test suite** is required—**`tofi-rs`** always; **`libtofi-rs`** via **`module/tests.rs`** as code lands, with **`lib.rs`** untested (see §5.3).
 
 ---
 
@@ -11,8 +11,8 @@ This document is both a **human roadmap** and an **agent playbook**: each step i
 - **Functional parity** with the existing `tofi` binary: Wayland-only launcher (wlroots-style compositors), dmenu-like stdin mode, `tofi-run`, `tofi-drun`, config files, theming, matching, history, clipboard paste, performance-oriented defaults.
 - **Run mode command list:** the C helper in [`src/compgen.c`](../src/compgen.c) is **not** for shell tab-completion scripts; it caches the executable list for **`tofi-run`** (see §3.5). Implement that logic **inside `libtofi`**—**no** separate `tofi-compgen` binary. **Shell completions** for the `tofi` CLI belong to **`clap`** + **`clap_complete`** (or similar) and are a **post-1.0** item (see §9).
 - **Two-crate workspace**: Cargo packages **`libtofi-rs`** (library) and **`tofi-rs`** (CLI). This document uses the shorthand **`libtofi::`** for module paths; in Rust these resolve as **`libtofi_rs::`** (hyphens become underscores in the crate identifier).
-- **Compile-time customization** via Cargo `[features]`: **`libtofi-rs`** implements **engine + renderer** (`renderer-cairo`); **`tofi-rs` mirrors** the same names—see §4. **UI definition** stays in the CLI (§1.4).
-- **A new automated test suite** in Rust (`cargo test`) for **both** **`libtofi-rs`** and **`tofi-rs`**: library tests per §5.3; **CLI tests** for argument parsing, exit codes, and other testable surface (integration tests under `tofi/tests/`, or `#[cfg(test)]` modules next to split-out CLI code—see §5.3). Coverage should grow with each phase; pure logic should be **well tested**; graphics/Wayland may rely more on manual smoke tests unless you add harnesses later.
+- **Compile-time customization** via Cargo `[features]`: **`libtofi-rs`** implements **engine + renderer** (`renderer`); **`tofi-rs` mirrors** the same names—see §4. **UI definition** stays in the CLI (§1.4).
+- **A new automated test suite** in Rust (`cargo test`): **`tofi-rs`** must have tests (CLI); **`libtofi-rs`** tests live under **`module/tests.rs`** as modules land—**`lib.rs`** stays untested and minimal (§5.3). **CLI tests** for argument parsing, exit codes, and other testable surface (`cli/tests.rs`, optional integration tests under `tofi/tests/`—see §5.3). Coverage should grow with each phase; pure logic should be **well tested**; graphics/Wayland may rely more on manual smoke tests unless you add harnesses later.
 - **License:** **Target** permissive licensing (**MIT** for your code, aligned with upstream [`LICENSE`](../LICENSE)). Do not treat a random relicensing as a migration deliverable—**but** dependency choices can **pull in** strong copyleft obligations (see §1.5).
 - **Copyright / authors:** Under the MIT license you **must keep** the existing copyright and permission notice for upstream-authored material you still distribute (Philip Jones per current `LICENSE`, plus any other files that carry notices). You **may and should add** yourself as an additional copyright holder and in `authors` / `CONTRIBUTORS` for **your** new or substantially rewritten work—you do not “swap out” the original author for code that remains derived from or under their copyright. For **entirely new** Rust files with no upstream text, your copyright line alone is typical. When in doubt, **add** rather than **replace** notices.
 
@@ -24,30 +24,30 @@ This document is both a **human roadmap** and an **agent playbook**: each step i
 
 ### 1.3 Reference map (C → conceptual Rust ownership)
 
-| C area                                                                                                                                           | Role                                                       | Suggested Rust home                                                                                                          |
-| ------------------------------------------------------------------------------------------------------------------------------------------------ | ---------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------- |
-| [`src/main.c`](../src/main.c)                                                                                                                    | Event loop, registry, keyboard/pointer, layer shell, paste | `libtofi::wayland` + **`tofi`** `main` wiring (see §1.4)                                                                     |
-| [`src/surface.c`](../src/surface.c), [`src/shm.c`](../src/shm.c)                                                                                 | SHM buffers, double buffering                              | `libtofi::shm` / buffer contract for the UI                                                                                  |
-| [`src/entry.c`](../src/entry.c), [`src/entry_backend/*`](../src/entry_backend/)                                                                  | Cairo + Pango + HarfBuzz layout/draw                       | **`libtofi::entry`** / **`libtofi::render`** (implementation); **`tofi::ui`** (or similar) for **UI definition** only (§1.4) |
-| [`src/config.c`](../src/config.c)                                                                                                                | Keyfile + CLI application                                  | **Parse + apply** in **`tofi::config`**; **runtime config types** shared with engine in `libtofi::config` (see §1.4)         |
-| [`src/matching.c`](../src/matching.c)                                                                                                            | Filter algorithms                                          | `libtofi::matching`                                                                                                          |
-| [`src/drun.c`](../src/drun.c)                                                                                                                    | Desktop files, cache, launch                               | `libtofi::drun` (feature)                                                                                                    |
-| [`src/compgen.c`](../src/compgen.c)                                                                                                              | Cached PATH / `compgen -c` list for **run mode**           | `libtofi::run_commands` or `compgen` **library module** only (no extra binary)                                               |
-| [`src/history.c`](../src/history.c)                                                                                                              | History file                                               | `libtofi::history`                                                                                                           |
-| [`src/input.c`](../src/input.c)                                                                                                                  | Key handling, repeat, bindings                             | `libtofi::input`                                                                                                             |
-| [`src/clipboard.c`](../src/clipboard.c) + main paste path                                                                                        | `wl_data_device` paste                                     | See §3.3                                                                                                                     |
-| [`src/lock.c`](../src/lock.c)                                                                                                                    | Single-instance lock                                       | `libtofi::lock` (feature)                                                                                                    |
-| [`src/unicode.c`](../src/unicode.c), [`src/color.c`](../src/color.c), [`src/string_vec.c`](../src/string_vec.c), [`src/scale.c`](../src/scale.c) | Pure helpers                                               | `libtofi::util` (and **`color`** as numeric/types used by shared config model)                                               |
+| C area                                                                                                                                           | Role                                                       | Suggested Rust home                                                                                                            |
+| ------------------------------------------------------------------------------------------------------------------------------------------------ | ---------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------ |
+| [`src/main.c`](../src/main.c)                                                                                                                    | Event loop, registry, keyboard/pointer, layer shell, paste | `libtofi::wayland` + **`tofi`** `main` wiring (see §1.4)                                                                       |
+| [`src/surface.c`](../src/surface.c), [`src/shm.c`](../src/shm.c)                                                                                 | SHM buffers, double buffering                              | `libtofi::shm` / buffer contract for the UI                                                                                    |
+| [`src/entry.c`](../src/entry.c), [`src/entry_backend/*`](../src/entry_backend/)                                                                  | Cairo + Pango + HarfBuzz layout/draw                       | **`libtofi::entry`** / **`libtofi::renderer`** (implementation); **`tofi::ui`** (or similar) for **UI definition** only (§1.4) |
+| [`src/config.c`](../src/config.c)                                                                                                                | Keyfile + CLI application                                  | **Parse + apply** in **`tofi::config`**; **runtime config types** shared with engine in `libtofi::config` (see §1.4)           |
+| [`src/matching.c`](../src/matching.c)                                                                                                            | Filter algorithms                                          | `libtofi::matching`                                                                                                            |
+| [`src/drun.c`](../src/drun.c)                                                                                                                    | Desktop files, cache, launch                               | `libtofi::drun` (feature)                                                                                                      |
+| [`src/compgen.c`](../src/compgen.c)                                                                                                              | Cached PATH / `compgen -c` list for **run mode**           | `libtofi::run_commands` or `compgen` **library module** only (no extra binary)                                                 |
+| [`src/history.c`](../src/history.c)                                                                                                              | History file                                               | `libtofi::history`                                                                                                             |
+| [`src/input.c`](../src/input.c)                                                                                                                  | Key handling, repeat, bindings                             | `libtofi::input`                                                                                                               |
+| [`src/clipboard.c`](../src/clipboard.c) + main paste path                                                                                        | `wl_data_device` paste                                     | See §3.3                                                                                                                       |
+| [`src/lock.c`](../src/lock.c)                                                                                                                    | Single-instance lock                                       | `libtofi::lock` (feature)                                                                                                      |
+| [`src/unicode.c`](../src/unicode.c), [`src/color.c`](../src/color.c), [`src/string_vec.c`](../src/string_vec.c), [`src/scale.c`](../src/scale.c) | Pure helpers                                               | `libtofi::util` (and **`color`** as numeric/types used by shared config model)                                                 |
 
 ### 1.4 Crate responsibilities — config, UI **definition**, vs renderer **implementation**
 
-| Concern                       | **`tofi-rs` (CLI / application)**                                                                                                                                                                                                            | **`libtofi-rs` (library / engine)**                                                                                                                                                                 |
-| ----------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| **Config**                    | **Parsing** the keyfile (same format as C), **`include`**, paths, **CLI → config** (`clap` / `apply_key` parity). Anything that reads strings from disk or argv.                                                                             | **`TofiConfig`** (or equivalent) as **plain data**; **no** file I/O or `getopt` in the library. Small **value types** (`Color`, limits) next to that model.                                         |
-| **UI (definition)**           | **What** the launcher presents and how it maps from loaded config: modules like **`tofi::ui`** — composition, orchestration, calling into the library. **No** requirement to put Cairo calls here; keep “product shape” in the binary crate. | N/A as a separate crate — the library exposes APIs the CLI drives.                                                                                                                                  |
-| **Renderer (implementation)** | Thin glue: pass buffers/config handles into **`libtofi`**.                                                                                                                                                                                   | **Cairo / Pango / HarfBuzz** pipeline (former `entry.c`, `entry_backend/*`), painting into SHM buffers, layout metrics — **`libtofi::entry`**, **`libtofi::render`**, feature **`renderer-cairo`**. |
+| Concern                       | **`tofi-rs` (CLI / application)**                                                                                                                                                                                                            | **`libtofi-rs` (library / engine)**                                                                                                                                                             |
+| ----------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **Config**                    | **Parsing** the keyfile (same format as C), **`include`**, paths, **CLI → config** (`clap` / `apply_key` parity). Anything that reads strings from disk or argv.                                                                             | **`TofiConfig`** (or equivalent) as **plain data**; **no** file I/O or `getopt` in the library. Small **value types** (`Color`, limits) next to that model.                                     |
+| **UI (definition)**           | **What** the launcher presents and how it maps from loaded config: modules like **`tofi::ui`** — composition, orchestration, calling into the library. **No** requirement to put Cairo calls here; keep “product shape” in the binary crate. | N/A as a separate crate — the library exposes APIs the CLI drives.                                                                                                                              |
+| **Renderer (implementation)** | Thin glue: pass buffers/config handles into **`libtofi`**.                                                                                                                                                                                   | **Cairo / Pango / HarfBuzz** pipeline (former `entry.c`, `entry_backend/*`), painting into SHM buffers, layout metrics — **`libtofi::entry`**, **`libtofi::renderer`**, feature **`renderer`**. |
 
-**Summary:** **UI is _defined_ in the CLI** (structure, wiring). **Renderer bits** (the actual drawing stack) **live in `libtofi-rs`** — testable, optional via **`renderer-cairo`**, same as tying Cairo to the engine.
+**Summary:** **UI is _defined_ in the CLI** (structure, wiring). **Renderer bits** (the actual drawing stack) **live in `libtofi-rs`** — testable, optional via **`renderer`**, same as tying Cairo to the engine.
 
 **Config parser** stays in **`tofi-rs`**; **wrong** would be implementing **only** the full parser inside **`libtofi`** without the CLI owning I/O. **Phase 2 / 5** follow this section.
 
@@ -67,14 +67,18 @@ tofi/
   libtofi/
     Cargo.toml               # package `name = "libtofi-rs"`; **[features]** for library capabilities (§4.1)
     src/lib.rs
-    src/<module>/mod.rs
-    src/<module>/tests.rs    # per-module unit tests (see §5.3)
+    src/<module>/
+      mod.rs                 # implementation
+      tests.rs               # `#[cfg(test)] mod tests` from mod.rs (see §5.3)
     tests/                   # optional: integration tests for the library crate
   tofi/
     Cargo.toml               # package `name = "tofi-rs"`; **[features]** mirror §4.1 (each forwards to `libtofi-rs/…`); binary name `tofi` via [[bin]] name = "tofi"
     src/main.rs
-    src/…                    # optional: extra modules + per-module tests.rs as CLI grows
-    tests/                   # **required:** CLI integration tests (`cargo test -p tofi-rs`; see §5.3)
+    src/cli/
+      mod.rs                 # `clap` types only (params + parse)
+      tests.rs               # CLI unit tests (same pattern as `libtofi`)
+    src/…                    # optional: further `foo/mod.rs` + `foo/tests.rs` modules
+    tests/                   # optional: integration tests (spawn `tofi`, fixtures) — see §5.3
   examples/
     config/                  # canonical **app config** fixture(s); **do not** mix with themes (Phase 9.4)
     themes/                  # canonical **theme** fixture(s); separate folder + separate test patterns (Phase 9.5)
@@ -121,7 +125,7 @@ tofi/
 
 **Tofi-specific adaptation:** Install **system** libraries needed for **Wayland**, **Cairo**, **Pango**, **HarfBuzz**, **xkbcommon** (and friends) before `cargo build` / `cargo test` — mirror the dependency set you will document for packagers. Wayshot uses an **`archlinux:latest`** container + **`pacman`**; you may use **`ubuntu-latest`** + **`apt`** instead if maintenance is simpler — either is fine; **document the choice in workflow comments**.
 
-**Coexistence with the legacy C build:** Until **Phase 9**, keep the existing Meson CI ([`.github/workflows/build-test.yml`](../.github/workflows/build-test.yml)) if it still adds value; **add** Rust workflows **in addition**, so both codepaths stay checked. Remove or trim C-only jobs when the C tree is deleted (**Phase 9.2**).
+**Legacy Meson CI removal (same milestone as Rust CI):** When **Phase 0 Step 0.2** adds the Rust workflows, **remove** the old C/Meson-only workflow(s) in the **same** change set (this repo previously used a Meson/`ninja` **build-test** workflow). Do **not** keep Meson and Rust CI running in parallel—switch CI to Cargo immediately. The **C source tree** stays in-repo as reference until **Phase 9** (sources vs CI are different: **CI = Rust-only from Step 0.2 onward**).
 
 **Scheduling:** Implement as **Phase 0 Step 0.2** (immediately after the empty workspace compiles — **Step 0.1**). Do not defer “proper” CI to §9; §9 lists **deploy enablement**, **`cargo deny`**, and other **late** polish—not the baseline fmt/clippy/build/test/Dependabot stack.
 
@@ -144,9 +148,9 @@ tofi/
 
 Parity path: **`cairo-rs`**, **`pango`**, **`pangocairo`**, **`harfbuzz_rs`** (or equivalent maintained bindings), matching [`src/entry_backend/`](../src/entry_backend/).
 
-**Crate:** Depend on these in **`libtofi-rs`**, behind **`renderer-cairo`** in **`libtofi/Cargo.toml`** (§4.1). The **CLI** does not embed Cairo for the main pipeline—it **defines UI** and calls into **`libtofi`** to draw (§1.4).
+**Crate:** Depend on these in **`libtofi-rs`**, behind **`renderer`** in **`libtofi/Cargo.toml`** (§4.1). The **CLI** does not embed Cairo for the main pipeline—it **defines UI** and calls into **`libtofi`** to draw (§1.4).
 
-**Feature gate:** `renderer-cairo` on **`libtofi-rs`** (default ON); **`tofi-rs`** mirrors it with **`renderer-cairo = ["libtofi-rs/renderer-cairo"]`**. A future alternative backend would be a separate **`libtofi-rs`** feature.
+**Feature gate:** `renderer` on **`libtofi-rs`** (default ON); **`tofi-rs`** mirrors it with **`renderer = ["libtofi-rs/renderer"]`**. A future alternative backend would be a separate **`libtofi-rs`** feature.
 
 ### 3.3 Clipboard
 
@@ -154,12 +158,13 @@ The C code uses **Wayland `wl_data_device` / `wl_data_offer`** for paste ([`src/
 
 Options (document tradeoffs for packagers):
 
-| Approach                                     | Pros                             | Cons                                                       |
-| -------------------------------------------- | -------------------------------- | ---------------------------------------------------------- |
-| **Port listeners** to Rust (same as C)       | True 1:1 behavior, no extra deps | More code                                                  |
-| **clipboard / arboard / wl-clipboard–style** | Faster to integrate              | May differ slightly on edge compositors; verify under Sway |
+| Approach                                                                                    | Pros                                                                      | Cons                                                                                                                                                                                                                                |
+| ------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **Port listeners** to Rust (same as C) — `wl_data_device` / `wl_data_offer`                 | True 1:1 with current C behavior                                          | More code                                                                                                                                                                                                                           |
+| **[`wl-clipboard-rs`](https://docs.rs/wl-clipboard-rs)** (paste via data-control protocols) | **Paste is supported** (`get_contents`, etc.); less in-tree protocol code | Targets **wlr-data-control** / **ext-data-control**-style access (often used without a focused surface); **not** the same code path as C’s `wl_data_device` listeners — verify on Sway **and** any other compositors you care about |
+| **arboard** / other cross-platform crates                                                   | Faster on some setups                                                     | Wayland behavior may not match C; verify under Sway                                                                                                                                                                                 |
 
-**Recommendation:** Implement **Wayland paste in-library** for default feature `clipboard-wayland` to match C; optionally expose `clipboard-arboard` behind a feature for experimentation **only if** parity tests (manual) pass.
+**Recommendation:** Keep paste behind feature **`clipboard`** in **`wayland::clipboard`** — that module is the **API surface**; the **implementation** may call **`wl-clipboard-rs`** or port C’s **`wl_data_device`** path. Prefer **parity-first** (port listeners) if a compositor mismatch is unacceptable; prefer **`wl-clipboard-rs`** if you accept data-control semantics and want less FFI/protocol code. Optional **`clipboard-arboard`** (or similar) only with manual parity checks.
 
 ### 3.4 Desktop entries / `drun` (GLib in C)
 
@@ -177,7 +182,7 @@ Upstream **reuses the name “compgen”** for a **performance cache**, not for 
 - **What it does:** [`src/compgen.c`](../src/compgen.c) runs **`bash`’s built-in `compgen -c`** (via a subprocess) to obtain the list of command names on **`$PATH`**, then **caches** that list under `XDG_CACHE_HOME` (see `tofi-compgen` cache basename in C). That list feeds **`tofi-run`** mode so the launcher does not rescan PATH from scratch every time.
 - **What it is not:** It is **not** the same as **shell completion** for typing `tofi <TAB>` in a terminal. Those belong to **`clap`** + **`clap_complete`** (or similar), generated from the CLI definition—see §9 (post-1.0).
 
-**Rust plan:** Implement this as a **normal library module** (e.g. `libtofi::run_commands` or keep the internal name `compgen`) used only when building the command list for run mode. **`std::process::Command`**, cache files, tests in `tests.rs`—**no** second binary. **Do not** confuse with `clap_complete`.
+**Rust plan:** Implement this as a **normal library module** (e.g. `libtofi::run_commands` or keep the internal name `compgen`) used only when building the command list for run mode. **`std::process::Command`**, cache files, tests in **`run_commands/tests.rs`** (layout §5.3)—**no** second binary. **Do not** confuse with `clap_complete`.
 
 ### 3.6 xkbcommon
 
@@ -191,56 +196,56 @@ Use **`tracing`** + **`tracing-subscriber`** (optional env filter). Map C `log_d
 
 ## 4. Cargo features (compile-time split)
 
-**`libtofi-rs`** gates **engine** and **`renderer-cairo`** (Cairo/Pango drawing — §1.4). **`tofi-rs`** **mirrors every** `libtofi-rs` feature name by forwarding to **`libtofi-rs/...`** so packagers tune the binary without editing the library crate.
+**`libtofi-rs`** gates **engine** and **`renderer`** (Cairo/Pango drawing — §1.4). **`tofi-rs`** **mirrors every** `libtofi-rs` feature name by forwarding to **`libtofi-rs/...`** so packagers tune the binary without editing the library crate.
 
-Packagers: `cargo build -p tofi-rs --no-default-features --features "…"` — e.g. **no `clipboard-wayland`**, **no `drun`**, **no `renderer-cairo`** (headless/engine-only experiments).
+Packagers: `cargo build -p tofi-rs --no-default-features --features "…"` — e.g. **no `clipboard`**, **no `drun`**, **no `renderer`** (headless/engine-only experiments).
 
 **No man pages** as a project target.
 
-**§4.1** and **§4.2** stay in lockstep (same feature names, including **`renderer-cairo`**).
+**§4.1** and **§4.2** stay in lockstep (same feature names, including **`renderer`**).
 
 ### 4.1 `libtofi-rs` (library) — engine + renderer implementation
 
 Document in **`libtofi/Cargo.toml`**.
 
-| Feature                | Purpose                                                   | Default                                                                                                                                                                     |
-| ---------------------- | --------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | --- |
-| `default`              | Full launcher                                             | Enables: `wayland`, `renderer-cairo`, `drun`, `clipboard-wayland`, `history`, `single-instance-lock`, `run-command-cache` (or fold `run-command-cache` into `default` only) | yes |
-| `wayland`              | Core Wayland client, SHM, surfaces                        | implied by `default`                                                                                                                                                        | yes |
-| `renderer-cairo`       | Cairo + Pango + HarfBuzz **drawing** (`entry` / backends) | yes                                                                                                                                                                         |
-| `drun`                 | `.desktop` scanning + `tofi-drun` behavior                | yes                                                                                                                                                                         |
-| `run-command-cache`    | Cached PATH command list for **`tofi-run`**               | yes (optional merge into `default` only)                                                                                                                                    |
-| `clipboard-wayland`    | Paste                                                     | yes                                                                                                                                                                         |
-| `history`              | History file read/write                                   | yes                                                                                                                                                                         |
-| `single-instance-lock` | `flock` lock file                                         | yes                                                                                                                                                                         |
+| Feature                | Purpose                                                                                             | Default                                                                                                                                             |
+| ---------------------- | --------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------- | --- |
+| `default`              | Full launcher                                                                                       | Enables: `wayland`, `renderer`, `drun`, `clipboard`, `history`, `single-instance-lock`, `run-commands` (or fold `run-commands` into `default` only) | yes |
+| `wayland`              | Core Wayland client, SHM, surfaces                                                                  | implied by `default`                                                                                                                                | yes |
+| `renderer`             | Drawing / text layout — Cairo + Pango + HarfBuzz under **`renderer/`** (e.g. future **`cairo.rs`**) | yes                                                                                                                                                 |
+| `drun`                 | `.desktop` scanning + `tofi-drun` behavior                                                          | yes                                                                                                                                                 |
+| `run-commands`         | Cached PATH command list for **`tofi-run`**                                                         | yes (optional merge into `default` only)                                                                                                            |
+| `clipboard`            | Wayland paste — implementation in **`wayland::clipboard`** (feature implies **`wayland`**)          | yes                                                                                                                                                 |
+| `history`              | History file read/write                                                                             | yes                                                                                                                                                 |
+| `single-instance-lock` | `flock` lock file                                                                                   | yes                                                                                                                                                 |
 
 **Library rules:**
 
 - Every optional subsystem must **`compile` when disabled**: use `#[cfg(feature = "...")]` on modules and stub APIs that return `Unsupported` or skip Wayland registration.
-- Prefer separate files (`clipboard_wayland.rs` vs `clipboard_stub.rs`) over huge `#[cfg]` blocks inside one function.
+- Prefer separate files (e.g. **`wayland/clipboard.rs`** vs stubs) over huge `#[cfg]` blocks inside one function.
 
 **Example packager scenarios** (via **`tofi-rs`** forwarding):
 
-- **Minimal stdin-only:** disable `clipboard-wayland`, `drun`, `history` as needed (often keep `wayland`, `renderer-cairo`).
-- **No drawing stack / CI stub:** disable **`renderer-cairo`** (only if the code path supports it).
+- **Minimal stdin-only:** disable `clipboard`, `drun`, `history` as needed (often keep `wayland`, `renderer`).
+- **No drawing stack / CI stub:** disable **`renderer`** (only if the code path supports it).
 
 ### 4.2 `tofi-rs` (CLI) — mirror the library
 
-Document in **`tofi/Cargo.toml`**. For **each** feature in §4.1, define **`name = ["libtofi-rs/name"]`** — including **`renderer-cairo`**.
+Document in **`tofi/Cargo.toml`**. For **each** feature in §4.1, define **`name = ["libtofi-rs/name"]`** — including **`renderer`**.
 
 ```toml
 [dependencies]
 libtofi-rs = { path = "../libtofi", default-features = false }
 
 [features]
-default = ["wayland", "renderer-cairo", "drun", "clipboard-wayland", "history", "single-instance-lock", "run-command-cache"]
+default = ["wayland", "renderer", "drun", "clipboard", "history", "single-instance-lock", "run-commands"]
 wayland = ["libtofi-rs/wayland"]
-renderer-cairo = ["libtofi-rs/renderer-cairo"]
+renderer = ["libtofi-rs/renderer"]
 drun = ["libtofi-rs/drun"]
-clipboard-wayland = ["libtofi-rs/clipboard-wayland"]
+clipboard = ["libtofi-rs/clipboard"]
 history = ["libtofi-rs/history"]
 single-instance-lock = ["libtofi-rs/single-instance-lock"]
-run-command-cache = ["libtofi-rs/run-command-cache"]
+run-commands = ["libtofi-rs/run-commands"]
 ```
 
 (`default` lists must match **§4.1**.)
@@ -267,7 +272,7 @@ run-command-cache = ["libtofi-rs/run-command-cache"]
 1. **Pick** the next unchecked step from §6 (order matters early; later some parallel work is possible).
 2. **Branch** (optional): `rust/step-XX-short-name`.
 3. **Implement** only that step’s scope.
-4. **Verify** using the step’s **Verification** commands.
+4. **Verify** using the step’s **Verification** commands **and** §5.2 (**mandatory fmt + clippy matrix**)—do not treat a step as finished until those pass.
 5. **Mark** the step complete in this file (checkbox) or in a linked `docs/RUST_MIGRATION_CHECKLIST.md` if you prefer a separate checklist.
 6. **Open PR** with: what changed, how verified, any intentional deviations from C.
 
@@ -279,7 +284,11 @@ For each step, the agent should:
 - **Do not** delete C/Meson/legacy themes until **Phase 9**—keep them as reference while implementing earlier phases.
 - Produce a **small diff**; if the step is too large, split into sub-steps and update this doc.
 - **Add or extend Rust tests** for new/changed behavior when the code is **unit-testable** (see §5.3). **Do not** port [`test/`](../test/) from C.
-- After editing, run **`cargo test --workspace`** (or **`cargo test -p libtofi-rs` and `cargo test -p tofi-rs`**), **`cargo clippy`**, and **`cargo build`**. Both workspace members that ship code **must** carry tests—the CLI is **not** exempt. Once **Phase 0 Step 0.2** is merged, mirror the same checks **locally** that CI runs (§2.2: **fmt**, **clippy** with warnings denied, feature matrix if you change defaults).
+- **Before declaring a step done** (PR, agent handoff, or “finished” in any sense), **all** of the following **must pass** on the workspace (same bar as CI once **Step 0.2** exists):
+  - **`cargo fmt --all -- --check`** (or run **`cargo fmt --all`** and ensure a clean diff).
+  - **`cargo clippy --workspace --all-targets -- -D warnings`** with **`--no-default-features`** **and** separately with **`--all-features`** (and keep **default** features green when you change defaults). If a step only touches one crate, still run clippy on the **whole** workspace unless the step explicitly documents a narrower scope.
+  - **`cargo test --workspace`** (or **`cargo test -p libtofi-rs`** and **`cargo test -p tofi-rs`**) and **`cargo build --workspace`** as appropriate for the change. Before **Step 0.5**, **`cargo test`** may run **zero** tests; it must still **exit successfully**.
+- **`tofi-rs`** **must** carry tests **once Step 0.5 is done** (§5.3). **`libtofi-rs`** tests live only under **`module/tests.rs`** trees—keep **`lib.rs`** minimal (exports + docs only; **no** crate-root `#[cfg(test)]`). **`libtofi-rs`** may report **0** tests until Phase 1+ adds real **`#[test]`** cases in modules. After **Phase 0 Step 0.2**, CI mirrors **fmt**, **clippy** (warnings denied, feature matrix), and **test**—**local** runs should match before merge.
 
 ### 5.3 Testing strategy (new suite — not a port of C tests)
 
@@ -287,31 +296,35 @@ For each step, the agent should:
 
 **Layout (per logical module in `libtofi-rs`):**
 
-- Implementation lives under `libtofi/src/<module>/` (e.g. `unicode/`, `color/`). Use **`mod.rs`** as the main file for that directory (equivalent in role to a single `unicode.rs` next to `unicode/tests.rs`; Rust does not allow both `unicode.rs` and `unicode/` as siblings for the same module name).
-- **Unit tests** live in a **sibling file** `tests.rs` inside that same directory, loaded only for tests:
+- One directory per area: **`libtofi/src/<module>/mod.rs`** (implementation) and **`libtofi/src/<module>/tests.rs`** (unit tests). Rust does not allow both **`unicode.rs`** and **`unicode/`** as siblings for the same module name—use the **directory** layout when you add **`tests.rs`**.
 
 ```text
 libtofi/src/
   unicode/
-    mod.rs      # implementation (same module as `unicode.rs` would be)
-    tests.rs    # #[cfg(test)] submodule: use super::*; #[test] fn …
+    mod.rs
+    tests.rs
 ```
 
-In `mod.rs`:
+In **`mod.rs`**:
 
 ```rust
 #[cfg(test)]
 mod tests;
 ```
 
-This matches the pattern “`image/image.rs` + `image/tests.rs`” conceptually: **one folder per area**, implementation + **`tests.rs`**, not a monolithic `tests/` tree far from sources.
+`mod tests` resolves to **`tests.rs`** in the same directory. Use **`use super::*;`** in **`tests.rs`** to reach the parent module’s API.
+
+**`lib.rs`:** Keep it **minimal** (crate docs, `mod` declarations, **`noop`** or other top-level exports only). **Do not** add **`#[cfg(test)]`** or **`lib_tests.rs`** at the crate root—there is nothing there worth testing; tests belong in **`module/tests.rs`** as modules grow.
 
 **Optional:** Crate-level **integration** tests in `libtofi/tests/*.rs` for scenarios that need multiple modules or filesystem fixtures.
 
-**CLI crate (`tofi-rs`):** Must have tests as well—**not** library-only.
+**CLI crate (`tofi-rs`):** Must have tests as well—**not** library-only. Mirror **`libtofi`**:
 
-- Prefer **`tofi/tests/*.rs`** (integration tests: spawn the `tofi` binary with `std::process::Command`, assert `--help` / `--version` / exit status / stderr for invalid flags). This works even when `src/main.rs` is thin.
-- If you split CLI logic into **`tofi/src/` modules** (e.g. `cli/mod.rs`), use the same **`tests.rs` sibling pattern** as `libtofi` for unit tests on parsing helpers.
+- **`tofi/src/cli/mod.rs`** + **`tofi/src/cli/tests.rs`** with `#[cfg(test)] mod tests;` in **`mod.rs`** — unit-test **`clap`** parsing (`try_parse_from`, `ErrorKind`, `CommandFactory`), flags, and help text **without** spawning a subprocess where possible.
+- **`tofi/tests/*.rs`** only when you need the real binary (`CARGO_BIN_EXE_tofi`), extra processes, or filesystem fixtures—**not** required for basic `--version` / `--help` if **`cli/tests.rs`** covers them.
+
+**Bootstrap / placeholder cleanup:** Stub feature modules may ship with **doc-only** **`tests.rs`** placeholders; replace with real **`#[test]`** cases as implementations land, or drop the **`mod tests`** hook until tests exist. The old **`sanity`** module and **`cli_smoke`** integration file were removed in favor of **`cli/tests.rs`** only.
+
 - **Verification:** `cargo test -p tofi-rs` passes in CI alongside `cargo test -p libtofi-rs`.
 
 **What to test first:** Pure functions in **`libtofi-rs`** (unicode, matching, path logic, **renderer helpers**); **config file parsing, CLI, and UI wiring** in **`tofi-rs`** (§1.4). **Harder:** Wayland/Cairo — prefer small pure helpers extracted for tests, plus manual compositor checks until/unless you invest in headless or snapshot tooling.
@@ -323,11 +336,11 @@ This matches the pattern “`image/image.rs` + `image/tests.rs`” conceptually:
 ### 5.4 Definition of “done” for the whole migration
 
 - `cargo build --release --workspace` succeeds with **default features**.
-- `cargo test --workspace` succeeds (**`libtofi-rs`** and **`tofi-rs`** both; expand coverage over time per §5.3).
-- **`tofi-rs` `[features]`** stay **mirrored** to **`libtofi-rs`** per §4 (including **`renderer-cairo`**).
+- `cargo test --workspace` succeeds; expand **`libtofi-rs`** coverage in **`module/tests.rs`** over time—**`tofi-rs`** must stay tested per §5.3.
+- **`tofi-rs` `[features]`** stay **mirrored** to **`libtofi-rs`** per §4 (including **`renderer`**).
 - `target/release/tofi` runs on Sway (or another wlroots compositor) in **stdin**, **run**, and **drun** modes (subject to enabled features).
 - Config and theme files from [`doc/config`](../doc/config) and [`themes/`](../themes/) work or deviations are listed in a short `PARITY.md` (optional file—only if you want to track gaps; not required by this plan).
-- **Legacy removal** (delete C/Meson/old CI/old themes) is **not** part of §5.4 “done”—it is **Phase 9** once you intentionally cut over.
+- **Meson / C-only CI** is **not** part of §5.4 “done”—it must already be **gone** (**Phase 0 Step 0.2**, §2.2). **Legacy removal** of **C sources, Meson build files, old themes tree**, etc., is **Phase 9** once you intentionally cut over the tree.
 
 ---
 
@@ -339,31 +352,31 @@ Each step: **Goal** · **Scope** · **Deliverables** · **Verification** · **C 
 
 ### Phase 0 — Workspace bootstrap
 
-- [ ] **Step 0.1 — Empty workspace compiles**
+- [x] **Step 0.1 — Empty workspace compiles**
   - **Goal:** Tooling baseline.
   - **Scope:** Add root `Cargo.toml` `[workspace]` with members `libtofi`, `tofi` (paths **without** a `crates/` segment).
   - **Deliverables:** `libtofi` is a library crate with `pub fn noop()` or similar; `tofi` binary calls it.
-  - **Verification:** `cargo build --workspace`
+  - **Verification:** `cargo build --workspace`; **`cargo fmt --all -- --check`**; **`cargo clippy --workspace --all-targets --no-default-features -- -D warnings`** and **`cargo clippy --workspace --all-targets --all-features -- -D warnings`** (§5.2). **`cargo test --workspace`** (may be 0 tests until **Step 0.5**).
   - **C reference:** N/A
   - **Notes:** Set **`edition = "2024"`** in `[workspace.package]` and/or per-crate `Cargo.toml`. **Do not** set `rust-version`—track latest stable (see §2.1).
 
-- [ ] **Step 0.2 — GitHub Actions CI (wayshot-style)**
+- [x] **Step 0.2 — GitHub Actions CI (wayshot-style)**
   - **Goal:** **Automated checks on every push/PR** as soon as Rust code exists—**fmt**, **clippy**, **build** (feature matrix), **test** (once tests exist), optional **typos** / **coverage**; plus **Dependabot** (`.github/dependabot.yml` for **Cargo** and **github-actions**). Add a **`deploy.yml`** (match [wayshot](https://github.com/waycrate/wayshot) layout) **without** enabling publishes yet—see §9 **Deploy**.
   - **Scope:** Add `.github/workflows/*.yml` per §2.2 (**no** `deny.yml` / **`docs.yml`** in Phase 0). Add **`.github/dependabot.yml`**. Copy **`deploy.yml`** from wayshot (or minimal stub with the same triggers **disabled** / **`workflow_dispatch` only**). Adapt install steps and feature matrix for **`libtofi-rs`** / **`tofi-rs`**. Trigger active jobs on **`push`** and **`pull_request`**.
-  - **Deliverables:** Green CI on a branch containing **Step 0.1**; Dependabot enabled on the repo; deploy workflow **present** but **not** auto-publishing. Minimal **`cargo test`** job can **`continue-on-error: true`** only until **Step 0.5** adds real tests—prefer **not** skipping the test job: let Step 0.5 land in the same milestone if needed so **`cargo test --workspace`** is required from day one.
-  - **Verification:** PR shows passing **fmt**, **clippy**, **build** matrix; **`cargo test --workspace`** passes after **Step 0.5** (or is wired and passes trivial smoke tests from **Step 0.5**); Dependabot config validates (GitHub shows Dependabot enabled / opens no erroneous PRs).
+  - **Deliverables:** Green CI on a branch containing **Step 0.1**; Dependabot enabled on the repo; deploy workflow **present** but **not** auto-publishing; **legacy Meson-only workflow(s) removed** from `.github/workflows/` (§2.2). Minimal **`cargo test`** job can **`continue-on-error: true`** only until **Step 0.5** adds real tests—prefer **not** skipping the test job: let Step 0.5 land in the same milestone if needed so **`cargo test --workspace`** is required from day one.
+  - **Verification:** PR shows passing **fmt**, **clippy**, **build** matrix; **no** remaining C/Meson-only CI jobs for this repo; **`cargo test --workspace`** passes after **Step 0.5** (or is wired and passes trivial smoke tests from **Step 0.5**); Dependabot config validates (GitHub shows Dependabot enabled / opens no erroneous PRs). Locally: same **§5.2** fmt/clippy commands as **Step 0.1**.
   - **C reference:** N/A
-  - **Notes:** Keep legacy **Meson** CI ([`build-test.yml`](../.github/workflows/build-test.yml)) until **Phase 9** if both trees coexist (§2.2). Optional: `paths:` filters so purely-docs commits do not rebuild C—do **not** ignore paths that contain **`Cargo.toml`** / **`Cargo.lock`** / **`src/`** Rust sources. **`cargo deny`** is **out of scope** for this step (§9).
+  - **Notes:** **Remove** legacy **Meson-only** CI in the **same** PR as the new Rust workflows (§2.2)—no parallel C/Rust CI. Optional: `paths:` filters on Rust workflows so purely-docs commits skip heavy jobs—do **not** ignore paths that contain **`Cargo.toml`** / **`Cargo.lock`** / Rust **`src/`**. **`cargo deny`** is **out of scope** for this step (§9).
 
-- [ ] **Step 0.3 — CLI version and metadata**
+- [x] **Step 0.3 — CLI version and metadata**
   - **Goal:** User-visible identity for the Rust port.
-  - **Scope:** `clap` (derive) or minimal `std::env` for `--version` / `--help`; version from `CARGO_PKG_VERSION`.
+  - **Scope:** **`clap` (derive)** for `--version` / `--help` and the binary name; version from `CARGO_PKG_VERSION` (via `clap`’s `version`). **Do not** use `std::env` for CLI options—**no** environment-variable mapping for flags (do **not** use `#[arg(env = …)]`); config files and argv only, consistent with not inventing `TOFI_*` overrides.
   - **Deliverables:** `tofi --version` prints version; help text stub.
   - **Verification:** `cargo run -p tofi-rs -- --version`
   - **C reference:** [`src/main.c`](../src/main.c) `usage()` (expand later).
   - **Notes:** Full option parity comes in Phase 4; here only scaffolding.
 
-- [ ] **Step 0.4 — Feature skeleton (`libtofi-rs` + `tofi-rs`)**
+- [x] **Step 0.4 — Feature skeleton (`libtofi-rs` + `tofi-rs`)**
   - **Goal:** Features declared in **both** crates (§4); default build = full stack.
   - **Scope:** Add **`libtofi/Cargo.toml` `[features]`** per §4.1; add **`tofi/Cargo.toml` `[features]`** per §4.2 (**mirror** §4.1 names → `libtofi-rs/…`). Wire empty modules behind `cfg` in the library.
   - **Deliverables:** `cargo build --no-default-features` works with minimal stubs for both packages; feature lists stay **in sync**.
@@ -375,13 +388,13 @@ Each step: **Goal** · **Scope** · **Deliverables** · **Verification** · **C 
   - **C reference:** N/A
   - **Notes:** Document features in `libtofi` `//!` docs; in `tofi/Cargo.toml` comment that features **mirror** `libtofi-rs` (§4.2).
 
-- [ ] **Step 0.5 — Unit test layout convention (library + CLI)**
+- [x] **Step 0.5 — Unit test layout convention (library + CLI)**
   - **Goal:** Establish test layout for **both** crates before feature code lands.
-  - **Scope:** (1) In `libtofi/`, add one trivial module (e.g. `src/sanity/mod.rs` + `src/sanity/tests.rs`) with `#[cfg(test)] mod tests;` and a single `#[test] fn smoke()`. (2) In `tofi/`, add **`tests/cli_smoke.rs`** (or similar) that runs the binary with `--version` or `--help` and asserts success—see §5.3.
-  - **Deliverables:** `cargo test -p libtofi-rs` and **`cargo test -p tofi-rs`** each run at least one test.
+  - **Scope:** In `tofi/`, add **`cli/mod.rs`** + **`cli/tests.rs`** (`#[cfg(test)] mod tests;` in **`mod.rs`**) — exercise **`clap`** via `try_parse_from` / `CommandFactory`, not subprocess smoke tests in **`tofi/tests/`** unless needed. Keep **`libtofi/src/lib.rs`** free of test modules (§5.3).
+  - **Deliverables:** **`cargo test -p tofi-rs`** runs at least one test; **`cargo test -p libtofi-rs`** may run **0** tests until Phase 1+ (acceptable).
   - **Verification:** `cargo test --workspace`
   - **C reference:** N/A
-  - **Notes:** Remove/repurpose `sanity` later; CLI smoke test can grow into full CLI coverage.
+  - **Notes:** **`cli/tests.rs`** grows with Phase 4 CLI parity.
 
 ---
 
@@ -412,7 +425,7 @@ Each step: **Goal** · **Scope** · **Deliverables** · **Verification** · **C 
 
 - [ ] **Step 1.4 — String tables**
   - **Goal:** Replace [`src/string_vec.c`](../src/string_vec.c) patterns with idiomatic `Vec`/`SmallVec`/`String` while keeping deterministic ordering for results.
-  - **Deliverables:** `libtofi::string_table` (name as you prefer) + `tests.rs`.
+  - **Deliverables:** `libtofi::string_table` (name as you prefer) + `string_table/tests.rs`.
   - **Verification:** `cargo test -p libtofi-rs`
   - **C reference:** [`src/string_vec.h`](../src/string_vec.h)
 
@@ -438,7 +451,7 @@ Each step: **Goal** · **Scope** · **Deliverables** · **Verification** · **C 
 - [ ] **Step 2.2 — Config file parser**
   - **Goal:** Load the same keyfile format as C.
   - **Scope:** Line-based parser compatible with [`src/config.c`](../src/config.c) (comments, `key=value`, includes if supported).
-  - **Deliverables:** **`tofi::config`** (or `tofi::config::load`): read file → populate **`libtofi::config::TofiConfig`**; tests in **`tofi/src/.../tests.rs`** or **`tofi/tests/`** with fixtures + [`doc/config`](../doc/config).
+  - **Deliverables:** **`tofi::config`** (or `tofi::config::load`): read file → populate **`libtofi::config::TofiConfig`**; tests in **`tofi/src/config/tests.rs`** (or **`tofi/tests/`**) with fixtures + [`doc/config`](../doc/config).
   - **Verification:** **`cargo test -p tofi-rs`**
   - **C reference:** [`src/config.c`](../src/config.c)
 
@@ -452,7 +465,7 @@ Each step: **Goal** · **Scope** · **Deliverables** · **Verification** · **C 
 - [ ] **Step 2.4 — CLI parsing (full)**
   - **Goal:** Replace `getopt_long` parity: all options in [`src/main.c`](../src/main.c) `long_options`.
   - **Scope:** Use `clap` with long names matching exactly; two-pass behavior (config path first, then overrides).
-  - **Deliverables:** **`tofi::cli`** (`clap`) producing **`TofiConfig`** + runtime mode flags; **mandatory** **`tofi/tests/`** coverage for help, unknown flags, valid/invalid invocations.
+  - **Deliverables:** **`tofi::cli`** (`clap`) producing **`TofiConfig`** + runtime mode flags; **mandatory** **`cli/tests.rs`** (and **`tofi/tests/`** only where subprocess/fixtures are required) for help, unknown flags, valid/invalid invocations.
   - **Verification:** Run binary with `--help` listing all flags; `--config` loads file; **`cargo test -p tofi-rs`** passes.
   - **C reference:** [`src/main.c`](../src/main.c) `parse_args`
 
@@ -474,7 +487,7 @@ Each step: **Goal** · **Scope** · **Deliverables** · **Verification** · **C 
 
 - [ ] **Step 3.3 — Run-mode command cache** (C `compgen.c`; see §3.5)
   - **Goal:** Same behavior as [`src/compgen.c`](../src/compgen.c): subprocess to bash `compgen -c`, cache under XDG cache, expose list for **`tofi-run`**.
-  - **Deliverables:** Library module only (e.g. `libtofi::run_commands`); `tests.rs` for cache path logic and parsing. **No** `tofi-compgen` binary—**shell completions** use **`clap`** later (§9), not this module.
+  - **Deliverables:** Library module only (e.g. `libtofi::run_commands`); `run_commands/tests.rs` for cache path logic and parsing. **No** `tofi-compgen` binary—**shell completions** use **`clap`** later (§9), not this module.
   - **Verification:** `cargo test -p libtofi-rs`; run mode lists commands like C.
   - **C reference:** [`src/compgen.c`](../src/compgen.c) — ignore [`src/main_compgen.c`](../src/main_compgen.c) as a **product** (debug helper only); replicate its stdout only if you need a one-off dev binary, not for release.
 
@@ -524,7 +537,7 @@ Each step: **Goal** · **Scope** · **Deliverables** · **Verification** · **C 
 
 - [ ] **Step 5.1 — Cairo bind to SHM**
   - **Goal:** Create `cairo::ImageSurface` from mapped buffer (ARGB) in **`libtofi-rs`**; draw simple text “hello” with Pango.
-  - **Deliverables:** **`libtofi::render`** (or `entry` submodule); feature **`renderer-cairo`**; **`cargo test -p libtofi-rs`** where possible.
+  - **Deliverables:** **`libtofi::renderer`** (or `entry` submodule); feature **`renderer`**; **`cargo test -p libtofi-rs`** where possible.
   - **Verification:** Visual
   - **C reference:** [`src/entry.c`](../src/entry.c)
   - **Notes:** §1.4 — **drawing stack** in the library.
@@ -572,7 +585,7 @@ Each step: **Goal** · **Scope** · **Deliverables** · **Verification** · **C 
 
 ---
 
-### Phase 7 — Clipboard (`feature = "clipboard-wayland"`)
+### Phase 7 — Clipboard (`feature = "clipboard"`)
 
 - [ ] **Step 7.1 — Data device manager**
   - **Goal:** Bind `wl_data_device_manager`, create data device, handle paste shortcut.
@@ -618,7 +631,7 @@ Each step: **Goal** · **Scope** · **Deliverables** · **Verification** · **C 
 
 - [ ] **Step 9.2 — Remove C build and sources**
   - **Goal:** No Meson/C toolchain in-tree for the product.
-  - **Scope (typical):** Delete or move to an archive branch: **`meson.build`**, **`src/**/_.c`**, **`src/\*\*/_.h`**, **`test/`** (C tests — already not ported), **`protocols/\*.xml`** if unused by Rust, any **Meson-only** scripts. Remove **old CI\*\* workflows that only build C/Meson (GitHub Actions, GitLab, etc.); keep/replace with Rust CI (§9 Future goals).
+  - **Scope (typical):** Delete or move to an archive branch: **`meson.build`**, **`src/**/_.c`**, **`src/\*\*/_.h`**, **`test/`** (C tests — already not ported), **`protocols/\*.xml`** if unused by Rust, any **Meson-only** scripts. **C-only CI** should already have been removed in **Step 0.2** (§2.2); here, scrub any **leftover\*\* references to Meson CI in docs or scripts.
   - **Verification:** Repo has no dangling references to removed paths in active README/install instructions; **`git grep meson`** / **`git grep '\.c'`** clean where intended.
 
 - [ ] **Step 9.3 — Replace themes / scattered examples**
@@ -641,7 +654,13 @@ Each step: **Goal** · **Scope** · **Deliverables** · **Verification** · **C 
   - **Verification:** **`cargo test --workspace`** green; changing **`examples/config/`** updates **config** tests; changing **`examples/themes/`** updates **theme** tests.
   - **Notes:** Optional: `include_str!` snapshots or small golden files checked into `tofi/tests/fixtures/` if you need stable baselines—still keep **folder split** at the source of truth under **`examples/`**.
 
-**Notes:** Do **not** delete the legacy tree in **Phase 0**—keep C sources as reference until Phases 1–8 are done. Phase 9 is a deliberate **cleanup** milestone.
+- [ ] **Step 9.6 — Scrub placeholder `tests.rs` in stub modules**
+  - **Goal:** No permanent **doc-only** test files left in feature modules once those areas are implemented or explicitly deferred.
+  - **Scope:** For each feature module’s **`tests.rs`**, either add real **`#[test]`** cases matching the module’s behavior or remove the **`#[cfg(test)] mod tests`** hook from **`mod.rs`** until tests are warranted (§5.3). **`cli/tests.rs`** stays and grows with CLI parity—**not** in scope for deletion.
+  - **Verification:** `cargo test --workspace`; placeholder policy documented or resolved.
+  - **C reference:** N/A
+
+**Notes:** Do **not** delete the legacy **source tree** in **Phase 0**—keep C sources as reference until Phases 1–8 are done. **CI** switches to Rust-only when **Step 0.2** lands (§2.2). Phase 9 is a deliberate **cleanup** milestone for **files**, not CI.
 
 ---
 
@@ -659,7 +678,7 @@ After config + pure modules exist, **Phase 3 sub-steps** (history, lock, run-mod
 | Font/layout drift vs Cairo/Pango C          | Side-by-side screenshots; same font files                                                                                        |
 | Clipboard differences                       | Prefer porting `wl_data_device` path first                                                                                       |
 | Stale / unmaintained dependencies           | Enforce §2.1 and §3 before adding crates                                                                                         |
-| `libtofi-rs` / `tofi-rs` feature drift      | Single source of truth: §4.1; **mirror** all flags in §4.2 (including **`renderer-cairo`**)                                      |
+| `libtofi-rs` / `tofi-rs` feature drift      | Single source of truth: §4.1; **mirror** all flags in §4.2 (including **`renderer`**)                                            |
 | Config/UI vs renderer in wrong crate        | §1.4: **config parse + UI definition** in **`tofi-rs`**; **Cairo/render implementation** in **`libtofi-rs`**                     |
 | Deleting legacy tree too early              | Run **Phase 9** only after §5.4; **tag** last C commit if you need a rollback reference                                          |
 | Accidental strong copyleft via `Cargo.lock` | §1.5; **`cargo deny`** license policy; prefer permissive crates when you must ship MIT-compatible binaries                       |
@@ -678,7 +697,7 @@ These are **not** required to declare the C→Rust migration “done” for §5.
 | **`cargo-deny`**      | **Separate** milestone (not Phase 0): add **`deny.toml`** + **`deny.yml`** (or equivalent job) when the dependency graph is stable enough to justify **`cargo deny check`** for licenses/advisories/bans—aligns with §1.5; **after** Dependabot is already filing crate bumps.                                                                                                                                                                              |
 | **Deploy**            | **`deploy.yml`** is **added in Step 0.2** (see [wayshot](https://github.com/waycrate/wayshot/blob/main/.github/workflows/deploy.yml)) but **kept idle** (`workflow_dispatch` only, `if: false`, or no tags) until the Rust port is **release-ready**. **Late migration:** enable triggers for **crates.io**, **GitHub Releases**, or distro artifacts; wire secrets; align with §5.4 and packaging docs.                                                    |
 | **Shell completions** | Generate completions for **bash, zsh, fish, …** using **`clap_complete`** (or the ecosystem standard that matches your `clap` version)—**not** a separate `tofi-compgen`-style binary. **Not** a 1.0.0 release blocker (see §8 Step 8.2).                                                                                                                                                                                                                   |
-| **Legacy deletion**   | **Phase 9:** remove C sources, Meson, old CI, old [`themes/`](../themes/) once Rust is default; replace with **`examples/config/`** + **`examples/themes/`** + **split** config/theme test patterns (9.4–9.5).                                                                                                                                                                                                                                              |
+| **Legacy deletion**   | **C-only CI:** removed in **Phase 0 Step 0.2** (§2.2). **Phase 9:** remove C sources, Meson build, old [`themes/`](../themes/) once Rust is default; replace with **`examples/config/`** + **`examples/themes/`** + **split** config/theme test patterns (9.4–9.5).                                                                                                                                                                                         |
 
 **License note:** A **permissive** outcome for your own code is a **core migration goal** (§1.1); **strong copyleft** may still apply **via dependencies**—see §1.5.
 
@@ -688,12 +707,26 @@ These are **not** required to declare the C→Rust migration “done” for §5.
 
 - Update **checkboxes** in §6 (Phases **0–9**) as steps complete.
 - When a step is split or reordered, **add a one-line changelog** at the bottom of this file (`### Revision history`).
+- After **policy or workflow changes** (CI, §5.2, Phase 9 scope, etc.), **re-read** §2.2, §5, and §6 for **contradictions** and fix them in the same edit series—**implementation and plan stay aligned**.
 
 ### Revision history
 
+- **2026-04-06:** **§3.3:** **`wl-clipboard-rs`** vs C-style **`wl_data_device`** paste — both valid behind **`wayland::clipboard`**; tradeoffs documented.
+- **2026-04-06:** **§4 / modules:** Features **`renderer`**, **`run-commands`**, **`clipboard`** (replaces `renderer-cairo`, `run-command-cache`, `clipboard-wayland`); **`renderer/`** crate module; **`run_commands/`**; paste under **`wayland::clipboard`** (`clipboard` implies **`wayland`** in **`Cargo.toml`**).
+- **2026-04-06:** **§5.3 / §5.2 / Step 0.5 / 9.6:** No **`lib_tests.rs`** — **`lib.rs`** stays minimal; **`tofi-rs`** tests required; **`libtofi-rs`** may have 0 tests until modules implement **`tests.rs`**.
+- **2026-04-06:** **§5.3 / §2:** Unit tests live under **`module/mod.rs` + `module/tests.rs`** (e.g. **`drun/mod.rs`** + **`drun/tests.rs`**); **`tofi/src/cli/`** matches. Phase deliverables use **`foo/tests.rs`** paths again.
+- **2026-04-06:** **Phase 0 Step 0.5** — **`cli/`** test layout; §6 checkbox.
+- **2026-04-06:** **Phase 0 Step 0.4** — §4.1/§4.2 **Cargo `[features]`** (mirrored), cfg-gated stub modules in **`libtofi`**; §6 checkbox.
+- **2026-04-06:** **`tofi` layout:** **`cli.rs`** = `clap` params/parsing only; **`main.rs`** = run operations after **`Cli::parse()`** (§2 repo layout).
+- **2026-04-06:** **Phase 0 Step 0.3** — `clap` **4** (`--version` / `--help`), argv-only (no env var mapping for options); §6 checkbox.
+- **2026-04-06:** Typos config file: **`_typos.toml`** → **`.typos.toml`** (same contents).
+- **2026-04-06:** **Phase 0 Step 0.2** — Rust CI (`build.yml`, `fmt-clippy.yml`, `test.yml`, `typos.yml`, idle `deploy.yml`), **`dependabot.yml`**, **`.typos.toml`** (exclude legacy trees); removed Meson **`build-test.yml`**; §6 checkbox.
+- **2026-04-06:** **Phase 0 Step 0.1** complete — empty workspace (`libtofi-rs` + `tofi-rs`), §6 checkbox.
+- **2026-04-06:** **§1 / §5–6 / §10:** Playbook priority — **read plan → implement → update plan**; intro + **Step 0.1** verification include **§5.2** fmt/clippy; **§5.2** clarifies tests required **after Step 0.5**; **Step 0.2** deliverables/verification include **Meson CI removal**; fix **Step 9.2** typo; **§10** — re-read for contradictions after policy changes.
 - **2026-04-06:** **§2.2:** CI **`uses:`** pins — **major only** (`x`), not **`x.y`** / patch; contrast **§2.1** **`Cargo.toml`** **`x.y`**.
 - **2026-04-06:** **§2.1:** **`Cargo.toml`** dependency versions prefer **`x.y`** over **`x.y.z`** (exact pins in **`Cargo.lock`**); **§2.2** Dependabot note cross-links. Simplifies upgrades and Dependabot PRs.
 - **2026-04-06:** **§2.2 / Step 0.2:** **Dependabot** (`dependabot.yml`); **no** Phase 0 **`deny.yml`** / **`docs.yml`**; **`deploy.yml`** present but idle until §9 **Deploy**. §9 **`cargo-deny`** = later dedicated step.
-- **2026-04-06:** **§2.2** + **Phase 0 Step 0.2:** CI tooling **early**, modeled on [waycrate/wayshot](https://github.com/waycrate/wayshot) (`build.yml`, `fmt-clippy.yml`, `test-coverage.yml`, `typos.yml`); coexist with Meson CI until Phase 9. Renumbered Phase 0: **0.3** CLI metadata, **0.4** feature skeleton, **0.5** test layout. **§9** / **Step 8.4:** CI baseline is Phase 0, not deferred.
-- **2026-04-06:** Tooling: **edition 2024**, workspace + per-crate `Cargo.toml`, **no** `rust-version` pin, **no** `crates/` path segment; dependency freshness (§2.1); **`compgen` clarified** (§3.5); removed **`tofi-compgen`** binary from plan; Phase 3/8 adjusted. **§1.1 / §1.5:** permissive target; **strong copyleft via deps** possible; copyright (retain upstream, add yourself for your work). **§9:** TOML config, docs, CI/CD, **`cargo-deny`**, completions, **Phase 9 legacy deletion**; GPL future goal removed. **Tests:** **CLI (`tofi-rs`) must have tests** (`tofi/tests/`, `cargo test --workspace`); §5.2–5.4, Step 0.5/2.4/8.4, layout. **§4:** full feature mirror including **`renderer-cairo`** on **`libtofi-rs`**; **no man pages**; layout + Step 0.4; Phase 8.1 / §9 / risk. **§3.1 / §8:** **`wayland-protocols-wlr`**. **§1.4:** **UI definition** (`tofi-rs`) vs **renderer implementation** (`libtofi-rs`); config parse in **`tofi`**, types in **`libtofi`**. **Phase 9:** remove C/Meson/old CI/themes; **`examples/config/`** + **`examples/themes/`**; **separate** config vs theme test patterns.
-- **2026-04-06:** Initial plan from C codebase survey (`meson.build`, `src/`). **Update same day:** testing policy — **new** Rust suite with per-module `tests.rs` (§5.3); **no** port of C `test/`; Step 0.5; Phase 1–3 and 8 updated to require `cargo test` where appropriate.
+- **2026-04-06:** **§2.2** + **Phase 0 Step 0.2:** CI tooling **early**, modeled on [waycrate/wayshot](https://github.com/waycrate/wayshot) (`build.yml`, `fmt-clippy.yml`, `test-coverage.yml`, `typos.yml`); **remove** Meson-only CI **when** Rust CI is added (same milestone). Renumbered Phase 0: **0.3** CLI metadata, **0.4** feature skeleton, **0.5** test layout. **§9** / **Step 8.4:** CI baseline is Phase 0, not deferred.
+- **2026-04-06:** **§5.2:** Mandatory **`cargo fmt --check`** and **`cargo clippy`** (**`--no-default-features`** and **`--all-features`**, **`-D warnings`**) before declaring a step done; align with §2.2 CI matrix.
+- **2026-04-06:** Tooling: **edition 2024**, workspace + per-crate `Cargo.toml`, **no** `rust-version` pin, **no** `crates/` path segment; dependency freshness (§2.1); **`compgen` clarified** (§3.5); removed **`tofi-compgen`** binary from plan; Phase 3/8 adjusted. **§1.1 / §1.5:** permissive target; **strong copyleft via deps** possible; copyright (retain upstream, add yourself for your work). **§9:** TOML config, docs, CI/CD, **`cargo-deny`**, completions, **Phase 9 legacy deletion**; GPL future goal removed. **Tests:** **CLI (`tofi-rs`) must have tests** (`tofi/tests/`, `cargo test --workspace`); §5.2–5.4, Step 0.5/2.4/8.4, layout. **§4:** full feature mirror including **`renderer`** on **`libtofi-rs`**; **no man pages**; layout + Step 0.4; Phase 8.1 / §9 / risk. **§3.1 / §8:** **`wayland-protocols-wlr`**. **§1.4:** **UI definition** (`tofi-rs`) vs **renderer implementation** (`libtofi-rs`); config parse in **`tofi`**, types in **`libtofi`**. **Phase 0.2:** C-only CI out; **Phase 9:** remove C/Meson/themes; **`examples/config/`** + **`examples/themes/`**; **separate** config vs theme test patterns.
+- **2026-04-06:** Initial plan from C codebase survey (`meson.build`, `src/`). **Update same day:** testing policy — **new** Rust suite with per-module **`tests.rs`** (§5.3); **no** port of C `test/`; Step 0.5; Phase 1–3 and 8 updated to require `cargo test` where appropriate.

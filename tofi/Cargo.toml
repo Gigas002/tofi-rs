@@ -1,0 +1,32 @@
+[package]
+name = "tofi-rs"
+version = "0.1.0"
+edition.workspace = true
+
+[[bin]]
+name = "tofi"
+path = "src/main.rs"
+
+[dependencies]
+clap = { version = "4", features = ["derive"] }
+# Features mirror libtofi-rs (§4.2); `default-features = false` so this crate's `[features]` control the library.
+libtofi-rs = { path = "../libtofi", default-features = false }
+
+# Same feature names and defaults as libtofi-rs §4.1 — keep in sync when editing either manifest.
+[features]
+default = [
+    "wayland",
+    "renderer",
+    "drun",
+    "clipboard",
+    "history",
+    "single-instance-lock",
+    "run-commands",
+]
+wayland = ["libtofi-rs/wayland"]
+renderer = ["libtofi-rs/renderer"]
+drun = ["libtofi-rs/drun"]
+run-commands = ["libtofi-rs/run-commands"]
+clipboard = ["libtofi-rs/clipboard"]
+history = ["libtofi-rs/history"]
+single-instance-lock = ["libtofi-rs/single-instance-lock"]
