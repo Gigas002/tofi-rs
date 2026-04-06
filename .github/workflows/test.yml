@@ -1,4 +1,4 @@
-name: Test
+name: Test and coverage
 
 on:
   push:
@@ -8,11 +8,13 @@ env:
   CARGO_TERM_COLOR: always
 
 jobs:
-  test:
+  test-coverage:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v4
       - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: llvm-tools-preview
       - name: Build cache
         uses: Swatinem/rust-cache@v2
       - name: Install system dependencies
@@ -25,5 +27,35 @@ jobs:
             libpango1.0-dev \
             libharfbuzz-dev \
             libxkbcommon-dev
-      - name: Test workspace
-        run: cargo test --workspace
+      - name: Install cargo-llvm-cov
+        uses: taiki-e/install-action@v2
+        with:
+          tool: cargo-llvm-cov
+      - name: Run tests
+        run: cargo test --all-features --verbose
+      - name: Generate coverage report (libtofi-rs)
+        run: |
+          cargo llvm-cov --all-features -p libtofi-rs --lcov --output-path lcov-libtofi-rs.info
+      - name: Generate coverage report (tofi-rs)
+        run: |
+          cargo llvm-cov --all-features -p tofi-rs --lcov --output-path lcov-tofi-rs.info
+      - name: Upload libtofi-rs coverage to Codecov
+        uses: codecov/codecov-action@v4
+        with:
+          files: ./lcov-libtofi-rs.info
+          flags: libtofi-rs
+          name: libtofi-rs
+          fail_ci_if_error: false
+          verbose: true
+        env:
+          CODECOV_TOKEN: ${{ secrets.CODECOV_TOKEN }}
+      - name: Upload tofi-rs coverage to Codecov
+        uses: codecov/codecov-action@v4
+        with:
+          files: ./lcov-tofi-rs.info
+          flags: tofi-rs
+          name: tofi-rs
+          fail_ci_if_error: false
+          verbose: true
+        env:
+          CODECOV_TOKEN: ${{ secrets.CODECOV_TOKEN }}
