@@ -455,14 +455,14 @@ Each step: **Goal** · **Scope** · **Deliverables** · **Verification** · **C 
   - **Verification:** **`cargo test -p tofi-rs`** — 67 tests pass; fmt + clippy clean.
   - **C reference:** [`src/config.c`](../src/config.c)
 
-- [ ] **Step 2.3 — Config key application**
+- [x] **Step 2.3 — Config key application**
   - **Goal:** Equivalent to `config_apply()` for every key.
   - **Scope:** **`tofi`**: stringly-typed apply used by both file loader and CLI layer.
-  - **Deliverables:** **`tofi::config::apply_key`**, unit tests for representative keys.
-  - **Verification:** **`cargo test -p tofi-rs`**
+  - **Deliverables:** `tofi::config::apply_key` — implemented and exported in Step 2.2; 27 apply_key unit tests covering all value types (bool, u32, i32, UnitValue, Color, Anchor, CursorStyle, MatchingAlgorithm, Directional, HiddenCharacter). Also used by `load_inner`.
+  - **Verification:** **`cargo test -p tofi-rs`** — all 67 tests pass.
   - **C reference:** [`src/config.c`](../src/config.c)
 
-- [ ] **Step 2.4 — CLI parsing (full)**
+- [x] **Step 2.4 — CLI parsing (full)**
   - **Goal:** Replace `getopt_long` parity: all options in [`src/main.c`](../src/main.c) `long_options`.
   - **Scope:** Use `clap` with long names matching exactly; two-pass behavior (config path first, then overrides).
   - **Deliverables:** **`tofi::cli`** (`clap`) producing **`TofiConfig`** + runtime mode flags; **mandatory** **`cli/tests.rs`** (and **`tofi/tests/`** only where subprocess/fixtures are required) for help, unknown flags, valid/invalid invocations.

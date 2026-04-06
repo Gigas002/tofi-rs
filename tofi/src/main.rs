@@ -7,6 +7,7 @@ mod config;
 use clap::Parser as _;
 
 fn main() {
-    cli::Cli::parse();
+    let cli = cli::Cli::parse();
+    let (_config, _errors) = cli.into_config().expect("Failed to load config");
     libtofi_rs::noop();
 }
