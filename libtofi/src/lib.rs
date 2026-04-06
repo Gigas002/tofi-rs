@@ -17,6 +17,7 @@ pub use error::{Error, Result};
 
 pub mod color;
 pub mod matching;
+pub mod scale;
 pub mod string_table;
 pub mod unicode;
 
@@ -26,6 +27,8 @@ pub mod drun;
 pub mod lock;
 #[cfg(feature = "renderer")]
 pub mod renderer;
+#[cfg(feature = "wayland")]
+pub mod shm;
 #[cfg(feature = "wayland")]
 pub mod wayland;
 
