@@ -440,13 +440,13 @@ Each step: **Goal** · **Scope** · **Deliverables** · **Verification** · **C 
 
 ### Phase 2 — Config system
 
-- [ ] **Step 2.1 — Config data structures (shared model)**
+- [x] **Step 2.1 — Config data structures (shared model)**
   - **Goal:** One Rust struct (or layered structs) covering all keys documented in [`doc/config`](../doc/config) / man.
   - **Scope:** Mirror defaults from [`src/main.c`](../src/main.c) and [`doc/config`](../doc/config).
-  - **Deliverables:** **`libtofi::config::TofiConfig`** (name flexible) + `Default` — **types only**, consumed by the engine; **`libtofi/config/tests.rs`** for `Default` / invariants.
-  - **Verification:** `cargo test -p libtofi-rs`
+  - **Deliverables:** **`tofi::config::TofiConfig`** + `Default` — **types only** in `tofi-rs` (plain data, no I/O); `tofi/src/config/tests.rs` for `Default` / invariants. Config lives in the CLI crate, not the library.
+  - **Verification:** `cargo test -p tofi-rs`
   - **C reference:** [`src/tofi.h`](../src/tofi.h), [`src/entry.h`](../src/entry.h)
-  - **Notes:** §1.4 — no file parsing in the library.
+  - **Notes:** Config is a CLI/userspace concern — `libtofi-rs` does not own it. No file parsing here.
 
 - [ ] **Step 2.2 — Config file parser**
   - **Goal:** Load the same keyfile format as C.
