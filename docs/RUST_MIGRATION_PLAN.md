@@ -408,7 +408,7 @@ Each step: **Goal** · **Scope** · **Deliverables** · **Verification** · **C 
   - **C reference:** [`src/log.c`](../src/log.c) patterns.
   - **Notes:** Map Wayland errors later.
 
-- [ ] **Step 1.2 — Unicode helpers**
+- [x] **Step 1.2 — Unicode helpers**
   - **Goal:** Match [`src/unicode.c`](../src/unicode.c) behavior needed by input and paste.
   - **Scope:** UTF-8 validation, NFC normalization (use `unicode-normalization` crate if appropriate), UTF-8 ↔ UTF-32 for fixed buffer sizes as in C.
   - **Deliverables:** Module `libtofi::unicode` with `unicode/tests.rs` covering edge cases (**new** tests; do not port C tests).
@@ -711,6 +711,7 @@ These are **not** required to declare the C→Rust migration “done” for §5.
 
 ### Revision history
 
+- **2026-04-06:** **Phase 1 Step 1.2** — `libtofi::unicode` module (`unicode/mod.rs` + `unicode/tests.rs`, 54 tests); `unicode-normalization = "0.1"` added to `libtofi/Cargo.toml`; stdlib covers UTF-8↔UTF-32, classification, validation — crate used only for NFC (`utf8_normalize`, `utf8_compose`); `MAX_INPUT_LENGTH = 256` constant; §6 checkbox.
 - **2026-04-06:** **Phase 1 Step 1.1** — `libtofi::Error` (`thiserror` enum: `Io`, `Utf8`, `InvalidValue`, `NotSupported`, `#[cfg(feature="wayland")] Wayland` placeholder) + `Result<T>` alias in `libtofi/src/error.rs`; `pub use` from `lib.rs`; `thiserror = "2"` added to `libtofi/Cargo.toml`; §6 checkbox.
 - **2026-04-06:** **§3.3:** **`wl-clipboard-rs`** vs C-style **`wl_data_device`** paste — both valid behind **`wayland::clipboard`**; tradeoffs documented.
 - **2026-04-06:** **§4 / modules:** Features **`renderer`**, **`run-commands`**, **`clipboard`** (replaces `renderer-cairo`, `run-command-cache`, `clipboard-wayland`); **`renderer/`** crate module; **`run_commands/`**; paste under **`wayland::clipboard`** (`clipboard` implies **`wayland`** in **`Cargo.toml`**).

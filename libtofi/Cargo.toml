@@ -5,6 +5,7 @@ edition.workspace = true
 
 [dependencies]
 thiserror = "2"
+unicode-normalization = "0.1"
 
 # §4.1 / docs/RUST_MIGRATION_PLAN.md — engine + renderer feature split.
 [features]
