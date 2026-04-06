@@ -368,7 +368,7 @@ Each step: **Goal** · **Scope** · **Deliverables** · **Verification** · **C 
   - **C reference:** [`src/main.c`](../src/main.c) `usage()` (expand later).
   - **Notes:** Full option parity comes in Phase 4; here only scaffolding.
 
-- [ ] **Step 0.4 — Feature skeleton (`libtofi-rs` + `tofi-rs`)**
+- [x] **Step 0.4 — Feature skeleton (`libtofi-rs` + `tofi-rs`)**
   - **Goal:** Features declared in **both** crates (§4); default build = full stack.
   - **Scope:** Add **`libtofi/Cargo.toml` `[features]`** per §4.1; add **`tofi/Cargo.toml` `[features]`** per §4.2 (**mirror** §4.1 names → `libtofi-rs/…`). Wire empty modules behind `cfg` in the library.
   - **Deliverables:** `cargo build --no-default-features` works with minimal stubs for both packages; feature lists stay **in sync**.
@@ -697,6 +697,7 @@ These are **not** required to declare the C→Rust migration “done” for §5.
 
 ### Revision history
 
+- **2026-04-06:** **Phase 0 Step 0.4** — §4.1/§4.2 **Cargo `[features]`** (mirrored), cfg-gated stub modules in **`libtofi`**; §6 checkbox.
 - **2026-04-06:** **`tofi` layout:** **`cli.rs`** = `clap` params/parsing only; **`main.rs`** = run operations after **`Cli::parse()`** (§2 repo layout).
 - **2026-04-06:** **Phase 0 Step 0.3** — `clap` **4** (`--version` / `--help`), argv-only (no env var mapping for options); §6 checkbox.
 - **2026-04-06:** Typos config file: **`_typos.toml`** → **`.typos.toml`** (same contents).
