@@ -473,28 +473,28 @@ Each step: **Goal** · **Scope** · **Deliverables** · **Verification** · **C 
 
 ### Phase 3 — History, lock, run-mode command cache, drun (non-Wayland)
 
-- [ ] **Step 3.1 — History** (`feature = "history"`)
+- [x] **Step 3.1 — History** (`feature = "history"`)
   - **Goal:** Same file format and ordering as [`src/history.c`](../src/history.c).
-  - **Deliverables:** `libtofi::history` + `history/tests.rs` (tempdir / fixture files).
-  - **Verification:** `cargo test -p libtofi-rs --features history` and manual read/write cycle
+  - **Deliverables:** `tofi::history` + `history/tests.rs` (tempdir / fixture files). Lives in the CLI crate (userspace I/O concern, mirrors config placement — §1.4); `history` feature removed from `libtofi-rs`.
+  - **Verification:** `cargo test -p tofi-rs` and manual read/write cycle
   - **C reference:** [`src/history.c`](../src/history.c)
 
-- [ ] **Step 3.2 — Single-instance lock** (`feature = "single-instance-lock"`)
+- [x] **Step 3.2 — Single-instance lock** (`feature = "single-instance-lock"`)
   - **Goal:** Same `flock` behavior as [`src/lock.c`](../src/lock.c).
-  - **Deliverables:** `libtofi::lock` using `fs2` or direct `flock` syscall via `libc`.
+  - **Deliverables:** `libtofi::lock` using `nix::fcntl::Flock` (RAII, no `unsafe`). `fs2` and `libc` were considered but rejected — `nix` is already a dependency, provides a safe API, and will be reused in Phase 4+ (SHM, `memfd_create`, etc.).
   - **Verification:** Run two instances; second exits when `multi-instance` false.
   - **C reference:** [`src/lock.c`](../src/lock.c)
 
-- [ ] **Step 3.3 — Run-mode command cache** (C `compgen.c`; see §3.5)
-  - **Goal:** Same behavior as [`src/compgen.c`](../src/compgen.c): subprocess to bash `compgen -c`, cache under XDG cache, expose list for **`tofi-run`**.
-  - **Deliverables:** Library module only (e.g. `libtofi::run_commands`); `run_commands/tests.rs` for cache path logic and parsing. **No** `tofi-compgen` binary—**shell completions** use **`clap`** later (§9), not this module.
-  - **Verification:** `cargo test -p libtofi-rs`; run mode lists commands like C.
+- [x] **Step 3.3 — Run-mode command cache** (C `compgen.c`; see §3.5)
+  - **Goal:** Same behavior as [`src/compgen.c`](../src/compgen.c): scan `$PATH` directly (not a bash subprocess — the plan description was misleading), cache under XDG cache, expose list for **`tofi-run`**.
+  - **Deliverables:** `tofi::run_commands` in the CLI crate (userspace I/O — same rationale as history/§1.4); `run_commands/tests.rs`; `run-commands` feature removed from `libtofi-rs`. `compgen_history_sort` not ported — already covered by `string_table::apply_history_scores`. **No** `tofi-compgen` binary.
+  - **Verification:** `cargo test -p tofi-rs`; run mode lists commands like C.
   - **C reference:** [`src/compgen.c`](../src/compgen.c) — ignore [`src/main_compgen.c`](../src/main_compgen.c) as a **product** (debug helper only); replicate its stdout only if you need a one-off dev binary, not for release.
 
-- [ ] **Step 3.4 — drun desktop loading** (`feature = "drun"`)
+- [x] **Step 3.4 — drun desktop loading** (`feature = "drun"`)
   - **Goal:** Port [`src/drun.c`](../src/drun.c): scan paths, cache file, desktop entry list, `Exec` handling.
-  - **Deliverables:** `libtofi::drun`
-  - **Verification:** List apps matches C `tofi-drun` for a fixed `XDG_DATA_*` (manual).
+  - **Deliverables:** `libtofi::drun` — kept in the library (non-trivial parsing logic, keyword-vs-name score handling, `DesktopEntry` type; contrasts with userspace-only `run_commands`/`history`). `walkdir = "2"` added for recursive `.desktop` discovery (plan §3.4).
+  - **Verification:** List apps matches C `tofi-drun` for a fixed `XDG_DATA_*` (manual); `cargo test -p libtofi-rs --features drun` (22 tests).
   - **C reference:** [`src/drun.c`](../src/drun.c), [`src/desktop_vec.c`](../src/desktop_vec.c)
 
 ---
@@ -713,6 +713,10 @@ These are **not** required to declare the C→Rust migration “done” for §5.
 
 ### Revision history
 
+- **2026-04-06:** **Phase 3 Step 3.4** — `libtofi::drun` (kept in library: non-trivial parsing logic + `DesktopEntry` type, unlike userspace-only history/run_commands); `DesktopEntry { id, name, path, keywords, exec, icon, terminal }`; `parse_entry` (locale-aware via `LANG`, Hidden/NoDisplay/OnlyShowIn/NotShowIn, NFC-normalized name); `scan(dirs)` (recursive via `walkdir`, highest-precedence ID wins, sorted by name); `save_cache`/`load_cache` (null-byte-separated, 7-field format); `entries_cached` (mtime invalidation); `exec_command` (field codes: `%i`/`%c`/`%k`/`%%`, drops `%f`/`%F`/`%u`/`%U`); `resolve_cache_path` pure helper; `walkdir = "2"` added; 22 tests; §6 checkbox.
+- **2026-04-06:** **Phase 3 Step 3.3** — `tofi::run_commands` in CLI crate (userspace I/O; same rationale as history); `scan(path_var)` scans `$PATH` dirs directly for executable regular files using mode bits (not a bash subprocess — C source was misleading in plan); `save_cache` / `load_cache` (newline-delimited file); `commands_cached` (mtime-based invalidation: cache stale if any PATH dir newer); `resolve_cache_path` pure helper; `XDG_CACHE_HOME` → `HOME/.cache/tofi-compgen`; `run-commands` feature and stub removed from `libtofi-rs`; `compgen_history_sort` not ported (covered by `string_table::apply_history_scores`); 13 tests; §6 checkbox.
+- **2026-04-06:** **Phase 3 Step 3.2** — `libtofi::lock` module (`lock/mod.rs` + `lock/tests.rs`, 8 tests); `Lock` wraps `nix::fcntl::Flock<File>` (RAII — lock released on drop, no `unsafe`); `try_acquire(path)` → `Ok(Some(Lock))` / `Ok(None)` (`Errno::EWOULDBLOCK` = another instance running) / `Err`; `try_acquire_default()` + `default_lock_path()`; path resolution: `XDG_RUNTIME_DIR` → `XDG_CACHE_HOME` → `HOME/.cache/tofi.lock`; `resolve_lock_path` pure helper for parallel-safe tests; switched from `libc` to `nix = { version = "0.29", features = ["fs"] }` (safer API, useful in Phase 4+ for SHM/memfd etc.); `tempfile = "3"` added to `libtofi-rs` dev-deps; §6 checkbox.
+- **2026-04-06:** **Phase 3 Step 3.1** — `tofi::history` module in CLI crate (`tofi/src/history/mod.rs` + `tests.rs`, 22 tests); history is userspace I/O, mirrors config placement (§1.4); `history` feature removed from `libtofi-rs`; `io::Result` / `io::Error::new(InvalidData, …)` used (no `libtofi_rs::Error` dependency); `Program` + `History` structs; `add` (insert/increment + bubble-up by run_count), `remove`; `load` (parse `{count} {name}\n` lines, skip malformed, 10 MiB guard), `save` (mode 0600, mkdir parents); `default_history_path` / `load_default` / `save_default` using `XDG_STATE_HOME` → `HOME/.local/state` fallback; `resolve_history_path` pure helper (no env mutation in tests); `tempfile = "3"` already in `tofi-rs` dev-deps; §6 checkbox.
 - **2026-04-06:** **Phase 1 Step 1.5** — `libtofi::matching` module (`matching/mod.rs` + `matching/tests.rs`, 31 tests); `MatchingAlgorithm` enum (Normal/Prefix/Fuzzy) + `match_words` dispatcher; fuzzy match ports fts_fuzzy_match v0.2.0 (public domain) with adjacency/separator/CamelCase scoring and `first_match_only` guard for strings >100 chars; no new dependencies; integrates with `StringRefVec::filter` via closure; §6 checkbox.
 - **2026-04-06:** **Phase 1 Step 1.4** — `libtofi::string_table` module (`string_table/mod.rs` + `string_table/tests.rs`, 27 tests); `StringVec` (owned, NFC-normalizes on add) + `StringRefVec<'a>` (borrowed); `filter` takes `Fn(&str) -> Option<i32>` to decouple from matching (Step 1.5); `apply_history_scores` takes `&HashMap<&str, i32>` to decouple from history (Step 3.1); no new dependencies; §6 checkbox.
 - **2026-04-06:** **Phase 1 Step 1.3** — `libtofi::color` module (`color/mod.rs` + `color/tests.rs`, 19 tests); no new dependencies — pure stdlib `u32::from_str_radix`; `Color { r, g, b, a: f32 }` with `from_hex` + `FromStr`; formats: RGB/RGBA (nibble-expanded) and RRGGBB/RRGGBBAA, optional `#`; §6 checkbox.
