@@ -624,6 +624,255 @@ fn load_include_relative() {
     assert_eq!(c.font_size, 99);
 }
 
+// ---------------------------------------------------------------------------
+// Real-world fixture tests (examples/)
+// ---------------------------------------------------------------------------
+
+fn examples_dir() -> std::path::PathBuf {
+    std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+        .parent()
+        .unwrap()
+        .join("examples")
+}
+
+#[test]
+fn load_examples_sweet_theme() {
+    let path = examples_dir().join("themes/Sweet");
+    if !path.exists() {
+        return;
+    }
+    let mut c = TofiConfig::default();
+    let errs = load(&path, &mut c).unwrap();
+    assert!(
+        errs.is_empty(),
+        "parse errors in examples/themes/Sweet: {errs:?}"
+    );
+
+    // Window geometry from Sweet
+    assert_eq!(c.width, UnitValue::percent(45));
+    assert_eq!(c.height, UnitValue::percent(60));
+    assert_eq!(c.corner_radius, 50);
+    assert_eq!(c.border_width, 2);
+    assert_eq!(c.outline_width, 1);
+    assert!(c.clip_to_padding);
+    assert!(c.scale);
+
+    // background-color = #000000bb → alpha = 187/255 ≈ 0.733
+    let bg = c.background_color;
+    assert!((bg.r - 0.0).abs() < 1e-2);
+    assert!((bg.g - 0.0).abs() < 1e-2);
+    assert!((bg.b - 0.0).abs() < 1e-2);
+    assert!((bg.a - 187.0 / 255.0).abs() < 1e-2, "bg.a = {}", bg.a);
+
+    // text-color = #c3c7c8
+    let fg = c.foreground_color;
+    assert!((fg.r - 195.0 / 255.0).abs() < 1e-2, "fg.r = {}", fg.r);
+    assert!((fg.g - 199.0 / 255.0).abs() < 1e-2, "fg.g = {}", fg.g);
+    assert!((fg.b - 200.0 / 255.0).abs() < 1e-2, "fg.b = {}", fg.b);
+
+    // prompt-color = #f9dc5c
+    let pc = c.prompt_theme.foreground_color.unwrap();
+    assert!((pc.r - 249.0 / 255.0).abs() < 1e-2);
+    assert!((pc.g - 220.0 / 255.0).abs() < 1e-2);
+    assert!((pc.b - 92.0 / 255.0).abs() < 1e-2);
+
+    // input-color = #00c1e4
+    let ic = c.input_theme.foreground_color.unwrap();
+    assert!((ic.r - 0.0).abs() < 1e-2);
+    assert!((ic.g - 193.0 / 255.0).abs() < 1e-2, "ic.g = {}", ic.g);
+    assert!((ic.b - 228.0 / 255.0).abs() < 1e-2, "ic.b = {}", ic.b);
+
+    // selection-color = #bd93f9
+    let sc = c.selection_theme.foreground_color.unwrap();
+    assert!((sc.r - 189.0 / 255.0).abs() < 1e-2);
+    assert!((sc.g - 147.0 / 255.0).abs() < 1e-2);
+    assert!((sc.b - 249.0 / 255.0).abs() < 1e-2);
+
+    // outline-color = #ed254eff
+    let oc = c.outline_color;
+    assert!((oc.r - 237.0 / 255.0).abs() < 1e-2);
+    assert!((oc.g - 37.0 / 255.0).abs() < 1e-2);
+    assert!((oc.b - 78.0 / 255.0).abs() < 1e-2);
+
+    // border-color = #c74dedff
+    let bc = c.border_color;
+    assert!((bc.r - 199.0 / 255.0).abs() < 1e-2);
+    assert!((bc.g - 77.0 / 255.0).abs() < 1e-2);
+    assert!((bc.b - 237.0 / 255.0).abs() < 1e-2);
+}
+
+#[test]
+fn load_examples_config_with_include() {
+    let path = examples_dir().join("config");
+    if !path.exists() {
+        return;
+    }
+    let mut c = TofiConfig::default();
+    let errs = load(&path, &mut c).unwrap();
+    assert!(errs.is_empty(), "parse errors in examples/config: {errs:?}");
+
+    // Values set in examples/config
+    assert_eq!(c.font, "CaskaydiaCove Nerd Font Mono");
+    assert_eq!(c.font_size, 24);
+    assert!(c.font_features.is_empty());
+    assert!(c.font_variations.is_empty());
+    assert!(c.hint_font);
+    assert_eq!(c.prompt_text, "run: ");
+    assert_eq!(c.num_results, 7);
+    assert_eq!(c.result_spacing, 25);
+    assert_eq!(c.anchor, Anchor::Center);
+    assert_eq!(c.exclusive_zone, -1);
+    assert!(!c.hide_cursor);
+    assert!(!c.cursor_theme.show);
+    assert!(c.use_history);
+    assert!(c.require_match);
+    assert!(!c.auto_accept_single);
+    assert!(!c.hide_input);
+    assert_eq!(c.hidden_character, HiddenCharacter(Some('*')));
+    assert!(c.drun_launch);
+    assert!(!c.late_keyboard_init);
+    assert!(!c.multi_instance);
+    assert!(!c.ascii_input);
+
+    // Values applied via include = "themes/Sweet"
+    assert_eq!(c.width, UnitValue::percent(45));
+    assert_eq!(c.height, UnitValue::percent(60));
+    assert_eq!(c.corner_radius, 50);
+    assert_eq!(c.border_width, 2);
+    assert_eq!(c.outline_width, 1);
+
+    // text-color = #c3c7c8
+    let fg = c.foreground_color;
+    assert!((fg.r - 195.0 / 255.0).abs() < 1e-2);
+    assert!((fg.g - 199.0 / 255.0).abs() < 1e-2);
+    assert!((fg.b - 200.0 / 255.0).abs() < 1e-2);
+
+    // selection-color = #bd93f9 (overrides default from Sweet)
+    let sc = c.selection_theme.foreground_color.unwrap();
+    assert!((sc.r - 189.0 / 255.0).abs() < 1e-2);
+    assert!((sc.g - 147.0 / 255.0).abs() < 1e-2);
+    assert!((sc.b - 249.0 / 255.0).abs() < 1e-2);
+}
+
+#[test]
+fn load_examples_config_minimal() {
+    // config-minimal is intentionally empty (comment-only): all keys have
+    // defaults, so the result must be identical to TofiConfig::default().
+    let path = examples_dir().join("config-minimal");
+    if !path.exists() {
+        return;
+    }
+    let mut c = TofiConfig::default();
+    let errs = load(&path, &mut c).unwrap();
+    assert!(
+        errs.is_empty(),
+        "parse errors in examples/config-minimal: {errs:?}"
+    );
+    assert_eq!(c, TofiConfig::default());
+}
+
+#[test]
+fn load_examples_config_complete() {
+    let path = examples_dir().join("config-complete");
+    if !path.exists() {
+        return;
+    }
+    let mut c = TofiConfig::default();
+    let errs = load(&path, &mut c).unwrap();
+    assert!(
+        errs.is_empty(),
+        "parse errors in examples/config-complete: {errs:?}"
+    );
+
+    // Window geometry
+    assert_eq!(c.anchor, Anchor::TopLeft);
+    assert_eq!(c.exclusive_zone, 0);
+    assert!(c.target_output.is_empty());
+    assert_eq!(c.width, UnitValue::pixels(800));
+    assert_eq!(c.height, UnitValue::pixels(600));
+    assert_eq!(c.margin_top, UnitValue::pixels(10));
+    assert_eq!(c.margin_bottom, UnitValue::pixels(20));
+    assert_eq!(c.margin_left, UnitValue::pixels(30));
+    assert_eq!(c.margin_right, UnitValue::pixels(40));
+    assert!(!c.scale);
+
+    // Font
+    assert_eq!(c.font, "Monospace");
+    assert_eq!(c.font_size, 16);
+    assert_eq!(c.font_features, "liga 0");
+    assert_eq!(c.font_variations, "wght 700");
+    assert!(!c.hint_font);
+
+    // Decoration
+    assert_eq!(c.corner_radius, 8);
+    assert_eq!(c.border_width, 3);
+    assert_eq!(c.outline_width, 2);
+
+    // Padding
+    assert_eq!(c.padding_top, UnitValue::pixels(12));
+    assert_eq!(c.padding_bottom, UnitValue::pixels(14));
+    assert_eq!(c.padding_left, UnitValue::pixels(16));
+    assert_eq!(c.padding_right, UnitValue::pixels(18));
+    assert!(!c.clip_to_padding);
+
+    // Text layout
+    assert_eq!(c.prompt_text, "> ");
+    assert_eq!(c.prompt_padding, 4);
+    assert_eq!(c.placeholder_text, "type to search...");
+    assert_eq!(c.num_results, 10);
+    assert_eq!(c.result_spacing, 2);
+    assert!(c.horizontal);
+    assert_eq!(c.min_input_width, 200);
+
+    // Cursor
+    assert!(c.cursor_theme.show);
+    assert_eq!(c.cursor_theme.style, CursorStyle::Block);
+    assert!(c.cursor_theme.color.is_some());
+    assert!(c.cursor_theme.text_color.is_some());
+    assert_eq!(c.cursor_theme.corner_radius, 2);
+    assert_eq!(c.cursor_theme.thickness, Some(3));
+
+    // Per-element themes — spot-check one field each
+    assert!(c.prompt_theme.foreground_color.is_some());
+    assert!(c.prompt_theme.background_color.is_some());
+    assert!(c.prompt_theme.padding.is_some());
+    assert_eq!(c.prompt_theme.background_corner_radius, Some(4));
+
+    assert!(c.input_theme.foreground_color.is_some());
+    assert!(c.input_theme.background_color.is_some());
+    assert!(c.input_theme.padding.is_some());
+    assert_eq!(c.input_theme.background_corner_radius, Some(4));
+
+    assert!(c.placeholder_theme.padding.is_some());
+    assert_eq!(c.placeholder_theme.background_corner_radius, Some(4));
+
+    assert!(c.default_result_theme.background_color.is_some());
+    assert_eq!(c.default_result_theme.background_corner_radius, Some(4));
+
+    assert!(c.alternate_result_theme.foreground_color.is_some());
+    assert_eq!(c.alternate_result_theme.background_corner_radius, Some(4));
+
+    assert!(c.selection_theme.background_color.is_some());
+    assert_eq!(c.selection_theme.background_corner_radius, Some(4));
+
+    // Behaviour
+    assert!(c.hide_cursor);
+    assert!(!c.use_history);
+    assert_eq!(c.history_file.as_deref(), Some("/tmp/tofi-test-history"));
+    assert_eq!(c.matching_algorithm, MatchingAlgorithm::Fuzzy);
+    assert!(!c.require_match);
+    assert!(c.auto_accept_single);
+    assert!(c.print_index);
+    assert!(!c.hide_input);
+    assert_eq!(c.hidden_character, HiddenCharacter(Some('*')));
+    assert!(!c.physical_keybindings);
+    assert!(!c.drun_launch);
+    assert_eq!(c.default_terminal.as_deref(), Some("alacritty"));
+    assert!(c.late_keyboard_init);
+    assert!(c.multi_instance);
+    assert!(c.ascii_input);
+}
+
 #[test]
 fn load_doc_config_fixture() {
     // The repo's doc/config sets all options to their defaults.
