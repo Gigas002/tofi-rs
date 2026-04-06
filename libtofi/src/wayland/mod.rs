@@ -7,10 +7,13 @@
 //!   roundtrips.
 //! * **Step 4.3** — [`surface::create_surface`] creates the layer surface,
 //!   fills a solid-color SHM buffer, and commits it to prove placement.
+//! * **Step 4.5** — [`surface::create_surface`] uses output integer scale or
+//!   `wp_fractional_scale_v1` to compute physical buffer dimensions; sets up
+//!   `wp_viewport` for correct fractional HiDPI presentation.
 //!
 //! # C reference
 //!
-//! `src/main.c`, `src/surface.c`, `src/shm.c`, `src/tofi.h`.
+//! `src/main.c`, `src/surface.c`, `src/shm.c`, `src/scale.c`, `src/tofi.h`.
 
 pub mod surface;
 
@@ -21,7 +24,8 @@ use wayland_client::{
     },
 };
 use wayland_protocols::wp::{
-    fractional_scale::v1::client::wp_fractional_scale_manager_v1, viewporter::client::wp_viewporter,
+    fractional_scale::v1::client::{wp_fractional_scale_manager_v1, wp_fractional_scale_v1},
+    viewporter::client::{wp_viewport, wp_viewporter},
 };
 use wayland_protocols_wlr::layer_shell::v1::client::{zwlr_layer_shell_v1, zwlr_layer_surface_v1};
 
@@ -30,6 +34,10 @@ use crate::{Error, Result};
 /// Re-export of the layer-surface anchor bitflag type so callers do not need a
 /// direct `wayland-protocols-wlr` dependency.
 pub use zwlr_layer_surface_v1::Anchor;
+
+/// Re-export of the output transform enum so callers do not need a direct
+/// `wayland-client` dependency.
+pub use wl_output::Transform as OutputTransform;
 
 #[cfg(feature = "clipboard")]
 pub mod clipboard;
@@ -52,11 +60,20 @@ pub struct OutputInfo {
     /// Human-readable output name (e.g. `"HDMI-A-1"`); empty pre-v4.
     pub name: String,
     /// Integer scale factor reported by the compositor.
+    ///
+    /// C reference: `output_scale` listener in `src/main.c`.
     pub scale: i32,
     /// Pixel width of the current mode.
     pub width: i32,
     /// Pixel height of the current mode.
     pub height: i32,
+    /// Output transform (rotation/flip).
+    ///
+    /// When this is `_90`, `_270`, `Flipped90`, or `Flipped270` the physical
+    /// width and height are swapped relative to the logical output rectangle.
+    ///
+    /// C reference: `output_done` / transform fields in `src/main.c`.
+    pub transform: wl_output::Transform,
 }
 
 impl OutputInfo {
@@ -67,6 +84,7 @@ impl OutputInfo {
             scale: 1,
             width: 0,
             height: 0,
+            transform: wl_output::Transform::Normal,
         }
     }
 }
@@ -102,6 +120,13 @@ pub struct WaylandState {
     pub surface: Option<surface::SurfaceState>,
     /// Set to `true` when the compositor sends `zwlr_layer_surface_v1::closed`.
     pub closed: bool,
+    /// Preferred fractional scale from `wp_fractional_scale_v1` (denominator 120).
+    ///
+    /// `0` means not yet received; the caller should fall back to
+    /// `integer_scale * 120` in that case.
+    ///
+    /// C reference: `tofi.window.fractional_scale` in `src/main.c`.
+    pub fractional_scale: u32,
 }
 
 impl WaylandState {
@@ -117,6 +142,7 @@ impl WaylandState {
             outputs: Vec::new(),
             surface: None,
             closed: false,
+            fractional_scale: 0,
         }
     }
 }
@@ -254,19 +280,32 @@ impl Dispatch<wl_output::WlOutput, usize> for WaylandState {
             wl_output::Event::Scale { factor } => {
                 info.scale = factor;
             }
-            wl_output::Event::Mode { width, height, .. } => {
-                // Current-flag filtering deferred to Step 4.5.
+            wl_output::Event::Mode {
+                flags: wayland_client::WEnum::Value(m),
+                width,
+                height,
+                ..
+            } if m.contains(wl_output::Mode::Current) => {
+                // Only record the mode that is currently active.
+                // C reference: `output_mode` in `src/main.c` (implicitly uses current mode).
                 info.width = width;
                 info.height = height;
             }
+            wl_output::Event::Geometry {
+                transform: wayland_client::WEnum::Value(t),
+                ..
+            } => {
+                info.transform = t;
+            }
             wl_output::Event::Done => {
                 tracing::debug!(
-                    "Output {}: {:?} {}x{} scale={}",
+                    "Output {}: {:?} {}x{} scale={} transform={:?}",
                     data,
                     info.name,
                     info.width,
                     info.height,
-                    info.scale
+                    info.scale,
+                    info.transform,
                 );
             }
             _ => {}
@@ -389,6 +428,43 @@ impl Dispatch<wp_fractional_scale_manager_v1::WpFractionalScaleManagerV1, ()> fo
         _: &mut Self,
         _: &wp_fractional_scale_manager_v1::WpFractionalScaleManagerV1,
         _event: wp_fractional_scale_manager_v1::Event,
+        _: &(),
+        _: &Connection,
+        _: &QueueHandle<Self>,
+    ) {
+    }
+}
+
+/// `wp_fractional_scale_v1::preferred_scale` — store the compositor's preferred
+/// scale factor (numerator / 120) so [`surface::create_surface`] can compute
+/// correct physical buffer dimensions.
+///
+/// C reference: `dummy_fractional_scale_preferred_scale` in `src/main.c`.
+impl Dispatch<wp_fractional_scale_v1::WpFractionalScaleV1, ()> for WaylandState {
+    fn event(
+        state: &mut Self,
+        _: &wp_fractional_scale_v1::WpFractionalScaleV1,
+        event: wp_fractional_scale_v1::Event,
+        _: &(),
+        _: &Connection,
+        _: &QueueHandle<Self>,
+    ) {
+        if let wp_fractional_scale_v1::Event::PreferredScale { scale } = event {
+            tracing::debug!(
+                "wp_fractional_scale_v1 preferred_scale = {scale} (×{:.4})",
+                scale as f64 / 120.0
+            );
+            state.fractional_scale = scale;
+        }
+    }
+}
+
+/// `wp_viewport` has no client events; impl required by the dispatch machinery.
+impl Dispatch<wp_viewport::WpViewport, ()> for WaylandState {
+    fn event(
+        _: &mut Self,
+        _: &wp_viewport::WpViewport,
+        _event: wp_viewport::Event,
         _: &(),
         _: &Connection,
         _: &QueueHandle<Self>,

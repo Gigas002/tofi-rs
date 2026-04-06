@@ -30,11 +30,21 @@ fn main() {
             libtofi_rs::wayland::connect().expect("Failed to initialize Wayland");
 
         // Resolve UnitValues to pixels using the first output's dimensions.
-        // Step 4.5 will refine this with per-output scale and fractional scaling.
+        // Swap width/height for rotated outputs (90°/270°).
+        // C reference: transform handling in src/main.c ~1427–1438.
         let (out_w, out_h) = state
             .outputs
             .first()
-            .map(|o| (o.width as u32, o.height as u32))
+            .map(|o| {
+                use libtofi_rs::wayland::OutputTransform;
+                match o.transform {
+                    OutputTransform::_90
+                    | OutputTransform::_270
+                    | OutputTransform::Flipped90
+                    | OutputTransform::Flipped270 => (o.height as u32, o.width as u32),
+                    _ => (o.width as u32, o.height as u32),
+                }
+            })
             .unwrap_or((1920, 1080));
 
         let resolve_px = |uv: &config::UnitValue, dim: u32| -> u32 {
@@ -57,7 +67,7 @@ fn main() {
             margin_right: resolve_px(&config.margin_right, out_w) as i32,
             margin_bottom: resolve_px(&config.margin_bottom, out_h) as i32,
             margin_left: resolve_px(&config.margin_left, out_w) as i32,
-            output: None, // Step 4.5: target_output_name selection
+            output: None, // Step 6: target_output_name selection
         };
 
         libtofi_rs::wayland::surface::create_surface(

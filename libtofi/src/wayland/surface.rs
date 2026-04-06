@@ -1,14 +1,34 @@
 //! Layer surface creation and double-buffered SHM presentation.
 //!
+//! # Scale handling (Step 4.5)
+//!
+//! The layer surface size is always expressed in logical pixels.  The SHM
+//! buffer (and Cairo canvas from Step 5) uses **physical** pixels:
+//!
+//! ```text
+//! physical = scale_apply(logical, effective_scale)
+//! ```
+//!
+//! where `effective_scale` is the `wp_fractional_scale_v1` preferred scale
+//! (denominator 120) if available, or `integer_scale × 120` from `wl_output`.
+//!
+//! A `wp_viewport` is set up when `wp_viewporter` is present so the compositor
+//! maps the physical buffer back to the logical size, enabling fractional HiDPI.
+//!
 //! # C reference
 //!
 //! `src/main.c` layer setup (~line 1524), `src/surface.c` `surface_init` /
-//! `surface_draw`, `src/shm.c` `shm_allocate_file`.
+//! `surface_draw`, `src/shm.c` `shm_allocate_file`, `src/scale.c`.
 
 use wayland_client::{EventQueue, QueueHandle, protocol::wl_surface};
+use wayland_protocols::wp::{
+    fractional_scale::v1::client::wp_fractional_scale_v1,
+    viewporter::client::{wp_viewport, wp_viewporter},
+};
 use wayland_protocols_wlr::layer_shell::v1::client::{zwlr_layer_shell_v1, zwlr_layer_surface_v1};
 
 use crate::color::Color;
+use crate::scale::scale_apply;
 use crate::shm::ShmPool;
 use crate::{Error, Result};
 
@@ -18,8 +38,8 @@ use super::WaylandState;
 
 /// Parameters for creating the launcher layer surface.
 ///
-/// All dimensions are resolved logical pixels; percent resolution happens in
-/// the CLI crate before this struct is constructed (Step 4.5 provides helpers).
+/// All dimensions are **logical pixels**; the scale-to-physical conversion
+/// happens inside [`create_surface`] using the compositor-reported scale factor.
 ///
 /// C reference: the fields of `struct tofi` that feed `zwlr_layer_surface_v1`
 /// requests in `src/main.c`.
@@ -53,6 +73,10 @@ pub struct SurfaceState {
     pub width: u32,
     /// Logical height as reported by the `configure` event.
     pub height: u32,
+    /// Physical width in pixels (logical × scale).
+    pub phys_width: u32,
+    /// Physical height in pixels (logical × scale).
+    pub phys_height: u32,
     /// `true` once `ack_configure` has been sent.
     pub configured: bool,
     /// Double-buffered SHM pool; `None` until after the configure roundtrip.
@@ -63,6 +87,10 @@ pub struct SurfaceState {
     ///
     /// C reference: `surface->index` in `src/surface.c`.
     pub(super) index: usize,
+    /// Viewport for fractional-scale presentation; `None` if not supported.
+    ///
+    /// C reference: `tofi.window.wp_viewport` in `src/main.c`.
+    pub(super) viewport: Option<wp_viewport::WpViewport>,
 }
 
 // ── Internal helpers ──────────────────────────────────────────────────────────
@@ -84,15 +112,24 @@ fn fill_argb8888(buf: &mut [u8], color: Color) {
 
 // ── Public API ────────────────────────────────────────────────────────────────
 
-/// Create the launcher layer surface, allocate a double-buffered SHM pool, and
-/// commit the first frame so the window becomes visible.
+/// Create the launcher layer surface, allocate a double-buffered SHM pool
+/// sized to **physical** pixels, and commit the first frame.
+///
+/// Scale handling mirrors `src/main.c` (Steps 4.5 section):
+/// - If `wp_fractional_scale_v1` is supported, its `preferred_scale` event
+///   fires during the configure roundtrip and is used for physical dimensions.
+/// - Otherwise, the integer scale from `wl_output` is used (`scale × 120`).
+/// - If `wp_viewporter` is available, a viewport is set up so the compositor
+///   maps the physical buffer back to logical dimensions (fractional HiDPI).
+/// - If width or height is 0, fractional scaling is skipped and
+///   `wl_surface_set_buffer_scale` is used (legacy behaviour).
 ///
 /// After this call [`WaylandState::surface`] is populated and the window is on
 /// screen.  Run [`EventQueue::blocking_dispatch`] until [`WaylandState::closed`].
 ///
 /// # C reference
 ///
-/// `src/main.c` lines ~1524–1701: surface creation, layer surface setup,
+/// `src/main.c` lines ~1527–1701: surface creation, layer surface setup,
 /// third roundtrip, `surface_init`, `surface_draw`.
 pub fn create_surface(
     state: &mut WaylandState,
@@ -135,31 +172,59 @@ pub fn create_surface(
         cfg.margin_bottom,
         cfg.margin_left,
     );
+    // Layer surface size is always in logical pixels.
     layer_surface.set_size(cfg.width, cfg.height);
     tracing::debug!(
-        "Layer surface: {}×{}  anchor={:?}  exclusive_zone={}",
+        "Layer surface: {}×{} logical  anchor={:?}  exclusive_zone={}",
         cfg.width,
         cfg.height,
         cfg.anchor,
         cfg.exclusive_zone,
     );
 
-    // ── 2. Store surface state before committing ──────────────────────────────
+    // ── 2. Attach fractional scale listener (before commit) ───────────────────
+    // C: wp_fractional_scale_manager_v1_get_fractional_scale + listener setup
+    // Reset any previously stored scale so we detect a fresh value.
+    state.fractional_scale = 0;
+    let _frac_scale: Option<wp_fractional_scale_v1::WpFractionalScaleV1> =
+        state.fractional_scale_manager.as_ref().map(|mgr| {
+            let fs = mgr.get_fractional_scale(&wl_surface, &qh, ());
+            tracing::debug!("Attached wp_fractional_scale_v1");
+            fs
+        });
+
+    // ── 3. Create viewport if supported ───────────────────────────────────────
+    // C: wp_viewporter_get_viewport
+    let viewport: Option<wp_viewport::WpViewport> =
+        state
+            .viewporter
+            .as_ref()
+            .map(|vp: &wp_viewporter::WpViewporter| {
+                let v = vp.get_viewport(&wl_surface, &qh, ());
+                tracing::debug!("Created wp_viewport");
+                v
+            });
+
+    // ── 4. Store surface state before committing ──────────────────────────────
+    let has_viewport = viewport.is_some();
     state.surface = Some(SurfaceState {
         wl_surface: wl_surface.clone(),
         layer_surface,
         width: cfg.width,
         height: cfg.height,
+        phys_width: cfg.width, // updated after configure roundtrip
+        phys_height: cfg.height,
         configured: false,
         shm: None,
         index: 0,
+        viewport,
     });
 
-    // Commit without a buffer to trigger the configure event.
+    // Commit without a buffer to trigger the configure (and preferred_scale) event.
     wl_surface.commit();
 
-    // ── 3. Third roundtrip — configure must fire ──────────────────────────────
-    tracing::debug!("Third roundtrip: waiting for configure");
+    // ── 5. Third roundtrip — configure + preferred_scale must fire ────────────
+    tracing::debug!("Third roundtrip: waiting for configure + scale");
     event_queue
         .roundtrip(state)
         .map_err(|e| Error::Wayland(e.to_string()))?;
@@ -176,24 +241,88 @@ pub fn create_surface(
         ));
     }
 
-    let (width, height) = state.surface.as_ref().map(|s| (s.width, s.height)).unwrap();
-    tracing::debug!("Configured at {width}×{height}");
+    let (logical_w, logical_h) = state.surface.as_ref().map(|s| (s.width, s.height)).unwrap();
+    tracing::debug!("Configured at {logical_w}×{logical_h} (logical)");
 
-    // ── 4. Allocate double-buffered SHM pool ──────────────────────────────────
+    // ── 6. Determine effective scale ──────────────────────────────────────────
+    // C: tofi.window.fractional_scale / tofi.window.scale logic in src/main.c
+    //
+    // If fractional scale arrived, use it. Otherwise fall back to integer scale
+    // from the target output (or 1× if unknown).
+    let int_scale = cfg
+        .output
+        .as_ref()
+        .map(|o| o.scale)
+        .or_else(|| state.outputs.first().map(|o| o.scale))
+        .unwrap_or(1);
+
+    let effective_scale = if state.fractional_scale != 0 {
+        tracing::debug!(
+            "Using fractional scale {}/{} (×{:.4})",
+            state.fractional_scale,
+            120,
+            state.fractional_scale as f64 / 120.0
+        );
+        state.fractional_scale
+    } else {
+        let s = (int_scale as u32) * 120;
+        tracing::debug!("Using integer scale {int_scale} → {s}/120");
+        s
+    };
+
+    // ── 7. Handle legacy zero-size / no-viewporter cases ──────────────────────
+    // C: src/main.c ~1530–1565
+    if logical_w == 0 || logical_h == 0 {
+        tracing::warn!(
+            "Width or height is 0 — fractional scaling disabled; \
+             using wl_surface_set_buffer_scale({int_scale})"
+        );
+        wl_surface.set_buffer_scale(int_scale);
+    } else if !has_viewport && effective_scale != 120 {
+        tracing::warn!(
+            "wp_viewporter not available — fractional scaling will not work; \
+             falling back to wl_surface_set_buffer_scale({int_scale})"
+        );
+        wl_surface.set_buffer_scale(int_scale);
+    }
+
+    // ── 8. Compute physical dimensions ───────────────────────────────────────
+    // C: scale_apply(width, fractional_scale) / width * scale
+    let phys_w = scale_apply(logical_w, effective_scale);
+    let phys_h = scale_apply(logical_h, effective_scale);
+    tracing::debug!("Physical buffer: {phys_w}×{phys_h} px (scale={effective_scale}/120)");
+
+    // Update stored physical dimensions.
+    if let Some(s) = state.surface.as_mut() {
+        s.phys_width = phys_w;
+        s.phys_height = phys_h;
+    }
+
+    // ── 9. Set viewport destination to logical size ───────────────────────────
+    // C: wp_viewport_set_destination(viewport, width, height)
+    if let Some(vp) = state.surface.as_ref().and_then(|s| s.viewport.as_ref())
+        && logical_w > 0
+        && logical_h > 0
+    {
+        vp.set_destination(logical_w as i32, logical_h as i32);
+        tracing::debug!("Viewport destination: {logical_w}×{logical_h} (logical)");
+    }
+
+    // ── 10. Allocate double-buffered SHM pool at physical dimensions ──────────
     // C: surface_init in src/surface.c
     let wl_shm = state
         .shm
         .as_ref()
         .ok_or_else(|| Error::Wayland("wl_shm missing".into()))?;
-    let mut pool = ShmPool::new(wl_shm, &qh, width, height)?;
+    let mut pool = ShmPool::new(wl_shm, &qh, phys_w, phys_h)?;
 
-    // Pre-fill both buffers with the background colour.
+    // Pre-fill both frames with the background colour.
     fill_argb8888(pool.data_mut(0), bg);
     fill_argb8888(pool.data_mut(1), bg);
 
     state.surface.as_mut().unwrap().shm = Some(pool);
 
-    // ── 5. First draw ─────────────────────────────────────────────────────────
+    // ── 11. First draw + flush ────────────────────────────────────────────────
     // C: surface_draw in src/surface.c
     draw(state)?;
 
