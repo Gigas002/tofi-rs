@@ -14,6 +14,14 @@
 //!
 //! With `--no-default-features`, only [`noop`] is guaranteed; optional modules are omitted.
 
+pub mod error;
+pub use error::{Error, Result};
+
+pub mod color;
+pub mod matching;
+pub mod string_table;
+pub mod unicode;
+
 #[cfg(feature = "drun")]
 pub mod drun;
 #[cfg(feature = "history")]

@@ -400,7 +400,7 @@ Each step: **Goal** · **Scope** · **Deliverables** · **Verification** · **C 
 
 ### Phase 1 — Pure Rust foundations (no Wayland)
 
-- [ ] **Step 1.1 — Error type**
+- [x] **Step 1.1 — Error type**
   - **Goal:** Single error handling style for the library.
   - **Scope:** `thiserror` or manual enum; no `anyhow` inside library public API (CLI may use `anyhow`).
   - **Deliverables:** `libtofi::Error` and `Result<T>`.
@@ -408,7 +408,7 @@ Each step: **Goal** · **Scope** · **Deliverables** · **Verification** · **C 
   - **C reference:** [`src/log.c`](../src/log.c) patterns.
   - **Notes:** Map Wayland errors later.
 
-- [ ] **Step 1.2 — Unicode helpers**
+- [x] **Step 1.2 — Unicode helpers**
   - **Goal:** Match [`src/unicode.c`](../src/unicode.c) behavior needed by input and paste.
   - **Scope:** UTF-8 validation, NFC normalization (use `unicode-normalization` crate if appropriate), UTF-8 ↔ UTF-32 for fixed buffer sizes as in C.
   - **Deliverables:** Module `libtofi::unicode` with `unicode/tests.rs` covering edge cases (**new** tests; do not port C tests).
@@ -416,20 +416,20 @@ Each step: **Goal** · **Scope** · **Deliverables** · **Verification** · **C 
   - **C reference:** [`src/unicode.c`](../src/unicode.c)
   - **Notes:** Mirror `MAX_INPUT_LENGTH`-style limits as constants.
 
-- [ ] **Step 1.3 — Color parsing**
+- [x] **Step 1.3 — Color parsing**
   - **Goal:** Theme colors as in [`src/color.c`](../src/color.c).
   - **Scope:** Parse config color strings into linear/sRGB as C does.
   - **Deliverables:** `libtofi::color` with `Color` type and `color/tests.rs`.
   - **Verification:** `cargo test -p libtofi-rs`
   - **C reference:** [`src/color.c`](../src/color.c)
 
-- [ ] **Step 1.4 — String tables**
+- [x] **Step 1.4 — String tables**
   - **Goal:** Replace [`src/string_vec.c`](../src/string_vec.c) patterns with idiomatic `Vec`/`SmallVec`/`String` while keeping deterministic ordering for results.
   - **Deliverables:** `libtofi::string_table` (name as you prefer) + `string_table/tests.rs`.
   - **Verification:** `cargo test -p libtofi-rs`
   - **C reference:** [`src/string_vec.h`](../src/string_vec.h)
 
-- [ ] **Step 1.5 — Matching algorithms**
+- [x] **Step 1.5 — Matching algorithms**
   - **Goal:** Parity with [`src/matching.c`](../src/matching.c).
   - **Scope:** Fuzzy vs non-fuzzy, same public behavior as C for ranking and filtering.
   - **Deliverables:** `libtofi::matching` + `matching/tests.rs` with representative cases.
@@ -711,6 +711,11 @@ These are **not** required to declare the C→Rust migration “done” for §5.
 
 ### Revision history
 
+- **2026-04-06:** **Phase 1 Step 1.5** — `libtofi::matching` module (`matching/mod.rs` + `matching/tests.rs`, 31 tests); `MatchingAlgorithm` enum (Normal/Prefix/Fuzzy) + `match_words` dispatcher; fuzzy match ports fts_fuzzy_match v0.2.0 (public domain) with adjacency/separator/CamelCase scoring and `first_match_only` guard for strings >100 chars; no new dependencies; integrates with `StringRefVec::filter` via closure; §6 checkbox.
+- **2026-04-06:** **Phase 1 Step 1.4** — `libtofi::string_table` module (`string_table/mod.rs` + `string_table/tests.rs`, 27 tests); `StringVec` (owned, NFC-normalizes on add) + `StringRefVec<'a>` (borrowed); `filter` takes `Fn(&str) -> Option<i32>` to decouple from matching (Step 1.5); `apply_history_scores` takes `&HashMap<&str, i32>` to decouple from history (Step 3.1); no new dependencies; §6 checkbox.
+- **2026-04-06:** **Phase 1 Step 1.3** — `libtofi::color` module (`color/mod.rs` + `color/tests.rs`, 19 tests); no new dependencies — pure stdlib `u32::from_str_radix`; `Color { r, g, b, a: f32 }` with `from_hex` + `FromStr`; formats: RGB/RGBA (nibble-expanded) and RRGGBB/RRGGBBAA, optional `#`; §6 checkbox.
+- **2026-04-06:** **Phase 1 Step 1.2** — `libtofi::unicode` module (`unicode/mod.rs` + `unicode/tests.rs`, 54 tests); `unicode-normalization = "0.1"` added to `libtofi/Cargo.toml`; stdlib covers UTF-8↔UTF-32, classification, validation — crate used only for NFC (`utf8_normalize`, `utf8_compose`); `MAX_INPUT_LENGTH = 256` constant; §6 checkbox.
+- **2026-04-06:** **Phase 1 Step 1.1** — `libtofi::Error` (`thiserror` enum: `Io`, `Utf8`, `InvalidValue`, `NotSupported`, `#[cfg(feature="wayland")] Wayland` placeholder) + `Result<T>` alias in `libtofi/src/error.rs`; `pub use` from `lib.rs`; `thiserror = "2"` added to `libtofi/Cargo.toml`; §6 checkbox.
 - **2026-04-06:** **§3.3:** **`wl-clipboard-rs`** vs C-style **`wl_data_device`** paste — both valid behind **`wayland::clipboard`**; tradeoffs documented.
 - **2026-04-06:** **§4 / modules:** Features **`renderer`**, **`run-commands`**, **`clipboard`** (replaces `renderer-cairo`, `run-command-cache`, `clipboard-wayland`); **`renderer/`** crate module; **`run_commands/`**; paste under **`wayland::clipboard`** (`clipboard` implies **`wayland`** in **`Cargo.toml`**).
 - **2026-04-06:** **§5.3 / §5.2 / Step 0.5 / 9.6:** No **`lib_tests.rs`** — **`lib.rs`** stays minimal; **`tofi-rs`** tests required; **`libtofi-rs`** may have 0 tests until modules implement **`tests.rs`**.
