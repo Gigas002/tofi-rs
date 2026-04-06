@@ -400,7 +400,7 @@ Each step: **Goal** · **Scope** · **Deliverables** · **Verification** · **C 
 
 ### Phase 1 — Pure Rust foundations (no Wayland)
 
-- [ ] **Step 1.1 — Error type**
+- [x] **Step 1.1 — Error type**
   - **Goal:** Single error handling style for the library.
   - **Scope:** `thiserror` or manual enum; no `anyhow` inside library public API (CLI may use `anyhow`).
   - **Deliverables:** `libtofi::Error` and `Result<T>`.
@@ -711,6 +711,7 @@ These are **not** required to declare the C→Rust migration “done” for §5.
 
 ### Revision history
 
+- **2026-04-06:** **Phase 1 Step 1.1** — `libtofi::Error` (`thiserror` enum: `Io`, `Utf8`, `InvalidValue`, `NotSupported`, `#[cfg(feature="wayland")] Wayland` placeholder) + `Result<T>` alias in `libtofi/src/error.rs`; `pub use` from `lib.rs`; `thiserror = "2"` added to `libtofi/Cargo.toml`; §6 checkbox.
 - **2026-04-06:** **§3.3:** **`wl-clipboard-rs`** vs C-style **`wl_data_device`** paste — both valid behind **`wayland::clipboard`**; tradeoffs documented.
 - **2026-04-06:** **§4 / modules:** Features **`renderer`**, **`run-commands`**, **`clipboard`** (replaces `renderer-cairo`, `run-command-cache`, `clipboard-wayland`); **`renderer/`** crate module; **`run_commands/`**; paste under **`wayland::clipboard`** (`clipboard` implies **`wayland`** in **`Cargo.toml`**).
 - **2026-04-06:** **§5.3 / §5.2 / Step 0.5 / 9.6:** No **`lib_tests.rs`** — **`lib.rs`** stays minimal; **`tofi-rs`** tests required; **`libtofi-rs`** may have 0 tests until modules implement **`tests.rs`**.
