@@ -525,7 +525,7 @@ Each step: **Goal** · **Scope** · **Deliverables** · **Verification** · **C 
   - **Verification:** Flip buffers without tearing (visual).
   - **C reference:** [`src/surface.c`](../src/surface.c), [`src/shm.c`](../src/shm.c)
 
-- [ ] **Step 4.5 — Output scale & fractional scale**
+- [x] **Step 4.5 — Output scale & fractional scale**
   - **Goal:** Match [`src/scale.c`](../src/scale.c) and fractional-scale listener behavior.
   - **Deliverables:** Correct buffer dimensions vs logical size.
   - **Verification:** Test on HiDPI output; compare with C.
@@ -660,6 +660,21 @@ Each step: **Goal** · **Scope** · **Deliverables** · **Verification** · **C 
   - **Verification:** `cargo test --workspace`; placeholder policy documented or resolved.
   - **C reference:** N/A
 
+- [ ] **Step 9.7 — Remove all C/phase migration references from code and docs**
+  - **Goal:** The shipped codebase reads as pure Rust project — no leftover `// C reference:`, `// Step N.M:`, `// Port of src/foo.c`, `//! # C reference` doc blocks, or migration-phase comments in source files or module docs.
+  - **Scope:** `libtofi/src/**`, `tofi/src/**`. Keep references only in `docs/RUST_MIGRATION_PLAN.md` and git history. Strip any `TODO Step X.Y` comments that have since been resolved.
+  - **Deliverables:** `git grep "C reference\|Step [0-9]\|src/.*\.c\|phase.*[0-9]"` in source (not docs/) returns empty (or only intentional matches).
+  - **Verification:** `cargo doc --no-deps --all-features` produces clean public API docs free of migration noise; `cargo clippy` still clean.
+
+- [ ] **Step 9.8 — Refactor `tofi-rs` CLI into focused modules**
+  - **Goal:** `tofi/src/main.rs` and `tofi/src/config.rs` are already too large; split into focused, testable units with clear responsibilities.
+  - **Scope:**
+    - Split `config.rs` (~700+ lines) into sub-modules: `config/parser.rs` (file I/O + include), `config/apply.rs` (key dispatch), `config/defaults.rs` (Default impl + constants), `config/types.rs` (plain data structs + enums).
+    - Extract Wayland wiring from `main.rs` into `tofi/src/app.rs` (or `tofi/src/wayland.rs`) — `main` becomes ≤40 lines of parse-then-run.
+    - Each sub-module has its own `tests.rs`; existing tests are redistributed accordingly.
+  - **Deliverables:** No single file in `tofi/src/` exceeds ~300 lines; `main.rs` ≤ 40 lines.
+  - **Verification:** `cargo test --workspace` green; `cargo clippy` clean; no public API changes visible to users.
+
 **Notes:** Do **not** delete the legacy **source tree** in **Phase 0**—keep C sources as reference until Phases 1–8 are done. **CI** switches to Rust-only when **Step 0.2** lands (§2.2). Phase 9 is a deliberate **cleanup** milestone for **files**, not CI.
 
 ---
@@ -713,6 +728,8 @@ These are **not** required to declare the C→Rust migration “done” for §5.
 
 ### Revision history
 
+- **2026-04-07:** **Architecture fix (post-4.5)** — `libtofi::scale` was incorrectly placed as an unconditional top-level module; moved to `libtofi::wayland::scale` (gated by `wayland` feature) since `scale_apply`/`scale_apply_inverse` are Wayland protocol-specific (denominator-120 encoding); `surface.rs` import updated to `super::scale::scale_apply`; §1.3 table maps `src/scale.c` → `libtofi::util` (future) but wayland placement is correct while `util` doesn't exist. Added Plan Steps 9.7 (strip C/phase migration comments from source) and 9.8 (refactor `tofi-rs` CLI into focused modules).
+- **2026-04-07:** **Phase 4 Step 4.5** — `libtofi::scale` module (`scale.rs`): `scale_apply(base, scale)` and `scale_apply_inverse(base, scale)` port `src/scale.c` (denominator-120 fractional encoding, 1e-6 bias before round); 8 unit tests; `pub mod scale` added unconditionally to `lib.rs`; `OutputInfo` gains `transform: wl_output::Transform` (default `Normal`); `wl_output` Dispatch: `Mode` event now filters by `Current` bitflag (`WEnum::Value` pattern guard), `Geometry` event stores transform; `WaylandState` gains `fractional_scale: u32` (0 = not set); `Dispatch<WpFractionalScaleV1, ()>` impl stores `preferred_scale` from `wp_fractional_scale_v1::Event::PreferredScale`; `Dispatch<WpViewport, ()>` no-op impl added; `surface.rs` refactored: `SurfaceState` gains `phys_width`/`phys_height`/`viewport: Option<WpViewport>`; `create_surface` attaches `wp_fractional_scale_v1` before commit, creates `wp_viewport` if viewporter available, computes `effective_scale` (fractional if set else `int_scale×120`), calls `scale_apply` for physical SHM dims, sets viewport destination to logical size, warns + calls `set_buffer_scale` for zero-size or no-viewporter cases; `OutputTransform` re-exported from `libtofi::wayland`; `main.rs` swaps `out_w`/`out_h` for rotated transforms; §6 checkbox.
 - **2026-04-07:** **Phase 4 Step 4.4** — `libtofi::shm` module (`libtofi/src/shm/mod.rs`); `ShmPool<D>` generic double-buffered pool: `memfd_create` + `ftruncate` + `mmap(MAP_SHARED)` for `2 × stride × height` bytes; two `wl_buffer` proxies at offsets 0 and `frame_size`; `data_mut(index)` returns `&mut [u8]` for the given frame; `buffer(index)` returns the proxy; `Drop` calls `munmap`; `unsafe impl Send/Sync`; bounds `D: Dispatch<WlShmPool, ()> + Dispatch<WlBuffer, ()>` on `new`; `libtofi::shm` gated behind `#[cfg(feature = "wayland")]`; `wayland/surface.rs` refactored: removed inline `ShmMmap`/`SurfaceShm`/`alloc_shm_fd`/`mmap_fd` helpers, `SurfaceState` gets `shm: Option<ShmPool<WaylandState>>` + `index: usize`; `fill_argb8888` now takes `&mut [u8]`; `create_surface` pre-fills both frames then calls `draw`; new `draw(state)` ports `surface_draw` (attach current buffer → damage_buffer → commit → flip index); §6 checkbox.
 - **2026-04-06:** **Phase 4 Step 4.3** — `libtofi::wayland::surface` module (`surface.rs`); `SurfaceConfig` (logical px dims, anchor, margins, exclusive_zone, optional output); `SurfaceState` (wl_surface + layer_surface + configured flag + `shm: Option<SurfaceShm>`); `ShmMmap` RAII wrapper (Drop calls `munmap`); `alloc_shm_fd` (`memfd_create` + `ftruncate`), `mmap_fd`, `fill_argb8888`; `create_surface` two-phase init (commit → third roundtrip awaits configure → allocate SHM at confirmed dims → attach/damage/commit → flush); `WaylandState` gains `surface: Option<SurfaceState>` + `closed: bool`; new `Dispatch` impls: `ZwlrLayerSurfaceV1` (ack_configure + set width/height/configured; close sets `closed=true`), `WlSurface`/`WlShmPool`/`WlBuffer` (no-ops); `Anchor` re-exported from `zwlr_layer_surface_v1`; `main.rs` wires `SurfaceConfig` from parsed `config`, calls `create_surface`, event-loops `blocking_dispatch` until `state.closed`; `config_anchor_to_layer` maps all 9 `config::Anchor` variants; `nix` features extended with `"mman"` (`mmap`/`munmap`); `#[allow(unused_variables)]` on `config` binding for `--no-default-features` build; `tracing = "0.1"` already in `tofi-rs` deps; §6 checkbox.
 - **2026-04-06:** **Phase 4 Step 4.2** — `libtofi::wayland::WaylandState` + `OutputInfo` structs; `Dispatch<WlRegistry, ()>` binds `wl_compositor v4`, `wl_shm v1`, `wl_seat v7`, `wl_output v4` (indexed user-data), `zwlr_layer_shell_v1 v3`, `wp_viewporter v1`, `wp_fractional_scale_manager_v1 v1`; no-op `Dispatch` impls for all event-less interfaces; two roundtrips mirror C `src/main.c`; required-global validation (`Wayland` error if missing); `tracing::debug!` logs each bind + output Done summary; `tracing = "0.1"` added to `libtofi-rs`, `tracing-subscriber = "0.3"` (env-filter) to `tofi-rs`; `wayland-protocols` features extended with `"staging"` (required for `wp_fractional_scale_manager_v1`); `main.rs` initialises `tracing_subscriber`; old `WaylandConnection` stub replaced; §6 checkbox.
