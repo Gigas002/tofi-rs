@@ -49,10 +49,10 @@ fn parse_no_display_returns_none() {
     let dir = tempfile::tempdir().expect("tempdir");
     let path = write_desktop(
         dir.path(),
-        "nd.desktop",
+        "nodisplay.desktop",
         "[Desktop Entry]\nName=NoDisp\nExec=x\nNoDisplay=true\n",
     );
-    assert!(parse_entry("nd.desktop", &path).is_none());
+    assert!(parse_entry("nodisplay.desktop", &path).is_none());
 }
 
 #[test]
