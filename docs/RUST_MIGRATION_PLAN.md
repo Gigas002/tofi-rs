@@ -121,7 +121,7 @@ tofi/
 
 **Tofi-specific adaptation:** Install **system** libraries needed for **Wayland**, **Cairo**, **Pango**, **HarfBuzz**, **xkbcommon** (and friends) before `cargo build` / `cargo test` — mirror the dependency set you will document for packagers. Wayshot uses an **`archlinux:latest`** container + **`pacman`**; you may use **`ubuntu-latest`** + **`apt`** instead if maintenance is simpler — either is fine; **document the choice in workflow comments**.
 
-**Coexistence with the legacy C build:** Until **Phase 9**, keep the existing Meson CI ([`.github/workflows/build-test.yml`](../.github/workflows/build-test.yml)) if it still adds value; **add** Rust workflows **in addition**, so both codepaths stay checked. Remove or trim C-only jobs when the C tree is deleted (**Phase 9.2**).
+**Legacy Meson CI removal (same milestone as Rust CI):** When **Phase 0 Step 0.2** adds the Rust workflows, **remove** the old C/Meson-only workflow(s) in the **same** change set (e.g. [`build-test.yml`](../.github/workflows/build-test.yml)). Do **not** keep Meson and Rust CI running in parallel—switch CI to Cargo immediately. The **C source tree** stays in-repo as reference until **Phase 9** (sources vs CI are different: **CI = Rust-only from Step 0.2 onward**).
 
 **Scheduling:** Implement as **Phase 0 Step 0.2** (immediately after the empty workspace compiles — **Step 0.1**). Do not defer “proper” CI to §9; §9 lists **deploy enablement**, **`cargo deny`**, and other **late** polish—not the baseline fmt/clippy/build/test/Dependabot stack.
 
@@ -267,7 +267,7 @@ run-command-cache = ["libtofi-rs/run-command-cache"]
 1. **Pick** the next unchecked step from §6 (order matters early; later some parallel work is possible).
 2. **Branch** (optional): `rust/step-XX-short-name`.
 3. **Implement** only that step’s scope.
-4. **Verify** using the step’s **Verification** commands.
+4. **Verify** using the step’s **Verification** commands **and** §5.2 (**mandatory fmt + clippy matrix**)—do not treat a step as finished until those pass.
 5. **Mark** the step complete in this file (checkbox) or in a linked `docs/RUST_MIGRATION_CHECKLIST.md` if you prefer a separate checklist.
 6. **Open PR** with: what changed, how verified, any intentional deviations from C.
 
@@ -279,7 +279,11 @@ For each step, the agent should:
 - **Do not** delete C/Meson/legacy themes until **Phase 9**—keep them as reference while implementing earlier phases.
 - Produce a **small diff**; if the step is too large, split into sub-steps and update this doc.
 - **Add or extend Rust tests** for new/changed behavior when the code is **unit-testable** (see §5.3). **Do not** port [`test/`](../test/) from C.
-- After editing, run **`cargo test --workspace`** (or **`cargo test -p libtofi-rs` and `cargo test -p tofi-rs`**), **`cargo clippy`**, and **`cargo build`**. Both workspace members that ship code **must** carry tests—the CLI is **not** exempt. Once **Phase 0 Step 0.2** is merged, mirror the same checks **locally** that CI runs (§2.2: **fmt**, **clippy** with warnings denied, feature matrix if you change defaults).
+- **Before declaring a step done** (PR, agent handoff, or “finished” in any sense), **all** of the following **must pass** on the workspace (same bar as CI once **Step 0.2** exists):
+  - **`cargo fmt --all -- --check`** (or run **`cargo fmt --all`** and ensure a clean diff).
+  - **`cargo clippy --workspace --all-targets -- -D warnings`** with **`--no-default-features`** **and** separately with **`--all-features`** (and keep **default** features green when you change defaults). If a step only touches one crate, still run clippy on the **whole** workspace unless the step explicitly documents a narrower scope.
+  - **`cargo test --workspace`** (or **`cargo test -p libtofi-rs`** and **`cargo test -p tofi-rs`**) and **`cargo build --workspace`** as appropriate for the change.
+- Both workspace members that ship code **must** carry tests—the CLI is **not** exempt. After **Phase 0 Step 0.2**, CI mirrors **fmt**, **clippy** (warnings denied, feature matrix), and **test**—**local** runs should match before merge.
 
 ### 5.3 Testing strategy (new suite — not a port of C tests)
 
@@ -327,7 +331,7 @@ This matches the pattern “`image/image.rs` + `image/tests.rs`” conceptually:
 - **`tofi-rs` `[features]`** stay **mirrored** to **`libtofi-rs`** per §4 (including **`renderer-cairo`**).
 - `target/release/tofi` runs on Sway (or another wlroots compositor) in **stdin**, **run**, and **drun** modes (subject to enabled features).
 - Config and theme files from [`doc/config`](../doc/config) and [`themes/`](../themes/) work or deviations are listed in a short `PARITY.md` (optional file—only if you want to track gaps; not required by this plan).
-- **Legacy removal** (delete C/Meson/old CI/old themes) is **not** part of §5.4 “done”—it is **Phase 9** once you intentionally cut over.
+- **Meson / C-only CI** is **not** part of §5.4 “done”—it must already be **gone** (**Phase 0 Step 0.2**, §2.2). **Legacy removal** of **C sources, Meson build files, old themes tree**, etc., is **Phase 9** once you intentionally cut over the tree.
 
 ---
 
@@ -353,7 +357,7 @@ Each step: **Goal** · **Scope** · **Deliverables** · **Verification** · **C 
   - **Deliverables:** Green CI on a branch containing **Step 0.1**; Dependabot enabled on the repo; deploy workflow **present** but **not** auto-publishing. Minimal **`cargo test`** job can **`continue-on-error: true`** only until **Step 0.5** adds real tests—prefer **not** skipping the test job: let Step 0.5 land in the same milestone if needed so **`cargo test --workspace`** is required from day one.
   - **Verification:** PR shows passing **fmt**, **clippy**, **build** matrix; **`cargo test --workspace`** passes after **Step 0.5** (or is wired and passes trivial smoke tests from **Step 0.5**); Dependabot config validates (GitHub shows Dependabot enabled / opens no erroneous PRs).
   - **C reference:** N/A
-  - **Notes:** Keep legacy **Meson** CI ([`build-test.yml`](../.github/workflows/build-test.yml)) until **Phase 9** if both trees coexist (§2.2). Optional: `paths:` filters so purely-docs commits do not rebuild C—do **not** ignore paths that contain **`Cargo.toml`** / **`Cargo.lock`** / **`src/`** Rust sources. **`cargo deny`** is **out of scope** for this step (§9).
+  - **Notes:** **Remove** legacy **Meson-only** CI in the **same** PR as the new Rust workflows (§2.2)—no parallel C/Rust CI. Optional: `paths:` filters on Rust workflows so purely-docs commits skip heavy jobs—do **not** ignore paths that contain **`Cargo.toml`** / **`Cargo.lock`** / Rust **`src/`**. **`cargo deny`** is **out of scope** for this step (§9).
 
 - [ ] **Step 0.3 — CLI version and metadata**
   - **Goal:** User-visible identity for the Rust port.
@@ -618,7 +622,7 @@ Each step: **Goal** · **Scope** · **Deliverables** · **Verification** · **C 
 
 - [ ] **Step 9.2 — Remove C build and sources**
   - **Goal:** No Meson/C toolchain in-tree for the product.
-  - **Scope (typical):** Delete or move to an archive branch: **`meson.build`**, **`src/**/_.c`**, **`src/\*\*/_.h`**, **`test/`** (C tests — already not ported), **`protocols/\*.xml`** if unused by Rust, any **Meson-only** scripts. Remove **old CI\*\* workflows that only build C/Meson (GitHub Actions, GitLab, etc.); keep/replace with Rust CI (§9 Future goals).
+  - **Scope (typical):** Delete or move to an archive branch: **`meson.build`**, **`src/**/_.c`**, **`src/\*\*/_.h`**, **`test/`** (C tests — already not ported), **`protocols/\*.xml`** if unused by Rust, any **Meson-only** scripts. **C-only CI** should already have been removed in **Step 0.2** (§2.2); here, scrub any **leftover\*\* references to Meson CI in docs or scripts.
   - **Verification:** Repo has no dangling references to removed paths in active README/install instructions; **`git grep meson`** / **`git grep '\.c'`** clean where intended.
 
 - [ ] **Step 9.3 — Replace themes / scattered examples**
@@ -641,7 +645,7 @@ Each step: **Goal** · **Scope** · **Deliverables** · **Verification** · **C 
   - **Verification:** **`cargo test --workspace`** green; changing **`examples/config/`** updates **config** tests; changing **`examples/themes/`** updates **theme** tests.
   - **Notes:** Optional: `include_str!` snapshots or small golden files checked into `tofi/tests/fixtures/` if you need stable baselines—still keep **folder split** at the source of truth under **`examples/`**.
 
-**Notes:** Do **not** delete the legacy tree in **Phase 0**—keep C sources as reference until Phases 1–8 are done. Phase 9 is a deliberate **cleanup** milestone.
+**Notes:** Do **not** delete the legacy **source tree** in **Phase 0**—keep C sources as reference until Phases 1–8 are done. **CI** switches to Rust-only when **Step 0.2** lands (§2.2). Phase 9 is a deliberate **cleanup** milestone for **files**, not CI.
 
 ---
 
@@ -678,7 +682,7 @@ These are **not** required to declare the C→Rust migration “done” for §5.
 | **`cargo-deny`**      | **Separate** milestone (not Phase 0): add **`deny.toml`** + **`deny.yml`** (or equivalent job) when the dependency graph is stable enough to justify **`cargo deny check`** for licenses/advisories/bans—aligns with §1.5; **after** Dependabot is already filing crate bumps.                                                                                                                                                                              |
 | **Deploy**            | **`deploy.yml`** is **added in Step 0.2** (see [wayshot](https://github.com/waycrate/wayshot/blob/main/.github/workflows/deploy.yml)) but **kept idle** (`workflow_dispatch` only, `if: false`, or no tags) until the Rust port is **release-ready**. **Late migration:** enable triggers for **crates.io**, **GitHub Releases**, or distro artifacts; wire secrets; align with §5.4 and packaging docs.                                                    |
 | **Shell completions** | Generate completions for **bash, zsh, fish, …** using **`clap_complete`** (or the ecosystem standard that matches your `clap` version)—**not** a separate `tofi-compgen`-style binary. **Not** a 1.0.0 release blocker (see §8 Step 8.2).                                                                                                                                                                                                                   |
-| **Legacy deletion**   | **Phase 9:** remove C sources, Meson, old CI, old [`themes/`](../themes/) once Rust is default; replace with **`examples/config/`** + **`examples/themes/`** + **split** config/theme test patterns (9.4–9.5).                                                                                                                                                                                                                                              |
+| **Legacy deletion**   | **C-only CI:** removed in **Phase 0 Step 0.2** (§2.2). **Phase 9:** remove C sources, Meson build, old [`themes/`](../themes/) once Rust is default; replace with **`examples/config/`** + **`examples/themes/`** + **split** config/theme test patterns (9.4–9.5).                                                                                                                                                                                         |
 
 **License note:** A **permissive** outcome for your own code is a **core migration goal** (§1.1); **strong copyleft** may still apply **via dependencies**—see §1.5.
 
@@ -694,6 +698,7 @@ These are **not** required to declare the C→Rust migration “done” for §5.
 - **2026-04-06:** **§2.2:** CI **`uses:`** pins — **major only** (`x`), not **`x.y`** / patch; contrast **§2.1** **`Cargo.toml`** **`x.y`**.
 - **2026-04-06:** **§2.1:** **`Cargo.toml`** dependency versions prefer **`x.y`** over **`x.y.z`** (exact pins in **`Cargo.lock`**); **§2.2** Dependabot note cross-links. Simplifies upgrades and Dependabot PRs.
 - **2026-04-06:** **§2.2 / Step 0.2:** **Dependabot** (`dependabot.yml`); **no** Phase 0 **`deny.yml`** / **`docs.yml`**; **`deploy.yml`** present but idle until §9 **Deploy**. §9 **`cargo-deny`** = later dedicated step.
-- **2026-04-06:** **§2.2** + **Phase 0 Step 0.2:** CI tooling **early**, modeled on [waycrate/wayshot](https://github.com/waycrate/wayshot) (`build.yml`, `fmt-clippy.yml`, `test-coverage.yml`, `typos.yml`); coexist with Meson CI until Phase 9. Renumbered Phase 0: **0.3** CLI metadata, **0.4** feature skeleton, **0.5** test layout. **§9** / **Step 8.4:** CI baseline is Phase 0, not deferred.
-- **2026-04-06:** Tooling: **edition 2024**, workspace + per-crate `Cargo.toml`, **no** `rust-version` pin, **no** `crates/` path segment; dependency freshness (§2.1); **`compgen` clarified** (§3.5); removed **`tofi-compgen`** binary from plan; Phase 3/8 adjusted. **§1.1 / §1.5:** permissive target; **strong copyleft via deps** possible; copyright (retain upstream, add yourself for your work). **§9:** TOML config, docs, CI/CD, **`cargo-deny`**, completions, **Phase 9 legacy deletion**; GPL future goal removed. **Tests:** **CLI (`tofi-rs`) must have tests** (`tofi/tests/`, `cargo test --workspace`); §5.2–5.4, Step 0.5/2.4/8.4, layout. **§4:** full feature mirror including **`renderer-cairo`** on **`libtofi-rs`**; **no man pages**; layout + Step 0.4; Phase 8.1 / §9 / risk. **§3.1 / §8:** **`wayland-protocols-wlr`**. **§1.4:** **UI definition** (`tofi-rs`) vs **renderer implementation** (`libtofi-rs`); config parse in **`tofi`**, types in **`libtofi`**. **Phase 9:** remove C/Meson/old CI/themes; **`examples/config/`** + **`examples/themes/`**; **separate** config vs theme test patterns.
+- **2026-04-06:** **§2.2** + **Phase 0 Step 0.2:** CI tooling **early**, modeled on [waycrate/wayshot](https://github.com/waycrate/wayshot) (`build.yml`, `fmt-clippy.yml`, `test-coverage.yml`, `typos.yml`); **remove** Meson-only CI **when** Rust CI is added (same milestone). Renumbered Phase 0: **0.3** CLI metadata, **0.4** feature skeleton, **0.5** test layout. **§9** / **Step 8.4:** CI baseline is Phase 0, not deferred.
+- **2026-04-06:** **§5.2:** Mandatory **`cargo fmt --check`** and **`cargo clippy`** (**`--no-default-features`** and **`--all-features`**, **`-D warnings`**) before declaring a step done; align with §2.2 CI matrix.
+- **2026-04-06:** Tooling: **edition 2024**, workspace + per-crate `Cargo.toml`, **no** `rust-version` pin, **no** `crates/` path segment; dependency freshness (§2.1); **`compgen` clarified** (§3.5); removed **`tofi-compgen`** binary from plan; Phase 3/8 adjusted. **§1.1 / §1.5:** permissive target; **strong copyleft via deps** possible; copyright (retain upstream, add yourself for your work). **§9:** TOML config, docs, CI/CD, **`cargo-deny`**, completions, **Phase 9 legacy deletion**; GPL future goal removed. **Tests:** **CLI (`tofi-rs`) must have tests** (`tofi/tests/`, `cargo test --workspace`); §5.2–5.4, Step 0.5/2.4/8.4, layout. **§4:** full feature mirror including **`renderer-cairo`** on **`libtofi-rs`**; **no man pages**; layout + Step 0.4; Phase 8.1 / §9 / risk. **§3.1 / §8:** **`wayland-protocols-wlr`**. **§1.4:** **UI definition** (`tofi-rs`) vs **renderer implementation** (`libtofi-rs`); config parse in **`tofi`**, types in **`libtofi`**. **Phase 0.2:** C-only CI out; **Phase 9:** remove C/Meson/themes; **`examples/config/`** + **`examples/themes/`**; **separate** config vs theme test patterns.
 - **2026-04-06:** Initial plan from C codebase survey (`meson.build`, `src/`). **Update same day:** testing policy — **new** Rust suite with per-module `tests.rs` (§5.3); **no** port of C `test/`; Step 0.5; Phase 1–3 and 8 updated to require `cargo test` where appropriate.
