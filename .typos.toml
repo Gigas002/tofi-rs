@@ -11,3 +11,5 @@ extend-exclude = [
 [default.extend-words]
 # Test strings used as matching algorithm fixtures (e.g. prefix of "foot").
 fo = "fo"
+# Standard OpenType font variation axis tags (4-char codes, not English words).
+wdth = "wdth"
