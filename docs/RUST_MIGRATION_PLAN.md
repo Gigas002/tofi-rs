@@ -448,11 +448,11 @@ Each step: **Goal** · **Scope** · **Deliverables** · **Verification** · **C 
   - **C reference:** [`src/tofi.h`](../src/tofi.h), [`src/entry.h`](../src/entry.h)
   - **Notes:** Config is a CLI/userspace concern — `libtofi-rs` does not own it. No file parsing here.
 
-- [ ] **Step 2.2 — Config file parser**
+- [x] **Step 2.2 — Config file parser**
   - **Goal:** Load the same keyfile format as C.
   - **Scope:** Line-based parser compatible with [`src/config.c`](../src/config.c) (comments, `key=value`, includes if supported).
-  - **Deliverables:** **`tofi::config`** (or `tofi::config::load`): read file → populate **`libtofi::config::TofiConfig`**; tests in **`tofi/src/config/tests.rs`** (or **`tofi/tests/`**) with fixtures + [`doc/config`](../doc/config).
-  - **Verification:** **`cargo test -p tofi-rs`**
+  - **Deliverables:** `tofi::config::load` (file loader) + `tofi::config::apply_key` (all keys) in `tofi/src/config/load.rs`; 67 tests in `tofi/src/config/tests.rs` including `load_doc_config_fixture` parsing [`doc/config`](../doc/config).
+  - **Verification:** **`cargo test -p tofi-rs`** — 67 tests pass; fmt + clippy clean.
   - **C reference:** [`src/config.c`](../src/config.c)
 
 - [ ] **Step 2.3 — Config key application**

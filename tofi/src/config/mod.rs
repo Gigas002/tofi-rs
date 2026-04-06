@@ -413,5 +413,10 @@ impl Default for TofiConfig {
     }
 }
 
+pub mod load;
+// Re-exported for callers (Step 2.3+); dead_code suppressed until wired in Step 2.4.
+#[allow(unused_imports)]
+pub use load::{ParseError, apply_key, default_config_path, load};
+
 #[cfg(test)]
 mod tests;
