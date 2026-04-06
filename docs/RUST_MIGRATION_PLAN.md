@@ -501,7 +501,7 @@ Each step: **Goal** · **Scope** · **Deliverables** · **Verification** · **C 
 
 ### Phase 4 — Wayland core (no drawing yet)
 
-- [ ] **Step 4.1 — Wayland dependencies wired**
+- [x] **Step 4.1 — Wayland dependencies wired**
   - **Goal:** Resolve `wayland-client` + protocol crates without duplicate versions.
   - **Deliverables:** `Cargo.lock` shows one version per stack; `libtofi` connects to compositor and exits.
   - **Verification:** `WAYLAND_DISPLAY=... cargo run -p tofi-rs` connects and exits cleanly (stub).
@@ -713,6 +713,7 @@ These are **not** required to declare the C→Rust migration “done” for §5.
 
 ### Revision history
 
+- **2026-04-06:** **Phase 4 Step 4.1** — `libtofi::wayland` module stub; `wayland-client = "0.31"`, `wayland-protocols = "0.32"`, `wayland-protocols-wlr = "0.3"` added to `libtofi/Cargo.toml` as optional deps behind `wayland` feature; `WaylandConnection` struct + `connect()` (wraps `Connection::connect_to_env()`); `main.rs` calls `connect()` then exits (stub); `Cargo.lock` single version per wayland crate (no duplicate majors); §6 checkbox.
 - **2026-04-06:** **Phase 3 Step 3.4** — `libtofi::drun` (kept in library: non-trivial parsing logic + `DesktopEntry` type, unlike userspace-only history/run_commands); `DesktopEntry { id, name, path, keywords, exec, icon, terminal }`; `parse_entry` (locale-aware via `LANG`, Hidden/NoDisplay/OnlyShowIn/NotShowIn, NFC-normalized name); `scan(dirs)` (recursive via `walkdir`, highest-precedence ID wins, sorted by name); `save_cache`/`load_cache` (null-byte-separated, 7-field format); `entries_cached` (mtime invalidation); `exec_command` (field codes: `%i`/`%c`/`%k`/`%%`, drops `%f`/`%F`/`%u`/`%U`); `resolve_cache_path` pure helper; `walkdir = "2"` added; 22 tests; §6 checkbox.
 - **2026-04-06:** **Phase 3 Step 3.3** — `tofi::run_commands` in CLI crate (userspace I/O; same rationale as history); `scan(path_var)` scans `$PATH` dirs directly for executable regular files using mode bits (not a bash subprocess — C source was misleading in plan); `save_cache` / `load_cache` (newline-delimited file); `commands_cached` (mtime-based invalidation: cache stale if any PATH dir newer); `resolve_cache_path` pure helper; `XDG_CACHE_HOME` → `HOME/.cache/tofi-compgen`; `run-commands` feature and stub removed from `libtofi-rs`; `compgen_history_sort` not ported (covered by `string_table::apply_history_scores`); 13 tests; §6 checkbox.
 - **2026-04-06:** **Phase 3 Step 3.2** — `libtofi::lock` module (`lock/mod.rs` + `lock/tests.rs`, 8 tests); `Lock` wraps `nix::fcntl::Flock<File>` (RAII — lock released on drop, no `unsafe`); `try_acquire(path)` → `Ok(Some(Lock))` / `Ok(None)` (`Errno::EWOULDBLOCK` = another instance running) / `Err`; `try_acquire_default()` + `default_lock_path()`; path resolution: `XDG_RUNTIME_DIR` → `XDG_CACHE_HOME` → `HOME/.cache/tofi.lock`; `resolve_lock_path` pure helper for parallel-safe tests; switched from `libc` to `nix = { version = "0.29", features = ["fs"] }` (safer API, useful in Phase 4+ for SHM/memfd etc.); `tempfile = "3"` added to `libtofi-rs` dev-deps; §6 checkbox.
