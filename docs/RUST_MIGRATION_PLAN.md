@@ -1,6 +1,6 @@
 # Tofi → Rust migration plan
 
-This document is both a **human roadmap** and an **agent playbook**: each step is small enough to implement in one focused session, ends in a **compilable** state, and defines **how to verify** it. It assumes parity with the current C implementation ([`meson.build`](../meson.build), [`src/`](../src/)). **Porting the existing C tests is not required**; a **new Rust test suite** for **both `libtofi-rs` and `tofi-rs`** is (see §5.3).
+This document is both a **human roadmap** and an **agent playbook**: each step is small enough to implement in one focused session, ends in a **verified** state (**build** + §5.2 **fmt/clippy**; **tests** per §5.2 / §5.3 once they exist), and defines **how to verify** it. **Reading this plan, implementing accordingly, and updating it** (checkboxes, revision history when policy changes) is the primary execution discipline. It assumes parity with the current C implementation ([`meson.build`](../meson.build), [`src/`](../src/)). **Porting the existing C tests is not required**; a **new Rust test suite** for **both `libtofi-rs` and `tofi-rs`** is (see §5.3).
 
 ---
 
@@ -282,8 +282,8 @@ For each step, the agent should:
 - **Before declaring a step done** (PR, agent handoff, or “finished” in any sense), **all** of the following **must pass** on the workspace (same bar as CI once **Step 0.2** exists):
   - **`cargo fmt --all -- --check`** (or run **`cargo fmt --all`** and ensure a clean diff).
   - **`cargo clippy --workspace --all-targets -- -D warnings`** with **`--no-default-features`** **and** separately with **`--all-features`** (and keep **default** features green when you change defaults). If a step only touches one crate, still run clippy on the **whole** workspace unless the step explicitly documents a narrower scope.
-  - **`cargo test --workspace`** (or **`cargo test -p libtofi-rs`** and **`cargo test -p tofi-rs`**) and **`cargo build --workspace`** as appropriate for the change.
-- Both workspace members that ship code **must** carry tests—the CLI is **not** exempt. After **Phase 0 Step 0.2**, CI mirrors **fmt**, **clippy** (warnings denied, feature matrix), and **test**—**local** runs should match before merge.
+  - **`cargo test --workspace`** (or **`cargo test -p libtofi-rs`** and **`cargo test -p tofi-rs`**) and **`cargo build --workspace`** as appropriate for the change. Before **Step 0.5**, **`cargo test`** may run **zero** tests; it must still **exit successfully**.
+- Both workspace members that ship code **must** carry tests **once Step 0.5 is done** (§5.3)—the CLI is **not** exempt. After **Phase 0 Step 0.2**, CI mirrors **fmt**, **clippy** (warnings denied, feature matrix), and **test**—**local** runs should match before merge.
 
 ### 5.3 Testing strategy (new suite — not a port of C tests)
 
@@ -347,15 +347,15 @@ Each step: **Goal** · **Scope** · **Deliverables** · **Verification** · **C 
   - **Goal:** Tooling baseline.
   - **Scope:** Add root `Cargo.toml` `[workspace]` with members `libtofi`, `tofi` (paths **without** a `crates/` segment).
   - **Deliverables:** `libtofi` is a library crate with `pub fn noop()` or similar; `tofi` binary calls it.
-  - **Verification:** `cargo build --workspace`
+  - **Verification:** `cargo build --workspace`; **`cargo fmt --all -- --check`**; **`cargo clippy --workspace --all-targets --no-default-features -- -D warnings`** and **`cargo clippy --workspace --all-targets --all-features -- -D warnings`** (§5.2). **`cargo test --workspace`** (may be 0 tests until **Step 0.5**).
   - **C reference:** N/A
   - **Notes:** Set **`edition = "2024"`** in `[workspace.package]` and/or per-crate `Cargo.toml`. **Do not** set `rust-version`—track latest stable (see §2.1).
 
 - [ ] **Step 0.2 — GitHub Actions CI (wayshot-style)**
   - **Goal:** **Automated checks on every push/PR** as soon as Rust code exists—**fmt**, **clippy**, **build** (feature matrix), **test** (once tests exist), optional **typos** / **coverage**; plus **Dependabot** (`.github/dependabot.yml` for **Cargo** and **github-actions**). Add a **`deploy.yml`** (match [wayshot](https://github.com/waycrate/wayshot) layout) **without** enabling publishes yet—see §9 **Deploy**.
   - **Scope:** Add `.github/workflows/*.yml` per §2.2 (**no** `deny.yml` / **`docs.yml`** in Phase 0). Add **`.github/dependabot.yml`**. Copy **`deploy.yml`** from wayshot (or minimal stub with the same triggers **disabled** / **`workflow_dispatch` only**). Adapt install steps and feature matrix for **`libtofi-rs`** / **`tofi-rs`**. Trigger active jobs on **`push`** and **`pull_request`**.
-  - **Deliverables:** Green CI on a branch containing **Step 0.1**; Dependabot enabled on the repo; deploy workflow **present** but **not** auto-publishing. Minimal **`cargo test`** job can **`continue-on-error: true`** only until **Step 0.5** adds real tests—prefer **not** skipping the test job: let Step 0.5 land in the same milestone if needed so **`cargo test --workspace`** is required from day one.
-  - **Verification:** PR shows passing **fmt**, **clippy**, **build** matrix; **`cargo test --workspace`** passes after **Step 0.5** (or is wired and passes trivial smoke tests from **Step 0.5**); Dependabot config validates (GitHub shows Dependabot enabled / opens no erroneous PRs).
+  - **Deliverables:** Green CI on a branch containing **Step 0.1**; Dependabot enabled on the repo; deploy workflow **present** but **not** auto-publishing; **legacy Meson-only workflow(s) removed** from `.github/workflows/` (§2.2). Minimal **`cargo test`** job can **`continue-on-error: true`** only until **Step 0.5** adds real tests—prefer **not** skipping the test job: let Step 0.5 land in the same milestone if needed so **`cargo test --workspace`** is required from day one.
+  - **Verification:** PR shows passing **fmt**, **clippy**, **build** matrix; **no** remaining C/Meson-only CI jobs for this repo; **`cargo test --workspace`** passes after **Step 0.5** (or is wired and passes trivial smoke tests from **Step 0.5**); Dependabot config validates (GitHub shows Dependabot enabled / opens no erroneous PRs). Locally: same **§5.2** fmt/clippy commands as **Step 0.1**.
   - **C reference:** N/A
   - **Notes:** **Remove** legacy **Meson-only** CI in the **same** PR as the new Rust workflows (§2.2)—no parallel C/Rust CI. Optional: `paths:` filters on Rust workflows so purely-docs commits skip heavy jobs—do **not** ignore paths that contain **`Cargo.toml`** / **`Cargo.lock`** / Rust **`src/`**. **`cargo deny`** is **out of scope** for this step (§9).
 
@@ -692,9 +692,11 @@ These are **not** required to declare the C→Rust migration “done” for §5.
 
 - Update **checkboxes** in §6 (Phases **0–9**) as steps complete.
 - When a step is split or reordered, **add a one-line changelog** at the bottom of this file (`### Revision history`).
+- After **policy or workflow changes** (CI, §5.2, Phase 9 scope, etc.), **re-read** §2.2, §5, and §6 for **contradictions** and fix them in the same edit series—**implementation and plan stay aligned**.
 
 ### Revision history
 
+- **2026-04-06:** **§1 / §5–6 / §10:** Playbook priority — **read plan → implement → update plan**; intro + **Step 0.1** verification include **§5.2** fmt/clippy; **§5.2** clarifies tests required **after Step 0.5**; **Step 0.2** deliverables/verification include **Meson CI removal**; fix **Step 9.2** typo; **§10** — re-read for contradictions after policy changes.
 - **2026-04-06:** **§2.2:** CI **`uses:`** pins — **major only** (`x`), not **`x.y`** / patch; contrast **§2.1** **`Cargo.toml`** **`x.y`**.
 - **2026-04-06:** **§2.1:** **`Cargo.toml`** dependency versions prefer **`x.y`** over **`x.y.z`** (exact pins in **`Cargo.lock`**); **§2.2** Dependabot note cross-links. Simplifies upgrades and Dependabot PRs.
 - **2026-04-06:** **§2.2 / Step 0.2:** **Dependabot** (`dependabot.yml`); **no** Phase 0 **`deny.yml`** / **`docs.yml`**; **`deploy.yml`** present but idle until §9 **Deploy**. §9 **`cargo-deny`** = later dedicated step.
