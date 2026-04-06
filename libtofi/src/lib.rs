@@ -18,6 +18,7 @@ pub mod error;
 pub use error::{Error, Result};
 
 pub mod color;
+pub mod matching;
 pub mod string_table;
 pub mod unicode;
 
