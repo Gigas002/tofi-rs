@@ -479,9 +479,9 @@ Each step: **Goal** · **Scope** · **Deliverables** · **Verification** · **C 
   - **Verification:** `cargo test -p tofi-rs` and manual read/write cycle
   - **C reference:** [`src/history.c`](../src/history.c)
 
-- [ ] **Step 3.2 — Single-instance lock** (`feature = "single-instance-lock"`)
+- [x] **Step 3.2 — Single-instance lock** (`feature = "single-instance-lock"`)
   - **Goal:** Same `flock` behavior as [`src/lock.c`](../src/lock.c).
-  - **Deliverables:** `libtofi::lock` using `fs2` or direct `flock` syscall via `libc`.
+  - **Deliverables:** `libtofi::lock` using `nix::fcntl::Flock` (RAII, no `unsafe`). `fs2` and `libc` were considered but rejected — `nix` is already a dependency, provides a safe API, and will be reused in Phase 4+ (SHM, `memfd_create`, etc.).
   - **Verification:** Run two instances; second exits when `multi-instance` false.
   - **C reference:** [`src/lock.c`](../src/lock.c)
 
@@ -713,6 +713,7 @@ These are **not** required to declare the C→Rust migration “done” for §5.
 
 ### Revision history
 
+- **2026-04-06:** **Phase 3 Step 3.2** — `libtofi::lock` module (`lock/mod.rs` + `lock/tests.rs`, 8 tests); `Lock` wraps `nix::fcntl::Flock<File>` (RAII — lock released on drop, no `unsafe`); `try_acquire(path)` → `Ok(Some(Lock))` / `Ok(None)` (`Errno::EWOULDBLOCK` = another instance running) / `Err`; `try_acquire_default()` + `default_lock_path()`; path resolution: `XDG_RUNTIME_DIR` → `XDG_CACHE_HOME` → `HOME/.cache/tofi.lock`; `resolve_lock_path` pure helper for parallel-safe tests; switched from `libc` to `nix = { version = "0.29", features = ["fs"] }` (safer API, useful in Phase 4+ for SHM/memfd etc.); `tempfile = "3"` added to `libtofi-rs` dev-deps; §6 checkbox.
 - **2026-04-06:** **Phase 3 Step 3.1** — `tofi::history` module in CLI crate (`tofi/src/history/mod.rs` + `tests.rs`, 22 tests); history is userspace I/O, mirrors config placement (§1.4); `history` feature removed from `libtofi-rs`; `io::Result` / `io::Error::new(InvalidData, …)` used (no `libtofi_rs::Error` dependency); `Program` + `History` structs; `add` (insert/increment + bubble-up by run_count), `remove`; `load` (parse `{count} {name}\n` lines, skip malformed, 10 MiB guard), `save` (mode 0600, mkdir parents); `default_history_path` / `load_default` / `save_default` using `XDG_STATE_HOME` → `HOME/.local/state` fallback; `resolve_history_path` pure helper (no env mutation in tests); `tempfile = "3"` already in `tofi-rs` dev-deps; §6 checkbox.
 - **2026-04-06:** **Phase 1 Step 1.5** — `libtofi::matching` module (`matching/mod.rs` + `matching/tests.rs`, 31 tests); `MatchingAlgorithm` enum (Normal/Prefix/Fuzzy) + `match_words` dispatcher; fuzzy match ports fts_fuzzy_match v0.2.0 (public domain) with adjacency/separator/CamelCase scoring and `first_match_only` guard for strings >100 chars; no new dependencies; integrates with `StringRefVec::filter` via closure; §6 checkbox.
 - **2026-04-06:** **Phase 1 Step 1.4** — `libtofi::string_table` module (`string_table/mod.rs` + `string_table/tests.rs`, 27 tests); `StringVec` (owned, NFC-normalizes on add) + `StringRefVec<'a>` (borrowed); `filter` takes `Fn(&str) -> Option<i32>` to decouple from matching (Step 1.5); `apply_history_scores` takes `&HashMap<&str, i32>` to decouple from history (Step 3.1); no new dependencies; §6 checkbox.
