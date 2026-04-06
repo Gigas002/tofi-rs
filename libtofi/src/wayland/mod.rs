@@ -4,23 +4,32 @@
 //!
 //! * **Step 4.1** — [`connect`] establishes a connection.
 //! * **Step 4.2** — [`connect`] binds all registry globals and performs two
-//!   roundtrips (mirrors the C startup sequence in `src/main.c`).
+//!   roundtrips.
+//! * **Step 4.3** — [`surface::create_surface`] creates the layer surface,
+//!   fills a solid-color SHM buffer, and commits it to prove placement.
 //!
 //! # C reference
 //!
-//! `src/main.c` — `wl_display_connect`, `registry_global` listener, first/second
-//! roundtrip.  `src/tofi.h` — `struct tofi` globals and `output_list_element`.
+//! `src/main.c`, `src/surface.c`, `src/shm.c`, `src/tofi.h`.
+
+pub mod surface;
 
 use wayland_client::{
     Connection, Dispatch, EventQueue, QueueHandle,
-    protocol::{wl_compositor, wl_output, wl_registry, wl_seat, wl_shm},
+    protocol::{
+        wl_buffer, wl_compositor, wl_output, wl_registry, wl_seat, wl_shm, wl_shm_pool, wl_surface,
+    },
 };
 use wayland_protocols::wp::{
     fractional_scale::v1::client::wp_fractional_scale_manager_v1, viewporter::client::wp_viewporter,
 };
-use wayland_protocols_wlr::layer_shell::v1::client::zwlr_layer_shell_v1;
+use wayland_protocols_wlr::layer_shell::v1::client::{zwlr_layer_shell_v1, zwlr_layer_surface_v1};
 
 use crate::{Error, Result};
+
+/// Re-export of the layer-surface anchor bitflag type so callers do not need a
+/// direct `wayland-protocols-wlr` dependency.
+pub use zwlr_layer_surface_v1::Anchor;
 
 #[cfg(feature = "clipboard")]
 pub mod clipboard;
@@ -64,7 +73,8 @@ impl OutputInfo {
 
 // ── WaylandState ─────────────────────────────────────────────────────────────
 
-/// Bound Wayland globals and live connection.
+/// Bound Wayland globals, live connection, and (after Step 4.3) the launcher
+/// surface.
 ///
 /// Created by [`connect`]; drop to disconnect cleanly.  The [`EventQueue`]
 /// returned alongside must be dispatched to keep the connection alive.
@@ -88,6 +98,10 @@ pub struct WaylandState {
         Option<wp_fractional_scale_manager_v1::WpFractionalScaleManagerV1>,
     /// All advertised outputs; names/modes populated after the second roundtrip.
     pub outputs: Vec<OutputInfo>,
+    /// The launcher's layer surface; populated by [`surface::create_surface`].
+    pub surface: Option<surface::SurfaceState>,
+    /// Set to `true` when the compositor sends `zwlr_layer_surface_v1::closed`.
+    pub closed: bool,
 }
 
 impl WaylandState {
@@ -101,6 +115,8 @@ impl WaylandState {
             viewporter: None,
             fractional_scale_manager: None,
             outputs: Vec::new(),
+            surface: None,
+            closed: false,
         }
     }
 }
@@ -116,7 +132,6 @@ impl Dispatch<wl_registry::WlRegistry, ()> for WaylandState {
         _: &Connection,
         qh: &QueueHandle<Self>,
     ) {
-        // Only act on Global advertisements; ignore GlobalRemove for now.
         let wl_registry::Event::Global {
             name,
             interface,
@@ -177,7 +192,7 @@ impl Dispatch<wl_registry::WlRegistry, ()> for WaylandState {
     }
 }
 
-// `wl_compositor` has no events; this impl is required but never called.
+// `wl_compositor` has no events; impl required but never called.
 impl Dispatch<wl_compositor::WlCompositor, ()> for WaylandState {
     fn event(
         _: &mut Self,
@@ -269,6 +284,89 @@ impl Dispatch<zwlr_layer_shell_v1::ZwlrLayerShellV1, ()> for WaylandState {
         _: &Connection,
         _: &QueueHandle<Self>,
     ) {
+    }
+}
+
+/// Layer surface configure / close — core of the launcher window lifecycle.
+///
+/// C reference: `zwlr_layer_surface_configure` / `zwlr_layer_surface_close`
+/// in `src/main.c`.
+impl Dispatch<zwlr_layer_surface_v1::ZwlrLayerSurfaceV1, ()> for WaylandState {
+    fn event(
+        state: &mut Self,
+        proxy: &zwlr_layer_surface_v1::ZwlrLayerSurfaceV1,
+        event: zwlr_layer_surface_v1::Event,
+        _: &(),
+        _: &Connection,
+        _: &QueueHandle<Self>,
+    ) {
+        match event {
+            zwlr_layer_surface_v1::Event::Configure {
+                serial,
+                width,
+                height,
+            } => {
+                if width == 0 || height == 0 {
+                    // Compositor is deferring to us; mirrors C early-return.
+                    tracing::debug!("Layer surface configure: deferred (0×0)");
+                    return;
+                }
+                tracing::debug!("Layer surface configure: {width}×{height} serial={serial}");
+                proxy.ack_configure(serial);
+                if let Some(s) = state.surface.as_mut() {
+                    s.width = width;
+                    s.height = height;
+                    s.configured = true;
+                }
+            }
+            zwlr_layer_surface_v1::Event::Closed => {
+                tracing::debug!("Layer surface closed");
+                state.closed = true;
+            }
+            _ => {}
+        }
+    }
+}
+
+/// `wl_surface` enter/leave events (output changes) — ignored until Step 4.5.
+impl Dispatch<wl_surface::WlSurface, ()> for WaylandState {
+    fn event(
+        _: &mut Self,
+        _: &wl_surface::WlSurface,
+        _event: wl_surface::Event,
+        _: &(),
+        _: &Connection,
+        _: &QueueHandle<Self>,
+    ) {
+        // Output enter/leave handled in Step 4.5.
+    }
+}
+
+/// `wl_shm_pool` has no events; impl required but never called.
+impl Dispatch<wl_shm_pool::WlShmPool, ()> for WaylandState {
+    fn event(
+        _: &mut Self,
+        _: &wl_shm_pool::WlShmPool,
+        _event: wl_shm_pool::Event,
+        _: &(),
+        _: &Connection,
+        _: &QueueHandle<Self>,
+    ) {
+    }
+}
+
+/// `wl_buffer` release event — compositor is done with the buffer.
+/// Double-buffer swap handled in Step 4.4.
+impl Dispatch<wl_buffer::WlBuffer, ()> for WaylandState {
+    fn event(
+        _: &mut Self,
+        _: &wl_buffer::WlBuffer,
+        _event: wl_buffer::Event,
+        _: &(),
+        _: &Connection,
+        _: &QueueHandle<Self>,
+    ) {
+        // Buffer reuse / swapping handled in Step 4.4.
     }
 }
 

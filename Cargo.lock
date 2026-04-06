@@ -582,6 +582,7 @@ dependencies = [
  "clap",
  "libtofi-rs",
  "tempfile",
+ "tracing",
  "tracing-subscriber",
 ]
 
