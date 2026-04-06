@@ -13,13 +13,19 @@ mod run_commands;
 use clap::Parser as _;
 
 fn main() {
+    // Initialise tracing; verbosity controlled by RUST_LOG (e.g. RUST_LOG=debug).
+    tracing_subscriber::fmt()
+        .with_env_filter(tracing_subscriber::EnvFilter::from_default_env())
+        .init();
+
     let cli = cli::Cli::parse();
     let (_config, _errors) = cli.into_config().expect("Failed to load config");
 
     #[cfg(feature = "wayland")]
     {
-        let _conn = libtofi_rs::wayland::connect().expect("Failed to connect to Wayland display");
-        // Step 4.1 stub: connected successfully — drop `_conn` to disconnect cleanly.
+        // Step 4.2: bind globals and log; drop state + queue to disconnect cleanly.
+        let (_state, _event_queue) =
+            libtofi_rs::wayland::connect().expect("Failed to initialize Wayland");
     }
 
     libtofi_rs::noop();

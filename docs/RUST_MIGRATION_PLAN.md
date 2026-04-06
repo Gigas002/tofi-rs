@@ -507,7 +507,7 @@ Each step: **Goal** · **Scope** · **Deliverables** · **Verification** · **C 
   - **Verification:** `WAYLAND_DISPLAY=... cargo run -p tofi-rs` connects and exits cleanly (stub).
   - **C reference:** [`src/main.c`](../src/main.c) `wl_display_connect`
 
-- [ ] **Step 4.2 — Registry globals**
+- [x] **Step 4.2 — Registry globals**
   - **Goal:** Bind compositor, shm, seat, `zwlr_layer_shell_v1`, `wp_viewporter`, `wp_fractional_scale_manager_v1`, `wl_output` list.
   - **Deliverables:** State struct holding globals; roundtrip after bind.
   - **Verification:** Log (tracing) lists bound globals on Sway.
@@ -713,6 +713,7 @@ These are **not** required to declare the C→Rust migration “done” for §5.
 
 ### Revision history
 
+- **2026-04-06:** **Phase 4 Step 4.2** — `libtofi::wayland::WaylandState` + `OutputInfo` structs; `Dispatch<WlRegistry, ()>` binds `wl_compositor v4`, `wl_shm v1`, `wl_seat v7`, `wl_output v4` (indexed user-data), `zwlr_layer_shell_v1 v3`, `wp_viewporter v1`, `wp_fractional_scale_manager_v1 v1`; no-op `Dispatch` impls for all event-less interfaces; two roundtrips mirror C `src/main.c`; required-global validation (`Wayland` error if missing); `tracing::debug!` logs each bind + output Done summary; `tracing = "0.1"` added to `libtofi-rs`, `tracing-subscriber = "0.3"` (env-filter) to `tofi-rs`; `wayland-protocols` features extended with `"staging"` (required for `wp_fractional_scale_manager_v1`); `main.rs` initialises `tracing_subscriber`; old `WaylandConnection` stub replaced; §6 checkbox.
 - **2026-04-06:** **Phase 4 Step 4.1** — `libtofi::wayland` module stub; `wayland-client = "0.31"`, `wayland-protocols = "0.32"`, `wayland-protocols-wlr = "0.3"` added to `libtofi/Cargo.toml` as optional deps behind `wayland` feature; `WaylandConnection` struct + `connect()` (wraps `Connection::connect_to_env()`); `main.rs` calls `connect()` then exits (stub); `Cargo.lock` single version per wayland crate (no duplicate majors); §6 checkbox.
 - **2026-04-06:** **Phase 3 Step 3.4** — `libtofi::drun` (kept in library: non-trivial parsing logic + `DesktopEntry` type, unlike userspace-only history/run_commands); `DesktopEntry { id, name, path, keywords, exec, icon, terminal }`; `parse_entry` (locale-aware via `LANG`, Hidden/NoDisplay/OnlyShowIn/NotShowIn, NFC-normalized name); `scan(dirs)` (recursive via `walkdir`, highest-precedence ID wins, sorted by name); `save_cache`/`load_cache` (null-byte-separated, 7-field format); `entries_cached` (mtime invalidation); `exec_command` (field codes: `%i`/`%c`/`%k`/`%%`, drops `%f`/`%F`/`%u`/`%U`); `resolve_cache_path` pure helper; `walkdir = "2"` added; 22 tests; §6 checkbox.
 - **2026-04-06:** **Phase 3 Step 3.3** — `tofi::run_commands` in CLI crate (userspace I/O; same rationale as history); `scan(path_var)` scans `$PATH` dirs directly for executable regular files using mode bits (not a bash subprocess — C source was misleading in plan); `save_cache` / `load_cache` (newline-delimited file); `commands_cached` (mtime-based invalidation: cache stale if any PATH dir newer); `resolve_cache_path` pure helper; `XDG_CACHE_HOME` → `HOME/.cache/tofi-compgen`; `run-commands` feature and stub removed from `libtofi-rs`; `compgen_history_sort` not ported (covered by `string_table::apply_history_scores`); 13 tests; §6 checkbox.

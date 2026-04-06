@@ -1,16 +1,24 @@
 //! Wayland client, SHM, surfaces (feature **`wayland`**).
 //!
-//! Paste lives here too — see [`clipboard`] (feature **`clipboard`**).
+//! # Steps
 //!
-//! # Step 4.1
+//! * **Step 4.1** — [`connect`] establishes a connection.
+//! * **Step 4.2** — [`connect`] binds all registry globals and performs two
+//!   roundtrips (mirrors the C startup sequence in `src/main.c`).
 //!
-//! [`connect`] establishes a connection to the Wayland compositor via
-//! `WAYLAND_DISPLAY` (or the socket default). Registry binding and surface
-//! creation follow in later steps.
+//! # C reference
 //!
-//! C reference: `src/main.c` — `wl_display_connect(NULL)`.
+//! `src/main.c` — `wl_display_connect`, `registry_global` listener, first/second
+//! roundtrip.  `src/tofi.h` — `struct tofi` globals and `output_list_element`.
 
-use wayland_client::Connection;
+use wayland_client::{
+    Connection, Dispatch, EventQueue, QueueHandle,
+    protocol::{wl_compositor, wl_output, wl_registry, wl_seat, wl_shm},
+};
+use wayland_protocols::wp::{
+    fractional_scale::v1::client::wp_fractional_scale_manager_v1, viewporter::client::wp_viewporter,
+};
+use wayland_protocols_wlr::layer_shell::v1::client::zwlr_layer_shell_v1;
 
 use crate::{Error, Result};
 
@@ -20,22 +28,337 @@ pub mod clipboard;
 #[cfg(test)]
 mod tests;
 
-/// A live connection to the Wayland compositor.
+// ── OutputInfo ───────────────────────────────────────────────────────────────
+
+/// Information about a bound `wl_output`.
 ///
-/// Dropping this struct disconnects from the compositor cleanly.
-pub struct WaylandConnection {
-    // Used in Step 4.2+ (registry binding, event loop).
-    #[allow(dead_code)]
-    pub(crate) connection: Connection,
+/// Populated during the second roundtrip.  `name` is empty for compositors
+/// that advertise `wl_output` < version 4.
+///
+/// C reference: `struct output_list_element` in `src/tofi.h`.
+#[derive(Debug)]
+pub struct OutputInfo {
+    /// The underlying output proxy; kept for surface binding (Step 4.3+).
+    pub output: wl_output::WlOutput,
+    /// Human-readable output name (e.g. `"HDMI-A-1"`); empty pre-v4.
+    pub name: String,
+    /// Integer scale factor reported by the compositor.
+    pub scale: i32,
+    /// Pixel width of the current mode.
+    pub width: i32,
+    /// Pixel height of the current mode.
+    pub height: i32,
 }
 
-/// Connect to the Wayland compositor identified by `$WAYLAND_DISPLAY`.
+impl OutputInfo {
+    fn new(output: wl_output::WlOutput) -> Self {
+        Self {
+            output,
+            name: String::new(),
+            scale: 1,
+            width: 0,
+            height: 0,
+        }
+    }
+}
+
+// ── WaylandState ─────────────────────────────────────────────────────────────
+
+/// Bound Wayland globals and live connection.
 ///
-/// Returns [`Error::Wayland`] if no compositor socket is found or the
-/// handshake fails. The returned [`WaylandConnection`] disconnects on drop.
+/// Created by [`connect`]; drop to disconnect cleanly.  The [`EventQueue`]
+/// returned alongside must be dispatched to keep the connection alive.
 ///
-/// C reference: `wl_display_connect(NULL)` in `src/main.c`.
-pub fn connect() -> Result<WaylandConnection> {
+/// C reference: `struct tofi` (Wayland globals section) in `src/tofi.h`.
+pub struct WaylandState {
+    /// Raw connection; held to keep the backend alive for the session.
+    pub connection: Connection,
+    /// `wl_compositor` — required for surface creation (Step 4.3).
+    pub compositor: Option<wl_compositor::WlCompositor>,
+    /// `wl_shm` — required for SHM buffer allocation (Step 4.4).
+    pub shm: Option<wl_shm::WlShm>,
+    /// `wl_seat` — required for keyboard/pointer input (Step 6.1).
+    pub seat: Option<wl_seat::WlSeat>,
+    /// `zwlr_layer_shell_v1` — required for the launcher layer surface.
+    pub layer_shell: Option<zwlr_layer_shell_v1::ZwlrLayerShellV1>,
+    /// `wp_viewporter` — optional; used for scaled surfaces (Step 4.5).
+    pub viewporter: Option<wp_viewporter::WpViewporter>,
+    /// `wp_fractional_scale_manager_v1` — optional; HiDPI support (Step 4.5).
+    pub fractional_scale_manager:
+        Option<wp_fractional_scale_manager_v1::WpFractionalScaleManagerV1>,
+    /// All advertised outputs; names/modes populated after the second roundtrip.
+    pub outputs: Vec<OutputInfo>,
+}
+
+impl WaylandState {
+    fn new(connection: Connection) -> Self {
+        Self {
+            connection,
+            compositor: None,
+            shm: None,
+            seat: None,
+            layer_shell: None,
+            viewporter: None,
+            fractional_scale_manager: None,
+            outputs: Vec::new(),
+        }
+    }
+}
+
+// ── Dispatch implementations ──────────────────────────────────────────────────
+
+impl Dispatch<wl_registry::WlRegistry, ()> for WaylandState {
+    fn event(
+        state: &mut Self,
+        registry: &wl_registry::WlRegistry,
+        event: wl_registry::Event,
+        _: &(),
+        _: &Connection,
+        qh: &QueueHandle<Self>,
+    ) {
+        // Only act on Global advertisements; ignore GlobalRemove for now.
+        let wl_registry::Event::Global {
+            name,
+            interface,
+            version,
+        } = event
+        else {
+            return;
+        };
+        match interface.as_str() {
+            "wl_compositor" => {
+                let v = version.min(4);
+                state.compositor = Some(registry.bind(name, v, qh, ()));
+                tracing::debug!("Bound wl_compositor v{v}");
+            }
+            "wl_shm" => {
+                state.shm = Some(registry.bind(name, 1, qh, ()));
+                tracing::debug!("Bound wl_shm v1");
+            }
+            "wl_seat" => {
+                let v = version.min(7);
+                state.seat = Some(registry.bind(name, v, qh, ()));
+                tracing::debug!("Bound wl_seat v{v}");
+            }
+            "wl_output" => {
+                if version < 4 {
+                    tracing::warn!(
+                        "Compositor advertises wl_output v{version} < 4; \
+                         output name selection will not work"
+                    );
+                }
+                let v = version.min(4);
+                let idx = state.outputs.len();
+                let output: wl_output::WlOutput = registry.bind(name, v, qh, idx);
+                state.outputs.push(OutputInfo::new(output));
+                tracing::debug!("Bound wl_output {name} v{v}");
+            }
+            "zwlr_layer_shell_v1" => {
+                if version < 3 {
+                    tracing::warn!(
+                        "Compositor advertises zwlr_layer_shell_v1 v{version} < 3; \
+                         screen anchoring may not work"
+                    );
+                }
+                let v = version.min(3);
+                state.layer_shell = Some(registry.bind(name, v, qh, ()));
+                tracing::debug!("Bound zwlr_layer_shell_v1 v{v}");
+            }
+            "wp_viewporter" => {
+                state.viewporter = Some(registry.bind(name, 1, qh, ()));
+                tracing::debug!("Bound wp_viewporter v1");
+            }
+            "wp_fractional_scale_manager_v1" => {
+                state.fractional_scale_manager = Some(registry.bind(name, 1, qh, ()));
+                tracing::debug!("Bound wp_fractional_scale_manager_v1 v1");
+            }
+            _ => {}
+        }
+    }
+}
+
+// `wl_compositor` has no events; this impl is required but never called.
+impl Dispatch<wl_compositor::WlCompositor, ()> for WaylandState {
+    fn event(
+        _: &mut Self,
+        _: &wl_compositor::WlCompositor,
+        _event: wl_compositor::Event,
+        _: &(),
+        _: &Connection,
+        _: &QueueHandle<Self>,
+    ) {
+    }
+}
+
+impl Dispatch<wl_shm::WlShm, ()> for WaylandState {
+    fn event(
+        _: &mut Self,
+        _: &wl_shm::WlShm,
+        _event: wl_shm::Event,
+        _: &(),
+        _: &Connection,
+        _: &QueueHandle<Self>,
+    ) {
+        // Pixel formats collected in Step 4.4 (SHM buffer allocation).
+    }
+}
+
+impl Dispatch<wl_seat::WlSeat, ()> for WaylandState {
+    fn event(
+        _: &mut Self,
+        _: &wl_seat::WlSeat,
+        _event: wl_seat::Event,
+        _: &(),
+        _: &Connection,
+        _: &QueueHandle<Self>,
+    ) {
+        // Capabilities and name handled in Step 6.1 (keyboard/pointer setup).
+    }
+}
+
+/// Output events populate [`OutputInfo`] entries; index is passed as user data.
+///
+/// C reference: `output_mode`, `output_scale`, `output_name`, `output_done`
+/// listeners in `src/main.c`.
+impl Dispatch<wl_output::WlOutput, usize> for WaylandState {
+    fn event(
+        state: &mut Self,
+        _proxy: &wl_output::WlOutput,
+        event: wl_output::Event,
+        data: &usize,
+        _: &Connection,
+        _: &QueueHandle<Self>,
+    ) {
+        let Some(info) = state.outputs.get_mut(*data) else {
+            return;
+        };
+        match event {
+            wl_output::Event::Name { name } => {
+                info.name = name;
+            }
+            wl_output::Event::Scale { factor } => {
+                info.scale = factor;
+            }
+            wl_output::Event::Mode { width, height, .. } => {
+                // Current-flag filtering deferred to Step 4.5.
+                info.width = width;
+                info.height = height;
+            }
+            wl_output::Event::Done => {
+                tracing::debug!(
+                    "Output {}: {:?} {}x{} scale={}",
+                    data,
+                    info.name,
+                    info.width,
+                    info.height,
+                    info.scale
+                );
+            }
+            _ => {}
+        }
+    }
+}
+
+// `zwlr_layer_shell_v1` has no events; impl required but never called.
+impl Dispatch<zwlr_layer_shell_v1::ZwlrLayerShellV1, ()> for WaylandState {
+    fn event(
+        _: &mut Self,
+        _: &zwlr_layer_shell_v1::ZwlrLayerShellV1,
+        _event: zwlr_layer_shell_v1::Event,
+        _: &(),
+        _: &Connection,
+        _: &QueueHandle<Self>,
+    ) {
+    }
+}
+
+// `wp_viewporter` has no events; impl required but never called.
+impl Dispatch<wp_viewporter::WpViewporter, ()> for WaylandState {
+    fn event(
+        _: &mut Self,
+        _: &wp_viewporter::WpViewporter,
+        _event: wp_viewporter::Event,
+        _: &(),
+        _: &Connection,
+        _: &QueueHandle<Self>,
+    ) {
+    }
+}
+
+// `wp_fractional_scale_manager_v1` has no events; impl required but never called.
+impl Dispatch<wp_fractional_scale_manager_v1::WpFractionalScaleManagerV1, ()> for WaylandState {
+    fn event(
+        _: &mut Self,
+        _: &wp_fractional_scale_manager_v1::WpFractionalScaleManagerV1,
+        _event: wp_fractional_scale_manager_v1::Event,
+        _: &(),
+        _: &Connection,
+        _: &QueueHandle<Self>,
+    ) {
+    }
+}
+
+// ── Public API ────────────────────────────────────────────────────────────────
+
+/// Connect to the Wayland compositor, bind all required globals, and return
+/// the populated [`WaylandState`] with the live [`EventQueue`].
+///
+/// Mirrors the C startup sequence in `src/main.c`:
+/// 1. `wl_display_connect(NULL)` — open compositor socket.
+/// 2. Attach registry listener.
+/// 3. **First roundtrip** — `registry_global` fires; globals are bound.
+/// 4. **Second roundtrip** — output listeners fire; scale/mode/name available.
+///
+/// # Errors
+///
+/// Returns [`Error::Wayland`] if the compositor cannot be reached or a
+/// required global (`wl_compositor`, `wl_shm`, `wl_seat`,
+/// `zwlr_layer_shell_v1`) is absent.
+pub fn connect() -> Result<(WaylandState, EventQueue<WaylandState>)> {
     let connection = Connection::connect_to_env().map_err(|e| Error::Wayland(e.to_string()))?;
-    Ok(WaylandConnection { connection })
+    tracing::debug!("Connected to Wayland display");
+
+    let mut event_queue: EventQueue<WaylandState> = connection.new_event_queue();
+    let qh = event_queue.handle();
+    connection.display().get_registry(&qh, ());
+
+    let mut state = WaylandState::new(connection);
+
+    tracing::debug!("First roundtrip: binding globals");
+    event_queue
+        .roundtrip(&mut state)
+        .map_err(|e| Error::Wayland(e.to_string()))?;
+    tracing::debug!("First roundtrip done");
+
+    tracing::debug!("Second roundtrip: receiving output info");
+    event_queue
+        .roundtrip(&mut state)
+        .map_err(|e| Error::Wayland(e.to_string()))?;
+    tracing::debug!("Second roundtrip done");
+
+    // Validate required globals — mirrors C's abort-on-missing behaviour.
+    if state.compositor.is_none() {
+        return Err(Error::Wayland("wl_compositor not advertised".into()));
+    }
+    if state.shm.is_none() {
+        return Err(Error::Wayland("wl_shm not advertised".into()));
+    }
+    if state.seat.is_none() {
+        return Err(Error::Wayland("wl_seat not advertised".into()));
+    }
+    if state.layer_shell.is_none() {
+        return Err(Error::Wayland(
+            "zwlr_layer_shell_v1 not advertised (is this a wlroots compositor?)".into(),
+        ));
+    }
+
+    tracing::debug!(
+        "Globals ready — compositor: ✓  shm: ✓  seat: ✓  layer_shell: ✓  \
+         viewporter: {}  fractional_scale: {}  outputs: {}",
+        state.viewporter.is_some(),
+        state.fractional_scale_manager.is_some(),
+        state.outputs.len(),
+    );
+
+    Ok((state, event_queue))
 }
