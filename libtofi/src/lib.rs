@@ -27,6 +27,8 @@ pub mod lock;
 #[cfg(feature = "renderer")]
 pub mod renderer;
 #[cfg(feature = "wayland")]
+pub mod shm;
+#[cfg(feature = "wayland")]
 pub mod wayland;
 
 /// Placeholder until real APIs land; keeps the workspace linked and compiling.

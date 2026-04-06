@@ -1,28 +1,15 @@
-//! Layer surface creation and the inline SHM solid-color buffer for Step 4.3.
-//!
-//! The SHM allocation here (one buffer, `memfd_create` + `mmap`) will be
-//! extracted into [`crate::shm`] in Step 4.4.
+//! Layer surface creation and double-buffered SHM presentation.
 //!
 //! # C reference
 //!
 //! `src/main.c` layer setup (~line 1524), `src/surface.c` `surface_init` /
 //! `surface_draw`, `src/shm.c` `shm_allocate_file`.
 
-use std::ffi::{CString, c_void};
-use std::num::NonZeroUsize;
-use std::os::unix::io::{AsFd, OwnedFd};
-use std::ptr::NonNull;
-
-use nix::sys::memfd::{MemFdCreateFlag, memfd_create};
-use nix::sys::mman::{MapFlags, ProtFlags, mmap, munmap};
-use nix::unistd::ftruncate;
-use wayland_client::{
-    EventQueue, QueueHandle,
-    protocol::{wl_buffer, wl_shm, wl_shm_pool, wl_surface},
-};
+use wayland_client::{EventQueue, QueueHandle, protocol::wl_surface};
 use wayland_protocols_wlr::layer_shell::v1::client::{zwlr_layer_shell_v1, zwlr_layer_surface_v1};
 
 use crate::color::Color;
+use crate::shm::ShmPool;
 use crate::{Error, Result};
 
 use super::WaylandState;
@@ -53,42 +40,6 @@ pub struct SurfaceConfig {
     pub output: Option<super::OutputInfo>,
 }
 
-// ── ShmMmap ───────────────────────────────────────────────────────────────────
-
-/// RAII wrapper for a `mmap`-ed region; calls `munmap` on drop.
-///
-/// Will be replaced by a proper `libtofi::shm::ShmPool` in Step 4.4.
-struct ShmMmap {
-    ptr: NonNull<c_void>,
-    len: usize,
-}
-
-impl Drop for ShmMmap {
-    fn drop(&mut self) {
-        // SAFETY: ptr/len came from a successful `mmap` call and are only
-        // freed here.
-        unsafe { munmap(self.ptr, self.len).ok() };
-    }
-}
-
-// SAFETY: the mapped memory is only used from a single thread and freed in Drop.
-unsafe impl Send for ShmMmap {}
-unsafe impl Sync for ShmMmap {}
-
-// ── SurfaceShm ────────────────────────────────────────────────────────────────
-
-/// SHM resources backing the visible surface buffer.
-///
-/// Holds the wayland pool+buffer proxies and the CPU-side mapped memory.
-/// Step 4.4 will extract this into `libtofi::shm`.
-struct SurfaceShm {
-    _pool: wl_shm_pool::WlShmPool,
-    #[allow(dead_code)]
-    buffer: wl_buffer::WlBuffer,
-    #[allow(dead_code)]
-    mmap: ShmMmap,
-}
-
 // ── SurfaceState ──────────────────────────────────────────────────────────────
 
 /// Live Wayland surface state for the launcher window.
@@ -104,57 +55,37 @@ pub struct SurfaceState {
     pub height: u32,
     /// `true` once `ack_configure` has been sent.
     pub configured: bool,
-    /// SHM buffer; `None` until after the configure roundtrip.
-    shm: Option<SurfaceShm>,
+    /// Double-buffered SHM pool; `None` until after the configure roundtrip.
+    ///
+    /// C reference: `shm_pool_fd`, `shm_pool_data`, `buffers[2]` in `struct surface`.
+    pub(super) shm: Option<ShmPool<WaylandState>>,
+    /// Index of the buffer currently being written (0 or 1).
+    ///
+    /// C reference: `surface->index` in `src/surface.c`.
+    pub(super) index: usize,
 }
 
 // ── Internal helpers ──────────────────────────────────────────────────────────
 
-/// Allocate a `memfd_create`-based shared memory file of `size` bytes.
+/// Fill an ARGB8888 byte buffer with a solid colour.
 ///
-/// C reference: `shm_allocate_file` in `src/shm.c` (Linux branch).
-fn alloc_shm_fd(size: usize) -> Result<OwnedFd> {
-    let name = CString::new("wl_shm").expect("static CStr");
-    let fd = memfd_create(&name, MemFdCreateFlag::MFD_CLOEXEC)
-        .map_err(|e| Error::Wayland(format!("memfd_create: {e}")))?;
-    ftruncate(&fd, size as i64).map_err(|e| Error::Wayland(format!("ftruncate: {e}")))?;
-    Ok(fd)
-}
-
-/// Map `fd` into process address space for read+write.
-fn mmap_fd(fd: &OwnedFd, size: usize) -> Result<ShmMmap> {
-    let len = NonZeroUsize::new(size).expect("non-zero size");
-    // SAFETY: fd is valid, size matches ftruncate, MAP_SHARED is correct for shm.
-    let ptr: NonNull<c_void> = unsafe {
-        mmap(
-            None,
-            len,
-            ProtFlags::PROT_READ | ProtFlags::PROT_WRITE,
-            MapFlags::MAP_SHARED,
-            fd.as_fd(),
-            0,
-        )
-        .map_err(|e| Error::Wayland(format!("mmap: {e}")))?
-    };
-    Ok(ShmMmap { ptr, len: size })
-}
-
-/// Fill an ARGB8888 buffer with a solid colour.
-fn fill_argb8888(mmap: &ShmMmap, pixels: usize, color: Color) {
+/// `buf` must be a multiple of 4 bytes (one u32 per pixel).
+fn fill_argb8888(buf: &mut [u8], color: Color) {
     let a = (color.a * 255.0) as u8;
     let r = (color.r * 255.0) as u8;
     let g = (color.g * 255.0) as u8;
     let b = (color.b * 255.0) as u8;
-    let pixel = (a as u32) << 24 | (r as u32) << 16 | (g as u32) << 8 | b as u32;
-    // SAFETY: ptr is a valid mmap of at least `pixels * 4` bytes.
-    let slice = unsafe { std::slice::from_raw_parts_mut(mmap.ptr.as_ptr() as *mut u32, pixels) };
-    slice.fill(pixel);
+    let pixel = (a as u32) << 24 | (r as u32) << 16 | (g as u32) << 8 | (b as u32);
+    let bytes = pixel.to_ne_bytes();
+    for chunk in buf.chunks_exact_mut(4) {
+        chunk.copy_from_slice(&bytes);
+    }
 }
 
 // ── Public API ────────────────────────────────────────────────────────────────
 
-/// Create the launcher layer surface, allocate a solid-color SHM buffer, and
-/// commit it so the window becomes visible.
+/// Create the launcher layer surface, allocate a double-buffered SHM pool, and
+/// commit the first frame so the window becomes visible.
 ///
 /// After this call [`WaylandState::surface`] is populated and the window is on
 /// screen.  Run [`EventQueue::blocking_dispatch`] until [`WaylandState::closed`].
@@ -221,6 +152,7 @@ pub fn create_surface(
         height: cfg.height,
         configured: false,
         shm: None,
+        index: 0,
     });
 
     // Commit without a buffer to trigger the configure event.
@@ -247,46 +179,66 @@ pub fn create_surface(
     let (width, height) = state.surface.as_ref().map(|s| (s.width, s.height)).unwrap();
     tracing::debug!("Configured at {width}×{height}");
 
-    // ── 4. Allocate SHM buffer with the confirmed dimensions ──────────────────
-    let stride = width as usize * 4; // ARGB8888: 4 bytes/pixel
-    let pool_size = stride * height as usize;
-
-    let fd = alloc_shm_fd(pool_size)?;
-    let mmap = mmap_fd(&fd, pool_size)?;
-    fill_argb8888(&mmap, (width * height) as usize, bg);
-    tracing::debug!("SHM pool: {} KiB ({width}×{height})", pool_size / 1024);
-
-    let shm = state
+    // ── 4. Allocate double-buffered SHM pool ──────────────────────────────────
+    // C: surface_init in src/surface.c
+    let wl_shm = state
         .shm
         .as_ref()
         .ok_or_else(|| Error::Wayland("wl_shm missing".into()))?;
-    let pool: wl_shm_pool::WlShmPool = shm.create_pool(fd.as_fd(), pool_size as i32, &qh, ());
-    let buffer: wl_buffer::WlBuffer = pool.create_buffer(
-        0,
-        width as i32,
-        height as i32,
-        stride as i32,
-        wl_shm::Format::Argb8888,
-        &qh,
-        (),
-    );
+    let mut pool = ShmPool::new(wl_shm, &qh, width, height)?;
 
-    // ── 5. Attach, damage, commit ─────────────────────────────────────────────
-    wl_surface.attach(Some(&buffer), 0, 0);
-    wl_surface.damage_buffer(0, 0, i32::MAX, i32::MAX);
-    wl_surface.commit();
+    // Pre-fill both buffers with the background colour.
+    fill_argb8888(pool.data_mut(0), bg);
+    fill_argb8888(pool.data_mut(1), bg);
 
-    // Store the SHM resources so they live as long as the surface.
-    state.surface.as_mut().unwrap().shm = Some(SurfaceShm {
-        _pool: pool,
-        buffer,
-        mmap,
-    });
+    state.surface.as_mut().unwrap().shm = Some(pool);
+
+    // ── 5. First draw ─────────────────────────────────────────────────────────
+    // C: surface_draw in src/surface.c
+    draw(state)?;
 
     event_queue
         .flush()
         .map_err(|e| Error::Wayland(e.to_string()))?;
     tracing::debug!("Surface committed — window should now be visible");
+
+    Ok(())
+}
+
+/// Present the current buffer and flip to the next one.
+///
+/// Ports `surface_draw` from `src/surface.c`:
+/// - attach the current buffer
+/// - damage the entire surface
+/// - commit
+/// - flip `index`
+///
+/// The caller is responsible for filling [`SurfaceState::shm`]`::data_mut(index)`
+/// with rendered pixel data before calling `draw`.
+///
+/// # C reference
+///
+/// `surface_draw` in `src/surface.c`.
+pub fn draw(state: &mut WaylandState) -> Result<()> {
+    let surface = state
+        .surface
+        .as_mut()
+        .ok_or_else(|| Error::Wayland("no surface".into()))?;
+    let shm = surface
+        .shm
+        .as_ref()
+        .ok_or_else(|| Error::Wayland("SHM pool not initialised".into()))?;
+
+    // C: wl_surface_attach(surface->wl_surface, surface->buffers[surface->index], 0, 0)
+    surface
+        .wl_surface
+        .attach(Some(shm.buffer(surface.index)), 0, 0);
+    // C: wl_surface_damage_buffer(surface->wl_surface, 0, 0, INT32_MAX, INT32_MAX)
+    surface.wl_surface.damage_buffer(0, 0, i32::MAX, i32::MAX);
+    // C: wl_surface_commit(surface->wl_surface)
+    surface.wl_surface.commit();
+    // C: surface->index = !surface->index
+    surface.index ^= 1;
 
     Ok(())
 }
