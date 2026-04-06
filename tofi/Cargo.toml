@@ -1,0 +1,11 @@
+[package]
+name = "tofi-rs"
+version = "0.1.0"
+edition.workspace = true
+
+[[bin]]
+name = "tofi"
+path = "src/main.rs"
+
+[dependencies]
+libtofi-rs = { path = "../libtofi" }

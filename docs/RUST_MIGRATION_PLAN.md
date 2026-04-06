@@ -343,7 +343,7 @@ Each step: **Goal** · **Scope** · **Deliverables** · **Verification** · **C 
 
 ### Phase 0 — Workspace bootstrap
 
-- [ ] **Step 0.1 — Empty workspace compiles**
+- [x] **Step 0.1 — Empty workspace compiles**
   - **Goal:** Tooling baseline.
   - **Scope:** Add root `Cargo.toml` `[workspace]` with members `libtofi`, `tofi` (paths **without** a `crates/` segment).
   - **Deliverables:** `libtofi` is a library crate with `pub fn noop()` or similar; `tofi` binary calls it.
@@ -696,6 +696,7 @@ These are **not** required to declare the C→Rust migration “done” for §5.
 
 ### Revision history
 
+- **2026-04-06:** **Phase 0 Step 0.1** complete — empty workspace (`libtofi-rs` + `tofi-rs`), §6 checkbox.
 - **2026-04-06:** **§1 / §5–6 / §10:** Playbook priority — **read plan → implement → update plan**; intro + **Step 0.1** verification include **§5.2** fmt/clippy; **§5.2** clarifies tests required **after Step 0.5**; **Step 0.2** deliverables/verification include **Meson CI removal**; fix **Step 9.2** typo; **§10** — re-read for contradictions after policy changes.
 - **2026-04-06:** **§2.2:** CI **`uses:`** pins — **major only** (`x`), not **`x.y`** / patch; contrast **§2.1** **`Cargo.toml`** **`x.y`**.
 - **2026-04-06:** **§2.1:** **`Cargo.toml`** dependency versions prefer **`x.y`** over **`x.y.z`** (exact pins in **`Cargo.lock`**); **§2.2** Dependabot note cross-links. Simplifies upgrades and Dependabot PRs.
