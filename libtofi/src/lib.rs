@@ -9,7 +9,6 @@
 //! | `drun` | `.desktop` scanning / `tofi-drun` |
 //! | `run-commands` | Cached `$PATH` executable list for `tofi-run` |
 //! | `clipboard` | Paste (`wayland::clipboard`; implies **`wayland`**) |
-//! | `history` | History file |
 //! | `single-instance-lock` | Single-instance lock file |
 //!
 //! With `--no-default-features`, only [`noop`] is guaranteed; optional modules are omitted.
@@ -24,8 +23,6 @@ pub mod unicode;
 
 #[cfg(feature = "drun")]
 pub mod drun;
-#[cfg(feature = "history")]
-pub mod history;
 #[cfg(feature = "single-instance-lock")]
 pub mod lock;
 #[cfg(feature = "renderer")]

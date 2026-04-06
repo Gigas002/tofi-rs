@@ -3,6 +3,9 @@
 mod cli;
 #[allow(dead_code)]
 mod config;
+#[cfg(feature = "history")]
+#[allow(dead_code)]
+mod history;
 
 use clap::Parser as _;
 

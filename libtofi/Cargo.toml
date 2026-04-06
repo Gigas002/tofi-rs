@@ -14,7 +14,6 @@ default = [
     "renderer",
     "drun",
     "clipboard",
-    "history",
     "single-instance-lock",
     "run-commands",
 ]
@@ -24,5 +23,4 @@ drun = []
 run-commands = []
 # Paste implementation lives under `wayland::clipboard`; enabling implies `wayland`.
 clipboard = ["wayland"]
-history = []
 single-instance-lock = []
