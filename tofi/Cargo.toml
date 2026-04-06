@@ -8,4 +8,5 @@ name = "tofi"
 path = "src/main.rs"
 
 [dependencies]
+clap = { version = "4", features = ["derive"] }
 libtofi-rs = { path = "../libtofi" }

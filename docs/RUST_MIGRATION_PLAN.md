@@ -73,7 +73,8 @@ tofi/
   tofi/
     Cargo.toml               # package `name = "tofi-rs"`; **[features]** mirror §4.1 (each forwards to `libtofi-rs/…`); binary name `tofi` via [[bin]] name = "tofi"
     src/main.rs
-    src/…                    # optional: extra modules + per-module tests.rs as CLI grows
+    src/cli.rs               # `clap` types only (params + parse); **main** runs operations
+    src/…                    # optional: further modules + per-module tests.rs as CLI grows
     tests/                   # **required:** CLI integration tests (`cargo test -p tofi-rs`; see §5.3)
   examples/
     config/                  # canonical **app config** fixture(s); **do not** mix with themes (Phase 9.4)
@@ -359,9 +360,9 @@ Each step: **Goal** · **Scope** · **Deliverables** · **Verification** · **C 
   - **C reference:** N/A
   - **Notes:** **Remove** legacy **Meson-only** CI in the **same** PR as the new Rust workflows (§2.2)—no parallel C/Rust CI. Optional: `paths:` filters on Rust workflows so purely-docs commits skip heavy jobs—do **not** ignore paths that contain **`Cargo.toml`** / **`Cargo.lock`** / Rust **`src/`**. **`cargo deny`** is **out of scope** for this step (§9).
 
-- [ ] **Step 0.3 — CLI version and metadata**
+- [x] **Step 0.3 — CLI version and metadata**
   - **Goal:** User-visible identity for the Rust port.
-  - **Scope:** `clap` (derive) or minimal `std::env` for `--version` / `--help`; version from `CARGO_PKG_VERSION`.
+  - **Scope:** **`clap` (derive)** for `--version` / `--help` and the binary name; version from `CARGO_PKG_VERSION` (via `clap`’s `version`). **Do not** use `std::env` for CLI options—**no** environment-variable mapping for flags (do **not** use `#[arg(env = …)]`); config files and argv only, consistent with not inventing `TOFI_*` overrides.
   - **Deliverables:** `tofi --version` prints version; help text stub.
   - **Verification:** `cargo run -p tofi-rs -- --version`
   - **C reference:** [`src/main.c`](../src/main.c) `usage()` (expand later).
@@ -696,6 +697,8 @@ These are **not** required to declare the C→Rust migration “done” for §5.
 
 ### Revision history
 
+- **2026-04-06:** **`tofi` layout:** **`cli.rs`** = `clap` params/parsing only; **`main.rs`** = run operations after **`Cli::parse()`** (§2 repo layout).
+- **2026-04-06:** **Phase 0 Step 0.3** — `clap` **4** (`--version` / `--help`), argv-only (no env var mapping for options); §6 checkbox.
 - **2026-04-06:** Typos config file: **`_typos.toml`** → **`.typos.toml`** (same contents).
 - **2026-04-06:** **Phase 0 Step 0.2** — Rust CI (`build.yml`, `fmt-clippy.yml`, `test.yml`, `typos.yml`, idle `deploy.yml`), **`dependabot.yml`**, **`.typos.toml`** (exclude legacy trees); removed Meson **`build-test.yml`**; §6 checkbox.
 - **2026-04-06:** **Phase 0 Step 0.1** complete — empty workspace (`libtofi-rs` + `tofi-rs`), §6 checkbox.
