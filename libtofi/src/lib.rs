@@ -17,6 +17,7 @@
 pub mod error;
 pub use error::{Error, Result};
 
+pub mod color;
 pub mod unicode;
 
 #[cfg(feature = "drun")]

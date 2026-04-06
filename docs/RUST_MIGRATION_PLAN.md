@@ -416,7 +416,7 @@ Each step: **Goal** · **Scope** · **Deliverables** · **Verification** · **C 
   - **C reference:** [`src/unicode.c`](../src/unicode.c)
   - **Notes:** Mirror `MAX_INPUT_LENGTH`-style limits as constants.
 
-- [ ] **Step 1.3 — Color parsing**
+- [x] **Step 1.3 — Color parsing**
   - **Goal:** Theme colors as in [`src/color.c`](../src/color.c).
   - **Scope:** Parse config color strings into linear/sRGB as C does.
   - **Deliverables:** `libtofi::color` with `Color` type and `color/tests.rs`.
@@ -711,6 +711,7 @@ These are **not** required to declare the C→Rust migration “done” for §5.
 
 ### Revision history
 
+- **2026-04-06:** **Phase 1 Step 1.3** — `libtofi::color` module (`color/mod.rs` + `color/tests.rs`, 19 tests); no new dependencies — pure stdlib `u32::from_str_radix`; `Color { r, g, b, a: f32 }` with `from_hex` + `FromStr`; formats: RGB/RGBA (nibble-expanded) and RRGGBB/RRGGBBAA, optional `#`; §6 checkbox.
 - **2026-04-06:** **Phase 1 Step 1.2** — `libtofi::unicode` module (`unicode/mod.rs` + `unicode/tests.rs`, 54 tests); `unicode-normalization = "0.1"` added to `libtofi/Cargo.toml`; stdlib covers UTF-8↔UTF-32, classification, validation — crate used only for NFC (`utf8_normalize`, `utf8_compose`); `MAX_INPUT_LENGTH = 256` constant; §6 checkbox.
 - **2026-04-06:** **Phase 1 Step 1.1** — `libtofi::Error` (`thiserror` enum: `Io`, `Utf8`, `InvalidValue`, `NotSupported`, `#[cfg(feature="wayland")] Wayland` placeholder) + `Result<T>` alias in `libtofi/src/error.rs`; `pub use` from `lib.rs`; `thiserror = "2"` added to `libtofi/Cargo.toml`; §6 checkbox.
 - **2026-04-06:** **§3.3:** **`wl-clipboard-rs`** vs C-style **`wl_data_device`** paste — both valid behind **`wayland::clipboard`**; tradeoffs documented.
