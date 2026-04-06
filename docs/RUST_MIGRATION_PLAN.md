@@ -423,7 +423,7 @@ Each step: **Goal** · **Scope** · **Deliverables** · **Verification** · **C 
   - **Verification:** `cargo test -p libtofi-rs`
   - **C reference:** [`src/color.c`](../src/color.c)
 
-- [ ] **Step 1.4 — String tables**
+- [x] **Step 1.4 — String tables**
   - **Goal:** Replace [`src/string_vec.c`](../src/string_vec.c) patterns with idiomatic `Vec`/`SmallVec`/`String` while keeping deterministic ordering for results.
   - **Deliverables:** `libtofi::string_table` (name as you prefer) + `string_table/tests.rs`.
   - **Verification:** `cargo test -p libtofi-rs`
@@ -711,6 +711,7 @@ These are **not** required to declare the C→Rust migration “done” for §5.
 
 ### Revision history
 
+- **2026-04-06:** **Phase 1 Step 1.4** — `libtofi::string_table` module (`string_table/mod.rs` + `string_table/tests.rs`, 27 tests); `StringVec` (owned, NFC-normalizes on add) + `StringRefVec<'a>` (borrowed); `filter` takes `Fn(&str) -> Option<i32>` to decouple from matching (Step 1.5); `apply_history_scores` takes `&HashMap<&str, i32>` to decouple from history (Step 3.1); no new dependencies; §6 checkbox.
 - **2026-04-06:** **Phase 1 Step 1.3** — `libtofi::color` module (`color/mod.rs` + `color/tests.rs`, 19 tests); no new dependencies — pure stdlib `u32::from_str_radix`; `Color { r, g, b, a: f32 }` with `from_hex` + `FromStr`; formats: RGB/RGBA (nibble-expanded) and RRGGBB/RRGGBBAA, optional `#`; §6 checkbox.
 - **2026-04-06:** **Phase 1 Step 1.2** — `libtofi::unicode` module (`unicode/mod.rs` + `unicode/tests.rs`, 54 tests); `unicode-normalization = "0.1"` added to `libtofi/Cargo.toml`; stdlib covers UTF-8↔UTF-32, classification, validation — crate used only for NFC (`utf8_normalize`, `utf8_compose`); `MAX_INPUT_LENGTH = 256` constant; §6 checkbox.
 - **2026-04-06:** **Phase 1 Step 1.1** — `libtofi::Error` (`thiserror` enum: `Io`, `Utf8`, `InvalidValue`, `NotSupported`, `#[cfg(feature="wayland")] Wayland` placeholder) + `Result<T>` alias in `libtofi/src/error.rs`; `pub use` from `lib.rs`; `thiserror = "2"` added to `libtofi/Cargo.toml`; §6 checkbox.

@@ -57,7 +57,7 @@ impl Color {
                     "invalid color length {} in {:?}",
                     hex.len(),
                     s
-                )))
+                )));
             }
         };
 
@@ -82,9 +82,8 @@ impl FromStr for Color {
 
 /// Parse a hex string into a `u32`, returning `InvalidValue` on failure.
 fn parse_hex(s: &str) -> Result<u32> {
-    u32::from_str_radix(s, 16).map_err(|_| {
-        Error::InvalidValue(format!("invalid hex digits in color {:?}", s))
-    })
+    u32::from_str_radix(s, 16)
+        .map_err(|_| Error::InvalidValue(format!("invalid hex digits in color {:?}", s)))
 }
 
 /// Expand `n` nibbles (each doubled) into a `u32`.
@@ -96,9 +95,9 @@ fn expand_nibbles(s: &str, n: usize) -> Result<u32> {
         if i >= n {
             break;
         }
-        let nibble = ch.to_digit(16).ok_or_else(|| {
-            Error::InvalidValue(format!("invalid hex digit {:?} in color", ch))
-        })?;
+        let nibble = ch
+            .to_digit(16)
+            .ok_or_else(|| Error::InvalidValue(format!("invalid hex digit {:?} in color", ch)))?;
         val = (val << 8) | (nibble << 4) | nibble;
     }
     Ok(val)
