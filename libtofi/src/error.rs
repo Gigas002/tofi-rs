@@ -32,6 +32,11 @@ pub enum Error {
     #[error("Invalid value: {0}")]
     InvalidValue(String),
 
+    /// A Cairo / Pango rendering error (feature **`renderer`**).
+    #[cfg(feature = "renderer")]
+    #[error("Renderer error: {0}")]
+    Renderer(String),
+
     /// An operation is not supported in the current build configuration.
     #[error("Not supported: {0}")]
     NotSupported(String),

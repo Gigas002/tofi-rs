@@ -78,6 +78,47 @@ fn main() {
         )
         .expect("Failed to create layer surface");
 
+        // Step 5.1 — draw "hello" into the back buffer using Cairo + Pango.
+        #[cfg(feature = "renderer")]
+        {
+            use libtofi_rs::renderer::Renderer;
+
+            // After create_surface the front buffer (index 0) is on screen and
+            // `surface.index` points to the back buffer (1).  We draw "hello"
+            // into the back buffer, flush it, then commit it to the compositor.
+            let (data_ptr, phys_w, phys_h) = {
+                let surf = state.surface.as_mut().expect("surface must exist");
+                let shm = surf.shm.as_mut().expect("SHM pool must exist");
+                let idx = surf.index;
+                let ptr = shm.data_mut(idx).as_mut_ptr();
+                (ptr, surf.phys_width, surf.phys_height)
+            };
+
+            // Effective scale: prefer fractional, fall back to integer × 120.
+            let scale_num = if state.fractional_scale != 0 {
+                state.fractional_scale
+            } else {
+                let int_scale = state.outputs.first().map(|o| o.scale).unwrap_or(1);
+                (int_scale as u32) * 120
+            };
+
+            // SAFETY: data_ptr points into the ShmPool mapping which is alive
+            // for the duration of this block; we drop the Renderer before
+            // calling draw() so Cairo has no reference to the buffer at commit.
+            let renderer =
+                unsafe { Renderer::create_for_data(data_ptr, phys_w, phys_h, scale_num) }
+                    .expect("Failed to create renderer");
+            renderer.draw_hello();
+            renderer.flush();
+            drop(renderer);
+
+            // Commit the drawn frame.
+            libtofi_rs::wayland::surface::draw(&mut state)
+                .expect("Failed to commit rendered frame");
+            event_queue.flush().expect("Wayland flush failed");
+            tracing::debug!("Step 5.1: 'hello' frame committed");
+        }
+
         // Step 4.3 event loop: dispatch until the compositor closes the surface.
         // ESC / keyboard input wired in Step 6.1.
         tracing::debug!("Entering event loop");

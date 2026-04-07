@@ -481,7 +481,7 @@ Each step: **Goal** · **Scope** · **Deliverables** · **Verification** · **C 
 
 - [x] **Step 3.2 — Single-instance lock** (`feature = "single-instance-lock"`)
   - **Goal:** Same `flock` behavior as [`src/lock.c`](../src/lock.c).
-  - **Deliverables:** `libtofi::lock` using `nix::fcntl::Flock` (RAII, no `unsafe`). `fs2` and `libc` were considered but rejected — `nix` is already a dependency, provides a safe API, and will be reused in Phase 4+ (SHM, `memfd_create`, etc.).
+  - **Deliverables:** `libtofi::lock` using `nix::fcntl::Flock` (RAII, no `unsafe`). `fs2` and `libc` were considered but rejected — `nix` is already a dependency, provides a safe API, and will be reused in Phase 4+ (SHM, `memfd_create`, etc.). **Planned replacement:** `nix` → `rustix` in **Step 8.5**.
   - **Verification:** Run two instances; second exits when `multi-instance` false.
   - **C reference:** [`src/lock.c`](../src/lock.c)
 
@@ -535,7 +535,7 @@ Each step: **Goal** · **Scope** · **Deliverables** · **Verification** · **C 
 
 ### Phase 5 — Rendering (Cairo / Pango / HarfBuzz) — **implementation in `libtofi-rs`, UI wiring in `tofi-rs`**
 
-- [ ] **Step 5.1 — Cairo bind to SHM**
+- [x] **Step 5.1 — Cairo bind to SHM**
   - **Goal:** Create `cairo::ImageSurface` from mapped buffer (ARGB) in **`libtofi-rs`**; draw simple text “hello” with Pango.
   - **Deliverables:** **`libtofi::renderer`** (or `entry` submodule); feature **`renderer`**; **`cargo test -p libtofi-rs`** where possible.
   - **Verification:** Visual
@@ -615,6 +615,16 @@ Each step: **Goal** · **Scope** · **Deliverables** · **Verification** · **C 
 - [ ] **Step 8.4 — Release hardening**
   - **Goal:** `deny(unsafe_code)` where possible; document `unsafe` blocks for FFI; CI must already enforce **`cargo clippy -- -D warnings`** and **`cargo test --workspace`** (Phase 0 Step 0.2, §2.2). Use §9 for **`cargo deny`**, **deploy**, and other **late** automation (coverage gates, etc.).
   - **Verification:** CI green
+
+- [ ] **Step 8.5 — Replace `nix` with `rustix`**
+  - **Goal:** Swap the `nix` crate for [`rustix`](https://crates.io/crates/rustix) across all `libtofi-rs` (and any `tofi-rs`) usage sites. `rustix` exposes a **safe**, ergonomic POSIX API without the broad `unsafe` surface that `nix` carries; it is actively maintained and widely adopted in the Wayland/wlroots ecosystem (e.g. Smithay).
+  - **Scope:** All call sites that currently import `nix`:
+    - `libtofi::shm` — `memfd_create`, `ftruncate`, `mmap`, `munmap`  (feature **`wayland`**)
+    - `libtofi::lock` — `fcntl::Flock` (feature **`single-instance-lock`**)
+    - Any future uses added during Phases 5–7.
+  - **Deliverables:** `nix` removed from `libtofi/Cargo.toml` (and `tofi/Cargo.toml` if used there); replaced with `rustix` (appropriate `features = [...]` per call site — e.g. `"fs"`, `"mm"`, `"process"`); all existing tests still pass; no new `unsafe` blocks introduced by the migration (the goal is to reduce or eliminate them).
+  - **Verification:** `grep -r 'nix::' libtofi/src/ tofi/src/` returns empty; **`cargo test --workspace`** green; **`cargo clippy --all-features -- -D warnings`** clean.
+  - **Notes:** `rustix` uses a feature-per-subsystem model — only enable what you need to keep compile times low. Consult the [rustix docs](https://docs.rs/rustix) for the exact feature flags corresponding to `memfd_create` (`"fs"`), `mmap` (`"mm"`), `flock` (`"fs"`), etc. Do **not** rush this into earlier phases — `nix` is correct and functional; this is a polish/polish-debt step.
 
 ---
 
@@ -728,6 +738,8 @@ These are **not** required to declare the C→Rust migration “done” for §5.
 
 ### Revision history
 
+- **2026-04-07:** **Step 8.5 — Replace `nix` with `rustix`** — new Phase 8 step added; scope: `libtofi::shm` (`memfd_create`/`mmap`/`munmap`/`ftruncate`) + `libtofi::lock` (`fcntl::Flock`) + any future Phase 5–7 `nix` additions; deliverable: `nix` removed from both crates' `Cargo.toml`, replaced with `rustix` feature-scoped deps; cross-reference added to Step 3.2 deliverables note.
+- **2026-04-07:** **Phase 5 Step 5.1** — `libtofi::renderer` module (`renderer/mod.rs` + `renderer/tests.rs`, 3 tests); `Renderer` struct wraps `cairo::ImageSurface` (ARGB32, backed by raw SHM pointer via `create_for_data_unsafe`) + `cairo::Context`; `set_device_scale(scale, scale)` for HiDPI; `draw_hello()` fills black background and renders centered "hello" via `pangocairo::functions::{create_layout, show_layout}` with a 24pt sans-serif `pango::FontDescription`; `flush()` calls `cairo_surface_flush`; `Renderer::create_for_data` is `unsafe` (raw pointer contract); `Error::Renderer(String)` variant added behind `#[cfg(feature = "renderer")]`; `cairo-rs = "0.22"`, `pango = "0.22"`, `pangocairo = "0.22"` added to `libtofi-rs` as optional deps behind `renderer` feature; `SurfaceState::shm` + `index` made `pub` so `main.rs` can access the back buffer; `tofi/src/main.rs` draws "hello" into the back buffer after `create_surface`, drops `Renderer`, then commits via `surface::draw`; §6 checkbox.
 - **2026-04-07:** **Architecture fix (post-4.5)** — `libtofi::scale` was incorrectly placed as an unconditional top-level module; moved to `libtofi::wayland::scale` (gated by `wayland` feature) since `scale_apply`/`scale_apply_inverse` are Wayland protocol-specific (denominator-120 encoding); `surface.rs` import updated to `super::scale::scale_apply`; §1.3 table maps `src/scale.c` → `libtofi::util` (future) but wayland placement is correct while `util` doesn't exist. Added Plan Steps 9.7 (strip C/phase migration comments from source) and 9.8 (refactor `tofi-rs` CLI into focused modules).
 - **2026-04-07:** **Phase 4 Step 4.5** — `libtofi::scale` module (`scale.rs`): `scale_apply(base, scale)` and `scale_apply_inverse(base, scale)` port `src/scale.c` (denominator-120 fractional encoding, 1e-6 bias before round); 8 unit tests; `pub mod scale` added unconditionally to `lib.rs`; `OutputInfo` gains `transform: wl_output::Transform` (default `Normal`); `wl_output` Dispatch: `Mode` event now filters by `Current` bitflag (`WEnum::Value` pattern guard), `Geometry` event stores transform; `WaylandState` gains `fractional_scale: u32` (0 = not set); `Dispatch<WpFractionalScaleV1, ()>` impl stores `preferred_scale` from `wp_fractional_scale_v1::Event::PreferredScale`; `Dispatch<WpViewport, ()>` no-op impl added; `surface.rs` refactored: `SurfaceState` gains `phys_width`/`phys_height`/`viewport: Option<WpViewport>`; `create_surface` attaches `wp_fractional_scale_v1` before commit, creates `wp_viewport` if viewporter available, computes `effective_scale` (fractional if set else `int_scale×120`), calls `scale_apply` for physical SHM dims, sets viewport destination to logical size, warns + calls `set_buffer_scale` for zero-size or no-viewporter cases; `OutputTransform` re-exported from `libtofi::wayland`; `main.rs` swaps `out_w`/`out_h` for rotated transforms; §6 checkbox.
 - **2026-04-07:** **Phase 4 Step 4.4** — `libtofi::shm` module (`libtofi/src/shm/mod.rs`); `ShmPool<D>` generic double-buffered pool: `memfd_create` + `ftruncate` + `mmap(MAP_SHARED)` for `2 × stride × height` bytes; two `wl_buffer` proxies at offsets 0 and `frame_size`; `data_mut(index)` returns `&mut [u8]` for the given frame; `buffer(index)` returns the proxy; `Drop` calls `munmap`; `unsafe impl Send/Sync`; bounds `D: Dispatch<WlShmPool, ()> + Dispatch<WlBuffer, ()>` on `new`; `libtofi::shm` gated behind `#[cfg(feature = "wayland")]`; `wayland/surface.rs` refactored: removed inline `ShmMmap`/`SurfaceShm`/`alloc_shm_fd`/`mmap_fd` helpers, `SurfaceState` gets `shm: Option<ShmPool<WaylandState>>` + `index: usize`; `fill_argb8888` now takes `&mut [u8]`; `create_surface` pre-fills both frames then calls `draw`; new `draw(state)` ports `surface_draw` (attach current buffer → damage_buffer → commit → flip index); §6 checkbox.
