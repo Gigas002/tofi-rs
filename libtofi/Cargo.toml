@@ -16,7 +16,7 @@ wayland-protocols-wlr = { version = "0.3", features = ["client"], optional = tru
 # Renderer stack (Cairo + Pango + HarfBuzz) — §3.2, §4.1.
 # All three share the same gtk-rs minor (0.22) so version resolution is consistent.
 cairo-rs = { version = "0.22", optional = true }
-pango = { version = "0.22", optional = true }
+pango = { version = "0.22", features = ["v1_42"], optional = true }
 pangocairo = { version = "0.22", optional = true }
 
 [dev-dependencies]

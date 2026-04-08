@@ -78,23 +78,63 @@ fn main() {
         )
         .expect("Failed to create layer surface");
 
-        // Step 5.1 — draw "hello" into the back buffer using Cairo + Pango.
+        // Step 5.2 — initialise the Entry layout engine (prompt, input, results).
+        //
+        // The Entry is backed by the double-buffered SHM pool.  It draws the
+        // static border/background on construction and the text layer on every
+        // `entry.update()` call (triggered by input or selection changes).
+        //
+        // Full wiring (event-driven updates) is completed in Phase 6 once
+        // keyboard input is wired up.  Here we initialise the entry and commit
+        // the initial frame so the themed window appears on screen.
         #[cfg(feature = "renderer")]
         {
-            use libtofi_rs::renderer::Renderer;
+            use libtofi_rs::entry::{Entry, EntryConfig};
 
-            // After create_surface the front buffer (index 0) is on screen and
-            // `surface.index` points to the back buffer (1).  We draw "hello"
-            // into the back buffer, flush it, then commit it to the compositor.
-            let (data_ptr, phys_w, phys_h) = {
-                let surf = state.surface.as_mut().expect("surface must exist");
-                let shm = surf.shm.as_mut().expect("SHM pool must exist");
-                let idx = surf.index;
-                let ptr = shm.data_mut(idx).as_mut_ptr();
-                (ptr, surf.phys_width, surf.phys_height)
+            // Resolve padding UnitValues to logical pixels.
+            let entry_config = EntryConfig {
+                font_name: config.font.clone(),
+                font_size: config.font_size,
+                font_features: config.font_features.clone(),
+                font_variations: config.font_variations.clone(),
+                foreground_color: config.foreground_color,
+                background_color: config.background_color,
+                border_color: config.border_color,
+                outline_color: config.outline_color,
+                selection_highlight_color: config.selection_highlight_color,
+                corner_radius: config.corner_radius,
+                border_width: config.border_width,
+                outline_width: config.outline_width,
+                padding_top: resolve_px(&config.padding_top, height),
+                padding_bottom: resolve_px(&config.padding_bottom, height),
+                padding_left: resolve_px(&config.padding_left, width),
+                padding_right: resolve_px(&config.padding_right, width),
+                clip_to_padding: config.clip_to_padding,
+                prompt_text: config.prompt_text.clone(),
+                prompt_padding: config.prompt_padding,
+                placeholder_text: config.placeholder_text.clone(),
+                num_results: config.num_results,
+                result_spacing: config.result_spacing,
+                horizontal: config.horizontal,
+                input_width: config.min_input_width,
+                hide_input: config.hide_input,
+                hidden_character: config
+                    .hidden_character
+                    .0
+                    .map(|c| c.to_string())
+                    .unwrap_or_default(),
+                // Per-element themes — convert from tofi::config::TextTheme to
+                // libtofi_rs::entry::TextTheme.
+                prompt_theme: config_theme_to_entry(&config.prompt_theme),
+                input_theme: config_theme_to_entry(&config.input_theme),
+                placeholder_theme: config_theme_to_entry(&config.placeholder_theme),
+                default_result_theme: config_theme_to_entry(&config.default_result_theme),
+                alternate_result_theme: config_theme_to_entry(&config.alternate_result_theme),
+                selection_theme: config_theme_to_entry(&config.selection_theme),
+                cursor_theme: config_cursor_to_entry(&config.cursor_theme),
             };
 
-            // Effective scale: prefer fractional, fall back to integer × 120.
+            // Resolve effective scale.
             let scale_num = if state.fractional_scale != 0 {
                 state.fractional_scale
             } else {
@@ -102,21 +142,31 @@ fn main() {
                 (int_scale as u32) * 120
             };
 
-            // SAFETY: data_ptr points into the ShmPool mapping which is alive
-            // for the duration of this block; we drop the Renderer before
-            // calling draw() so Cairo has no reference to the buffer at commit.
-            let renderer =
-                unsafe { Renderer::create_for_data(data_ptr, phys_w, phys_h, scale_num) }
-                    .expect("Failed to create renderer");
-            renderer.draw_hello();
-            renderer.flush();
-            drop(renderer);
+            // Obtain a pointer to the full double-buffered SHM region.
+            // SAFETY: The ShmPool lives for the duration of this block; the
+            // Entry is dropped before `draw()` commits the frame.
+            let (data_ptr, phys_w, phys_h) = {
+                let surf = state.surface.as_mut().expect("surface must exist");
+                let shm = surf.shm.as_mut().expect("SHM pool must exist");
+                // data_for_entry gives a pointer to the start of both frames.
+                let ptr = shm.data_both_frames_ptr();
+                (ptr, surf.phys_width, surf.phys_height)
+            };
 
-            // Commit the drawn frame.
-            libtofi_rs::wayland::surface::draw(&mut state)
-                .expect("Failed to commit rendered frame");
+            let mut entry =
+                unsafe { Entry::new(data_ptr, phys_w, phys_h, scale_num, entry_config) }
+                    .expect("Failed to create entry");
+
+            // Populate results (from stdin / run / drun — placeholder for Phase 6.4).
+            entry.results = vec![];
+
+            entry.flush();
+            drop(entry);
+
+            // Commit the initial rendered frame.
+            libtofi_rs::wayland::surface::draw(&mut state).expect("Failed to commit entry frame");
             event_queue.flush().expect("Wayland flush failed");
-            tracing::debug!("Step 5.1: 'hello' frame committed");
+            tracing::debug!("Step 5.2: entry initial frame committed");
         }
 
         // Step 4.3 event loop: dispatch until the compositor closes the surface.
@@ -133,6 +183,40 @@ fn main() {
     }
 
     libtofi_rs::noop();
+}
+
+/// Convert a [`config::TextTheme`] to [`libtofi_rs::entry::TextTheme`].
+#[cfg(all(feature = "wayland", feature = "renderer"))]
+fn config_theme_to_entry(t: &config::TextTheme) -> libtofi_rs::entry::TextTheme {
+    libtofi_rs::entry::TextTheme {
+        foreground_color: t.foreground_color,
+        background_color: t.background_color,
+        padding: t.padding.map(|p| libtofi_rs::entry::Directional {
+            top: p.top,
+            right: p.right,
+            bottom: p.bottom,
+            left: p.left,
+        }),
+        background_corner_radius: t.background_corner_radius,
+    }
+}
+
+/// Convert a [`config::CursorTheme`] to [`libtofi_rs::entry::CursorTheme`].
+#[cfg(all(feature = "wayland", feature = "renderer"))]
+fn config_cursor_to_entry(c: &config::CursorTheme) -> libtofi_rs::entry::CursorTheme {
+    use libtofi_rs::entry::CursorStyle;
+    libtofi_rs::entry::CursorTheme {
+        color: c.color,
+        text_color: c.text_color,
+        style: match c.style {
+            config::CursorStyle::Bar => CursorStyle::Bar,
+            config::CursorStyle::Block => CursorStyle::Block,
+            config::CursorStyle::Underscore => CursorStyle::Underscore,
+        },
+        corner_radius: c.corner_radius,
+        thickness: c.thickness,
+        show: c.show,
+    }
 }
 
 /// Convert [`config::Anchor`] to [`zwlr_layer_surface_v1`] anchor bit-flags.

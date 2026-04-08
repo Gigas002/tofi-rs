@@ -542,7 +542,7 @@ Each step: **Goal** · **Scope** · **Deliverables** · **Verification** · **C 
   - **C reference:** [`src/entry.c`](../src/entry.c)
   - **Notes:** §1.4 — **drawing stack** in the library.
 
-- [ ] **Step 5.2 — Entry layout port**
+- [x] **Step 5.2 — Entry layout port**
   - **Goal:** Port [`src/entry.c`](../src/entry.c) / backends: prompt, input, list, selection, clip rect.
   - **Deliverables:** **`libtofi::entry`** + backends (pango/harfbuzz paths); **`tofi::ui`** (or `main` modules) only as needed to **define** how the running app invokes the renderer with **`TofiConfig`**.
   - **Verification:** Side-by-side screenshot compare with C (same theme file); **`cargo test`** on both crates where testable.
