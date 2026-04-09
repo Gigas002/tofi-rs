@@ -29,6 +29,12 @@ fn main() {
         let (mut state, mut event_queue) =
             libtofi_rs::wayland::connect().expect("Failed to initialize Wayland");
 
+        // Wire config options that the keyboard handler needs.
+        state.physical_keybindings = config.physical_keybindings;
+        state.auto_accept_single = config.auto_accept_single;
+        // Propagate physical_keybindings into the already-constructed KeyboardState.
+        state.keyboard_state.physical_keybindings = config.physical_keybindings;
+
         // Resolve UnitValues to pixels using the first output's dimensions.
         // Swap width/height for rotated outputs (90°/270°).
         // C reference: transform handling in src/main.c ~1427–1438.
@@ -67,7 +73,7 @@ fn main() {
             margin_right: resolve_px(&config.margin_right, out_w) as i32,
             margin_bottom: resolve_px(&config.margin_bottom, out_h) as i32,
             margin_left: resolve_px(&config.margin_left, out_w) as i32,
-            output: None, // Step 6: target_output_name selection
+            output: None, // Step 6.4: target_output_name selection
         };
 
         libtofi_rs::wayland::surface::create_surface(
@@ -78,20 +84,16 @@ fn main() {
         )
         .expect("Failed to create layer surface");
 
-        // Step 5.2 — initialise the Entry layout engine (prompt, input, results).
+        // Step 5.2 / 6.1 — initialise the Entry layout engine and store it in
+        // `state.entry` so keyboard event handlers can update it.
         //
-        // The Entry is backed by the double-buffered SHM pool.  It draws the
-        // static border/background on construction and the text layer on every
-        // `entry.update()` call (triggered by input or selection changes).
-        //
-        // Full wiring (event-driven updates) is completed in Phase 6 once
-        // keyboard input is wired up.  Here we initialise the entry and commit
-        // the initial frame so the themed window appears on screen.
+        // Declared here (after create_surface) so the SHM pool is already
+        // allocated.  The entry is placed in `state.entry` rather than dropped,
+        // keeping it alive for the duration of the event loop.
         #[cfg(feature = "renderer")]
         {
             use libtofi_rs::entry::{Entry, EntryConfig};
 
-            // Resolve padding UnitValues to logical pixels.
             let entry_config = EntryConfig {
                 font_name: config.font.clone(),
                 font_size: config.font_size,
@@ -123,8 +125,6 @@ fn main() {
                     .0
                     .map(|c| c.to_string())
                     .unwrap_or_default(),
-                // Per-element themes — convert from tofi::config::TextTheme to
-                // libtofi_rs::entry::TextTheme.
                 prompt_theme: config_theme_to_entry(&config.prompt_theme),
                 input_theme: config_theme_to_entry(&config.input_theme),
                 placeholder_theme: config_theme_to_entry(&config.placeholder_theme),
@@ -143,12 +143,12 @@ fn main() {
             };
 
             // Obtain a pointer to the full double-buffered SHM region.
-            // SAFETY: The ShmPool lives for the duration of this block; the
-            // Entry is dropped before `draw()` commits the frame.
+            // SAFETY: The ShmPool lives inside state.surface for the lifetime of
+            // the event loop.  Entry is in state.entry (declared before surface in
+            // WaylandState), so entry is dropped before the SHM pool — safe.
             let (data_ptr, phys_w, phys_h) = {
                 let surf = state.surface.as_mut().expect("surface must exist");
                 let shm = surf.shm.as_mut().expect("SHM pool must exist");
-                // data_for_entry gives a pointer to the start of both frames.
                 let ptr = shm.data_both_frames_ptr();
                 (ptr, surf.phys_width, surf.phys_height)
             };
@@ -157,27 +157,105 @@ fn main() {
                 unsafe { Entry::new(data_ptr, phys_w, phys_h, scale_num, entry_config) }
                     .expect("Failed to create entry");
 
-            // Populate results (from stdin / run / drun — placeholder for Phase 6.4).
+            // Populate results (stdin / run / drun — Phase 6.4).
             entry.results = vec![];
 
             entry.flush();
-            drop(entry);
 
             // Commit the initial rendered frame.
             libtofi_rs::wayland::surface::draw(&mut state).expect("Failed to commit entry frame");
             event_queue.flush().expect("Wayland flush failed");
-            tracing::debug!("Step 5.2: entry initial frame committed");
+            tracing::debug!("Step 6.1: entry initial frame committed");
+
+            // Keep the entry alive in state so keyboard handlers can update it.
+            state.entry = Some(entry);
         }
 
-        // Step 4.3 event loop: dispatch until the compositor closes the surface.
-        // ESC / keyboard input wired in Step 6.1.
+        // ── Event loop ────────────────────────────────────────────────────────
+        // Non-blocking dispatch with key-repeat timeout so held keys fire
+        // repeated input events between Wayland events.
+        //
+        // C reference: poll loop (wl_display fd + timerfd) in `src/main.c`.
         tracing::debug!("Entering event loop");
-        while !state.closed {
+
+        'event_loop: loop {
+            // Flush outgoing Wayland messages.
+            event_queue.flush().expect("Wayland flush failed");
+
+            // Compute the poll timeout based on pending key repeat.
+            let timeout_ms: i32 = match state.keyboard_state.repeat.timeout() {
+                None => -1, // block indefinitely (no repeat pending)
+                Some(d) => d.as_millis().min(i32::MAX as u128) as i32,
+            };
+
+            // Poll the Wayland fd with timeout so key repeat can fire.
+            let guard = event_queue.prepare_read();
+            if let Some(ref g) = guard {
+                use nix::poll::{PollFd, PollFlags, PollTimeout, poll};
+                use std::os::fd::AsFd as _;
+                let fd = g.connection_fd();
+                let mut pfds = [PollFd::new(fd.as_fd(), PollFlags::POLLIN)];
+                let pt = if timeout_ms < 0 {
+                    PollTimeout::NONE
+                } else {
+                    PollTimeout::try_from(timeout_ms).unwrap_or(PollTimeout::NONE)
+                };
+                let _ = poll(&mut pfds, pt);
+            }
+            if let Some(g) = guard {
+                let _ = g.read();
+            }
             event_queue
-                .blocking_dispatch(&mut state)
-                .expect("Wayland event loop error");
+                .dispatch_pending(&mut state)
+                .expect("Wayland dispatch error");
+
+            // ── Key repeat ────────────────────────────────────────────────────
+            // C: poll timerfd / gettime_ms check in the main loop.
+            if state.keyboard_state.repeat.active && state.keyboard_state.repeat.rate > 0 {
+                use std::time::Instant;
+                if Instant::now() >= state.keyboard_state.repeat.next {
+                    let keycode = state.keyboard_state.repeat.keycode;
+                    state.keyboard_state.advance_repeat();
+                    libtofi_rs::wayland::handle_keypress(&mut state, keycode);
+                }
+            }
+
+            // ── Exit conditions ───────────────────────────────────────────────
+            if state.closed {
+                tracing::debug!("Surface closed — exiting");
+                break 'event_loop;
+            }
+
+            if state.submit {
+                // Step 6.5 (do_submit): print the selected result to stdout.
+                // Full history-append and drun-launch logic lands in Step 6.5.
+                #[cfg(feature = "renderer")]
+                if let Some(entry) = state.entry.as_ref() {
+                    let abs_idx = entry.first_result + entry.selection;
+                    if let Some(result) = entry.results.get(abs_idx) {
+                        println!("{result}");
+                    }
+                }
+                tracing::debug!("Submit — exiting");
+                break 'event_loop;
+            }
+
+            // ── Redraw ────────────────────────────────────────────────────────
+            // C: `if (tofi->window.surface.redraw) { entry_update; surface_draw; }`
+            if state.redraw {
+                state.redraw = false;
+
+                #[cfg(feature = "renderer")]
+                if let Some(entry) = state.entry.as_mut() {
+                    entry.update();
+                    entry.flush();
+                    libtofi_rs::wayland::surface::draw(&mut state).expect("Failed to redraw entry");
+                    event_queue.flush().expect("Wayland flush after redraw");
+                }
+            }
         }
-        tracing::debug!("Surface closed — exiting");
+
+        tracing::debug!("Event loop exited");
 
         let _ = Anchor::Top; // ensure re-export is used / accessible
     }
@@ -219,7 +297,7 @@ fn config_cursor_to_entry(c: &config::CursorTheme) -> libtofi_rs::entry::CursorT
     }
 }
 
-/// Convert [`config::Anchor`] to [`zwlr_layer_surface_v1`] anchor bit-flags.
+/// Convert [`config::Anchor`] to `zwlr_layer_surface_v1` anchor bit-flags.
 ///
 /// Mirrors the `ANCHOR_*` macros in `src/config.c`.
 #[cfg(feature = "wayland")]
