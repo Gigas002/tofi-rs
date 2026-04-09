@@ -132,4 +132,215 @@ mod entry_tests {
         let entry = make_entry(&mut buf, w, h);
         assert_eq!(entry.ready_index(), entry.index ^ 1);
     }
+
+    // ── Step 5.3: scrolling / selection navigation ───────────────────────────
+
+    /// `reset_selection` zeroes `selection` and `first_result`.
+    #[test]
+    fn reset_selection_clears_state() {
+        let (w, h) = (600u32, 400u32);
+        let mut buf = make_buf(w, h);
+        let mut entry = make_entry(&mut buf, w, h);
+
+        entry.results = vec!["a".into(), "b".into(), "c".into()];
+        entry.selection = 2;
+        entry.first_result = 1;
+        entry.reset_selection();
+
+        assert_eq!(entry.selection, 0);
+        assert_eq!(entry.first_result, 0);
+    }
+
+    /// `select_next` increments selection within the visible page.
+    #[test]
+    fn select_next_increments_within_page() {
+        let (w, h) = (600u32, 400u32);
+        let mut buf = make_buf(w, h);
+        let mut entry = make_entry(&mut buf, w, h);
+
+        entry.results = vec!["a".into(), "b".into(), "c".into()];
+        entry.num_results_drawn = 3;
+        entry.selection = 0;
+        entry.first_result = 0;
+
+        entry.select_next();
+        assert_eq!(entry.selection, 1);
+        assert_eq!(entry.first_result, 0);
+
+        entry.select_next();
+        assert_eq!(entry.selection, 2);
+        assert_eq!(entry.first_result, 0);
+    }
+
+    /// `select_next` wraps `first_result` forward when reaching page end.
+    #[test]
+    fn select_next_scrolls_forward() {
+        let (w, h) = (600u32, 400u32);
+        let mut buf = make_buf(w, h);
+        let mut entry = make_entry(&mut buf, w, h);
+
+        // 5 results, page size = 2.
+        entry.results = (0..5).map(|i| i.to_string()).collect();
+        entry.num_results_drawn = 2;
+        entry.selection = 0;
+        entry.first_result = 0;
+
+        // Move past the page boundary.
+        entry.select_next(); // selection = 1
+        entry.select_next(); // selection wraps → 0, first_result += 2 → 2
+
+        assert_eq!(entry.selection, 0);
+        assert_eq!(entry.first_result, 2);
+    }
+
+    /// `select_next` wraps `first_result` back to 0 when at the end of all results.
+    #[test]
+    fn select_next_wraps_to_beginning() {
+        let (w, h) = (600u32, 400u32);
+        let mut buf = make_buf(w, h);
+        let mut entry = make_entry(&mut buf, w, h);
+
+        // 3 results, page size = 3 → one page; wrapping goes back to 0.
+        entry.results = vec!["a".into(), "b".into(), "c".into()];
+        entry.num_results_drawn = 3;
+        entry.selection = 2;
+        entry.first_result = 0;
+
+        entry.select_next(); // selection wraps → 0, first_result = (0+3) % 3 = 0
+
+        assert_eq!(entry.selection, 0);
+        assert_eq!(entry.first_result, 0);
+    }
+
+    /// `select_prev` decrements selection within the page.
+    #[test]
+    fn select_prev_decrements_within_page() {
+        let (w, h) = (600u32, 400u32);
+        let mut buf = make_buf(w, h);
+        let mut entry = make_entry(&mut buf, w, h);
+
+        entry.results = vec!["a".into(), "b".into(), "c".into()];
+        entry.num_results_drawn = 3;
+        entry.selection = 2;
+        entry.first_result = 0;
+
+        entry.select_prev();
+        assert_eq!(entry.selection, 1);
+        assert_eq!(entry.first_result, 0);
+    }
+
+    /// `select_prev` scrolls `first_result` back when at the top of the page and
+    /// there are previous results to show.
+    #[test]
+    fn select_prev_scrolls_backward() {
+        let (w, h) = (600u32, 400u32);
+        let mut buf = make_buf(w, h);
+        let mut entry = make_entry(&mut buf, w, h);
+
+        // 5 results, page size = 2; we are on the second page.
+        entry.results = (0..5).map(|i| i.to_string()).collect();
+        entry.num_results_drawn = 2;
+        entry.last_num_results_drawn = 2;
+        entry.selection = 0;
+        entry.first_result = 2; // showing results [2, 3]
+
+        entry.select_prev(); // first_result goes back; selection = last-1
+
+        // first_result (2) == nsel (2), not > nsel, so falls into the `> 0` branch.
+        assert_eq!(entry.first_result, 0);
+        assert_eq!(entry.selection, 1); // first_result was 2, so selection = 2 - 1 = 1
+    }
+
+    /// `select_prev` at the very first result (selection=0, first_result=0) is a
+    /// no-op — the caller stays at position 0.
+    #[test]
+    fn select_prev_noop_at_start() {
+        let (w, h) = (600u32, 400u32);
+        let mut buf = make_buf(w, h);
+        let mut entry = make_entry(&mut buf, w, h);
+
+        entry.results = vec!["a".into(), "b".into()];
+        entry.num_results_drawn = 2;
+        entry.selection = 0;
+        entry.first_result = 0;
+
+        entry.select_prev();
+
+        assert_eq!(entry.selection, 0);
+        assert_eq!(entry.first_result, 0);
+    }
+
+    /// `select_next_page` advances `first_result` by `num_results_drawn`.
+    #[test]
+    fn select_next_page_advances_window() {
+        let (w, h) = (600u32, 400u32);
+        let mut buf = make_buf(w, h);
+        let mut entry = make_entry(&mut buf, w, h);
+
+        entry.results = (0..10).map(|i| i.to_string()).collect();
+        entry.num_results_drawn = 3;
+        entry.selection = 1;
+        entry.first_result = 0;
+
+        entry.select_next_page();
+
+        assert_eq!(entry.selection, 0);
+        assert_eq!(entry.first_result, 3);
+        assert_eq!(entry.last_num_results_drawn, 3);
+    }
+
+    /// `select_next_page` wraps back to 0 when past the end.
+    #[test]
+    fn select_next_page_wraps() {
+        let (w, h) = (600u32, 400u32);
+        let mut buf = make_buf(w, h);
+        let mut entry = make_entry(&mut buf, w, h);
+
+        entry.results = (0..4).map(|i| i.to_string()).collect();
+        entry.num_results_drawn = 3;
+        entry.selection = 0;
+        entry.first_result = 2; // 2 + 3 = 5 ≥ 4 → wraps to 0
+
+        entry.select_next_page();
+
+        assert_eq!(entry.first_result, 0);
+        assert_eq!(entry.selection, 0);
+    }
+
+    /// `select_prev_page` moves `first_result` back by `last_num_results_drawn`.
+    #[test]
+    fn select_prev_page_moves_back() {
+        let (w, h) = (600u32, 400u32);
+        let mut buf = make_buf(w, h);
+        let mut entry = make_entry(&mut buf, w, h);
+
+        entry.results = (0..10).map(|i| i.to_string()).collect();
+        entry.num_results_drawn = 3;
+        entry.last_num_results_drawn = 3;
+        entry.selection = 2;
+        entry.first_result = 6;
+
+        entry.select_prev_page();
+
+        assert_eq!(entry.first_result, 3);
+        assert_eq!(entry.selection, 0);
+    }
+
+    /// `select_prev_page` clamps to 0 when `first_result` < `last_num_results_drawn`.
+    #[test]
+    fn select_prev_page_clamps_to_zero() {
+        let (w, h) = (600u32, 400u32);
+        let mut buf = make_buf(w, h);
+        let mut entry = make_entry(&mut buf, w, h);
+
+        entry.results = (0..10).map(|i| i.to_string()).collect();
+        entry.num_results_drawn = 3;
+        entry.last_num_results_drawn = 5;
+        entry.first_result = 2; // 2 < 5 → clamps to 0
+
+        entry.select_prev_page();
+
+        assert_eq!(entry.first_result, 0);
+        assert_eq!(entry.selection, 0);
+    }
 }

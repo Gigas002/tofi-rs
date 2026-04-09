@@ -314,6 +314,10 @@ pub struct Entry {
     pub results: Vec<String>,
     /// Number of results actually drawn in the last update (set by backend).
     pub num_results_drawn: usize,
+    /// Number of results drawn in the *previous* update — used for page scrolling.
+    ///
+    /// C equivalent: `entry->last_num_results_drawn` in `src/entry.h`.
+    pub last_num_results_drawn: usize,
 
     // Config (immutable after init).
     pub config: EntryConfig,
@@ -466,6 +470,7 @@ impl Entry {
             first_result: 0,
             results: Vec::new(),
             num_results_drawn: 0,
+            last_num_results_drawn: 0,
             config,
             resolved_prompt_theme,
             resolved_input_theme,
@@ -521,6 +526,83 @@ impl Entry {
     /// In C this is `!entry->index` after `entry_update` flips `entry->index`.
     pub fn ready_index(&self) -> usize {
         self.index ^ 1
+    }
+
+    // ── Selection / scrolling ─────────────────────────────────────────────────
+
+    /// Reset selection to the first result and scroll back to the top.
+    ///
+    /// Should be called when the input changes (results list is rebuilt).
+    ///
+    /// C reference: `reset_selection` in `src/input.c`.
+    pub fn reset_selection(&mut self) {
+        self.selection = 0;
+        self.first_result = 0;
+    }
+
+    /// Move the selection one item forward, scrolling the visible window when
+    /// the selection reaches the end of the currently drawn results.
+    ///
+    /// C reference: `select_next_result` in `src/input.c`.
+    pub fn select_next(&mut self) {
+        let nsel = self.num_results_drawn.min(self.results.len()).max(1);
+
+        self.selection += 1;
+        if self.selection >= nsel {
+            self.selection -= nsel;
+            if !self.results.is_empty() {
+                self.first_result = (self.first_result + nsel) % self.results.len();
+            } else {
+                self.first_result = 0;
+            }
+            self.last_num_results_drawn = self.num_results_drawn;
+        }
+    }
+
+    /// Move the selection one item backward, scrolling the visible window when
+    /// the selection reaches the beginning of the currently drawn results.
+    ///
+    /// C reference: `select_previous_result` in `src/input.c`.
+    pub fn select_prev(&mut self) {
+        if self.selection > 0 {
+            self.selection -= 1;
+            return;
+        }
+
+        let nsel = self.num_results_drawn.min(self.results.len()).max(1);
+
+        if self.first_result > nsel {
+            self.first_result -= self.last_num_results_drawn;
+            self.selection = self.last_num_results_drawn.saturating_sub(1);
+        } else if self.first_result > 0 {
+            self.selection = self.first_result - 1;
+            self.first_result = 0;
+        }
+    }
+
+    /// Jump forward one page (skip `num_results_drawn` items).
+    ///
+    /// C reference: `select_next_page` in `src/input.c`.
+    pub fn select_next_page(&mut self) {
+        self.first_result += self.num_results_drawn;
+        if self.first_result >= self.results.len() {
+            self.first_result = 0;
+        }
+        self.selection = 0;
+        self.last_num_results_drawn = self.num_results_drawn;
+    }
+
+    /// Jump backward one page (skip back `last_num_results_drawn` items).
+    ///
+    /// C reference: `select_previous_page` in `src/input.c`.
+    pub fn select_prev_page(&mut self) {
+        if self.first_result >= self.last_num_results_drawn {
+            self.first_result -= self.last_num_results_drawn;
+        } else {
+            self.first_result = 0;
+        }
+        self.selection = 0;
+        self.last_num_results_drawn = self.num_results_drawn;
     }
 
     // ── Internal helpers ─────────────────────────────────────────────────────
