@@ -82,11 +82,11 @@ pub struct SurfaceState {
     /// Double-buffered SHM pool; `None` until after the configure roundtrip.
     ///
     /// C reference: `shm_pool_fd`, `shm_pool_data`, `buffers[2]` in `struct surface`.
-    pub(super) shm: Option<ShmPool<WaylandState>>,
+    pub shm: Option<ShmPool<WaylandState>>,
     /// Index of the buffer currently being written (0 or 1).
     ///
     /// C reference: `surface->index` in `src/surface.c`.
-    pub(super) index: usize,
+    pub index: usize,
     /// Viewport for fractional-scale presentation; `None` if not supported.
     ///
     /// C reference: `tofi.window.wp_viewport` in `src/main.c`.

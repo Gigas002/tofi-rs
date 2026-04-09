@@ -13,6 +13,11 @@ tracing = "0.1"
 wayland-client = { version = "0.31", optional = true }
 wayland-protocols = { version = "0.32", features = ["client", "staging"], optional = true }
 wayland-protocols-wlr = { version = "0.3", features = ["client"], optional = true }
+# Renderer stack (Cairo + Pango + HarfBuzz) — §3.2, §4.1.
+# All three share the same gtk-rs minor (0.22) so version resolution is consistent.
+cairo-rs = { version = "0.22", optional = true }
+pango = { version = "0.22", features = ["v1_42"], optional = true }
+pangocairo = { version = "0.22", optional = true }
 
 [dev-dependencies]
 tempfile = "3"
@@ -27,7 +32,8 @@ default = [
     "single-instance-lock",
 ]
 wayland = ["dep:wayland-client", "dep:wayland-protocols", "dep:wayland-protocols-wlr"]
-renderer = []
+# Drawing stack: Cairo ImageSurface + Pango text layout (§3.2, §5.1+).
+renderer = ["dep:cairo-rs", "dep:pango", "dep:pangocairo"]
 drun = []
 # Paste implementation lives under `wayland::clipboard`; enabling implies `wayland`.
 clipboard = ["wayland"]

@@ -23,6 +23,8 @@ pub mod unicode;
 
 #[cfg(feature = "drun")]
 pub mod drun;
+#[cfg(feature = "renderer")]
+pub mod entry;
 #[cfg(feature = "single-instance-lock")]
 pub mod lock;
 #[cfg(feature = "renderer")]

@@ -172,6 +172,20 @@ where
     pub fn stride(&self) -> usize {
         self.stride
     }
+
+    /// Raw pointer to the start of the entire pool (both frames contiguous).
+    ///
+    /// Used by [`crate::entry::Entry::new`] which creates two Cairo surfaces
+    /// from consecutive halves of this mapping — matching the C `entry_init`
+    /// double-buffer layout.
+    ///
+    /// # Safety
+    ///
+    /// The returned pointer is valid for `pool_size` bytes and remains so as
+    /// long as this `ShmPool` is alive.  The caller must not outlive `self`.
+    pub fn data_both_frames_ptr(&mut self) -> *mut u8 {
+        self.ptr.as_ptr() as *mut u8
+    }
 }
 
 impl<D> Drop for ShmPool<D> {
