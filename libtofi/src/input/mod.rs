@@ -1,9 +1,12 @@
-//! Input handling — text editing helpers and XKB keyboard state.
+//! Input handling — text editing helpers, key binding dispatch, and XKB
+//! keyboard state.
 //!
 //! # Structure
 //!
 //! - **Text editing** (this module): pure functions operating on `(&mut String,
 //!   &mut usize)` — no Wayland or renderer dependency, fully unit-testable.
+//! - **[`KeyAction`] / [`classify_keypress`]**: pure key-binding dispatch —
+//!   maps `(ctrl, alt, shift, key, ch)` to a named action; fully unit-testable.
 //! - **[`keyboard`]**: [`keyboard::KeyboardState`] wraps `libxkbcommon` for
 //!   keymap parsing, modifier tracking, and key-repeat accounting.  Gated by
 //!   the **`wayland`** feature because keymaps are received from the compositor.
@@ -48,6 +51,151 @@ pub const KEY_RIGHT: u32 = 106;
 pub const KEY_DOWN: u32 = 108;
 pub const KEY_PAGEDOWN: u32 = 109;
 pub const KEY_KPENTER: u32 = 96;
+
+// ── KeyAction ─────────────────────────────────────────────────────────────────
+
+/// The logical action produced by a single key event.
+///
+/// Returned by [`classify_keypress`] and consumed by `handle_keypress` in the
+/// Wayland layer.  All variants are pure data — no Wayland or renderer
+/// dependency — making [`classify_keypress`] fully unit-testable.
+///
+/// C reference: the if-else chain in `input_handle_keypress` in `src/input.c`.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum KeyAction {
+    /// Insert a printable character at the cursor.
+    InsertChar(char),
+    /// Delete the character immediately before the cursor (Backspace / Ctrl+H).
+    DeleteChar,
+    /// Delete the word before the cursor (Ctrl+W / Ctrl+Backspace).
+    DeleteWord,
+    /// Clear the entire input field (Ctrl+U).
+    ClearInput,
+    /// Paste from the clipboard (Ctrl+V; delegated to Step 7.1).
+    Paste,
+    /// Move the cursor left, or select the previous result when at position 0.
+    PrevCursorOrResult,
+    /// Move the cursor right, or select the next result when at the end.
+    NextCursorOrResult,
+    /// Select the previous result in the list.
+    ///
+    /// Bound to: Up, Shift+Tab, Alt+H, Ctrl/Alt+K, Ctrl/Alt+P, Ctrl/Alt+B.
+    PrevResult,
+    /// Select the next result in the list.
+    ///
+    /// Bound to: Down, Tab, Alt+L, Ctrl/Alt+J, Ctrl/Alt+N, Ctrl/Alt+F.
+    NextResult,
+    /// Jump back one page of results (Page Up).
+    PrevPage,
+    /// Jump forward one page of results (Page Down).
+    NextPage,
+    /// Reset the selection to the first result (Home).
+    ResetSelection,
+    /// Close the launcher (Escape / Ctrl+C / Ctrl+G / Ctrl+\[).
+    Close,
+    /// Accept the current selection (Enter / KP-Enter / Ctrl+M).
+    Submit,
+    /// Key is not bound — take no action.
+    Unknown,
+}
+
+/// Classify a key event into a [`KeyAction`] without any Wayland or renderer
+/// dependency.
+///
+/// `key` is a Linux evdev key code (physical or keysym-mapped, depending on
+/// `physical_keybindings` — the caller resolves that before calling here).
+/// `ch` is the UTF-32 codepoint produced by the key in the current XKB state
+/// (`0` when no character is produced).
+///
+/// C reference: `input_handle_keypress` in `src/input.c`.
+pub fn classify_keypress(ctrl: bool, alt: bool, shift: bool, key: u32, ch: u32) -> KeyAction {
+    // Printable character — insert at cursor.
+    // C: `if (utf32_isprint(ch) && !ctrl && !alt)`
+    if let Some(c) = char::from_u32(ch)
+        && crate::unicode::utf32_isprint(c)
+        && !ctrl
+        && !alt
+    {
+        return KeyAction::InsertChar(c);
+    }
+
+    // Ctrl+W / Ctrl+Backspace — delete word.
+    if (key == KEY_BACKSPACE || key == KEY_W) && ctrl {
+        return KeyAction::DeleteWord;
+    }
+
+    // Backspace / Ctrl+H — delete character.
+    if key == KEY_BACKSPACE || (key == KEY_H && ctrl) {
+        return KeyAction::DeleteChar;
+    }
+
+    // Ctrl+U — clear input.
+    if key == KEY_U && ctrl {
+        return KeyAction::ClearInput;
+    }
+
+    // Ctrl+V — paste.
+    if key == KEY_V && ctrl {
+        return KeyAction::Paste;
+    }
+
+    // Left — previous cursor position or result.
+    // Handled before the `PrevResult` block because `KEY_LEFT` also appears
+    // there in the C source (dead code in C; we make the intent explicit here).
+    if key == KEY_LEFT {
+        return KeyAction::PrevCursorOrResult;
+    }
+
+    // Right — next cursor position or result.
+    if key == KEY_RIGHT {
+        return KeyAction::NextCursorOrResult;
+    }
+
+    // Previous result.
+    if key == KEY_UP
+        || (key == KEY_TAB && shift)
+        || (key == KEY_H && alt)
+        || ((key == KEY_K || key == KEY_P || key == KEY_B) && (ctrl || alt))
+    {
+        return KeyAction::PrevResult;
+    }
+
+    // Next result.
+    if key == KEY_DOWN
+        || key == KEY_TAB
+        || (key == KEY_L && alt)
+        || ((key == KEY_J || key == KEY_N || key == KEY_F) && (ctrl || alt))
+    {
+        return KeyAction::NextResult;
+    }
+
+    // Home — reset to first result.
+    if key == KEY_HOME {
+        return KeyAction::ResetSelection;
+    }
+
+    // Page Up — previous page.
+    if key == KEY_PAGEUP {
+        return KeyAction::PrevPage;
+    }
+
+    // Page Down — next page.
+    if key == KEY_PAGEDOWN {
+        return KeyAction::NextPage;
+    }
+
+    // Escape / Ctrl+C / Ctrl+[ / Ctrl+G — close.
+    if key == KEY_ESC || ((key == KEY_C || key == KEY_LEFTBRACE || key == KEY_G) && ctrl) {
+        return KeyAction::Close;
+    }
+
+    // Enter / KP-Enter / Ctrl+M — submit.
+    if key == KEY_ENTER || key == KEY_KPENTER || (key == KEY_M && ctrl) {
+        return KeyAction::Submit;
+    }
+
+    KeyAction::Unknown
+}
 
 // ── Text editing helpers ──────────────────────────────────────────────────────
 // Pure functions that operate on (input: &mut String, cursor: &mut usize) so

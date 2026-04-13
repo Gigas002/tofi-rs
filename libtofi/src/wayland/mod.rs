@@ -639,13 +639,18 @@ impl Dispatch<wp_viewport::WpViewport, ()> for WaylandState {
 
 // ── handle_keypress ───────────────────────────────────────────────────────────
 
-/// Process one XKB keycode — text input, deletions, ESC, Enter.
+/// Process one XKB keycode — classify the key into a [`crate::input::KeyAction`]
+/// and apply it to the entry widget and event flags.
 ///
 /// Called from the `wl_keyboard::key` event handler and from the key-repeat
 /// ticker in the main event loop.
 ///
-/// Returns without updating `state.redraw` for action-only events (close /
-/// submit) — those are handled via `state.closed` / `state.submit`.
+/// `Close` and `Submit` actions return early without setting `redraw`.
+/// `Unknown` (unbound key) returns early without triggering `auto_accept_single`
+/// or `redraw`.  All other actions set `redraw = true` and, when
+/// `auto_accept_single` is enabled and exactly one result remains, set
+/// `submit = true` — matching the C behaviour where the check follows the
+/// entire if-else chain.
 ///
 /// C reference: `input_handle_keypress` in `src/input.c`.
 pub fn handle_keypress(state: &mut WaylandState, keycode: u32) {
@@ -659,174 +664,135 @@ pub fn handle_keypress(state: &mut WaylandState, keycode: u32) {
     let ch = state.keyboard_state.key_get_utf32(keycode);
     let key = state.keyboard_state.keycode_to_linux_key(keycode);
 
-    use crate::input::{
-        KEY_B, KEY_BACKSPACE, KEY_C, KEY_DOWN, KEY_ENTER, KEY_ESC, KEY_F, KEY_G, KEY_H, KEY_HOME,
-        KEY_J, KEY_K, KEY_KPENTER, KEY_L, KEY_LEFT, KEY_LEFTBRACE, KEY_M, KEY_N, KEY_P,
-        KEY_PAGEDOWN, KEY_PAGEUP, KEY_RIGHT, KEY_TAB, KEY_U, KEY_UP, KEY_V, KEY_W,
-    };
+    let action = crate::input::classify_keypress(ctrl, alt, shift, key, ch);
 
-    // Printable character — insert at cursor.
-    // C: `if (utf32_isprint(ch) && !ctrl && !alt)`
-    if let Some(c) = char::from_u32(ch)
-        && crate::unicode::utf32_isprint(c)
-        && !ctrl
-        && !alt
-    {
-        #[cfg(feature = "renderer")]
-        if let Some(entry) = state.entry.as_mut() {
-            crate::input::add_char(
-                &mut entry.input,
-                &mut entry.cursor_position,
-                c,
-                crate::entry::MAX_INPUT_LENGTH,
-            );
-            entry.reset_selection();
-            state.redraw = true;
+    match action {
+        // ── Terminal actions (return immediately, no redraw) ───────────────────
+        crate::input::KeyAction::Close => {
+            state.closed = true;
+            return;
         }
-        return;
-    }
-
-    // Ctrl+W or Ctrl+Backspace — delete word.
-    if (key == KEY_BACKSPACE || key == KEY_W) && ctrl {
-        #[cfg(feature = "renderer")]
-        if let Some(entry) = state.entry.as_mut() {
-            crate::input::delete_word(&mut entry.input, &mut entry.cursor_position);
-            entry.reset_selection();
-            state.redraw = true;
+        crate::input::KeyAction::Submit => {
+            state.submit = true;
+            return;
         }
-        return;
-    }
-
-    // Backspace or Ctrl+H — delete character.
-    if key == KEY_BACKSPACE || (key == KEY_H && ctrl) {
-        #[cfg(feature = "renderer")]
-        if let Some(entry) = state.entry.as_mut() {
-            crate::input::delete_char(&mut entry.input, &mut entry.cursor_position);
-            entry.reset_selection();
-            state.redraw = true;
+        // ── Unbound key ───────────────────────────────────────────────────────
+        crate::input::KeyAction::Unknown => {
+            return;
         }
-        return;
-    }
 
-    // Ctrl+U — clear input.
-    if key == KEY_U && ctrl {
-        #[cfg(feature = "renderer")]
-        if let Some(entry) = state.entry.as_mut() {
-            crate::input::clear_input(&mut entry.input, &mut entry.cursor_position);
-            entry.reset_selection();
-            state.redraw = true;
+        // ── Text editing ──────────────────────────────────────────────────────
+        crate::input::KeyAction::InsertChar(c) =>
+        {
+            #[cfg(feature = "renderer")]
+            if let Some(entry) = state.entry.as_mut() {
+                crate::input::add_char(
+                    &mut entry.input,
+                    &mut entry.cursor_position,
+                    c,
+                    crate::entry::MAX_INPUT_LENGTH,
+                );
+                entry.reset_selection();
+            }
         }
-        return;
-    }
+        crate::input::KeyAction::DeleteChar =>
+        {
+            #[cfg(feature = "renderer")]
+            if let Some(entry) = state.entry.as_mut() {
+                crate::input::delete_char(&mut entry.input, &mut entry.cursor_position);
+                entry.reset_selection();
+            }
+        }
+        crate::input::KeyAction::DeleteWord =>
+        {
+            #[cfg(feature = "renderer")]
+            if let Some(entry) = state.entry.as_mut() {
+                crate::input::delete_word(&mut entry.input, &mut entry.cursor_position);
+                entry.reset_selection();
+            }
+        }
+        crate::input::KeyAction::ClearInput =>
+        {
+            #[cfg(feature = "renderer")]
+            if let Some(entry) = state.entry.as_mut() {
+                crate::input::clear_input(&mut entry.input, &mut entry.cursor_position);
+                entry.reset_selection();
+            }
+        }
 
-    // Ctrl+V — paste (Step 7.1; stub for now).
-    if key == KEY_V && ctrl {
-        tracing::debug!("Paste: not yet implemented (Step 7.1)");
-        return;
-    }
+        // ── Clipboard (Step 7.1 stub) ─────────────────────────────────────────
+        crate::input::KeyAction::Paste => {
+            tracing::debug!("Paste: not yet implemented (Step 7.1)");
+        }
 
-    // Left / previous cursor or result.
-    // C: previous_cursor_or_result.
-    if key == KEY_LEFT {
-        #[cfg(feature = "renderer")]
-        if let Some(entry) = state.entry.as_mut() {
-            if entry.config.cursor_theme.show && entry.selection == 0 && entry.cursor_position > 0 {
-                entry.cursor_position -= 1;
-            } else {
+        // ── Navigation ────────────────────────────────────────────────────────
+        // C: `previous_cursor_or_result`.
+        crate::input::KeyAction::PrevCursorOrResult =>
+        {
+            #[cfg(feature = "renderer")]
+            if let Some(entry) = state.entry.as_mut() {
+                if entry.config.cursor_theme.show
+                    && entry.selection == 0
+                    && entry.cursor_position > 0
+                {
+                    entry.cursor_position -= 1;
+                } else {
+                    entry.select_prev();
+                }
+            }
+        }
+        // C: `next_cursor_or_result`.
+        crate::input::KeyAction::NextCursorOrResult =>
+        {
+            #[cfg(feature = "renderer")]
+            if let Some(entry) = state.entry.as_mut() {
+                let n_chars = entry.input.chars().count();
+                if entry.config.cursor_theme.show && entry.cursor_position < n_chars {
+                    entry.cursor_position += 1;
+                } else {
+                    entry.select_next();
+                }
+            }
+        }
+        crate::input::KeyAction::PrevResult =>
+        {
+            #[cfg(feature = "renderer")]
+            if let Some(entry) = state.entry.as_mut() {
                 entry.select_prev();
             }
-            state.redraw = true;
         }
-        return;
-    }
-
-    // Right / next cursor or result.
-    // C: next_cursor_or_result.
-    if key == KEY_RIGHT {
-        #[cfg(feature = "renderer")]
-        if let Some(entry) = state.entry.as_mut() {
-            let n_chars = entry.input.chars().count();
-            if entry.config.cursor_theme.show && entry.cursor_position < n_chars {
-                entry.cursor_position += 1;
-            } else {
+        crate::input::KeyAction::NextResult =>
+        {
+            #[cfg(feature = "renderer")]
+            if let Some(entry) = state.entry.as_mut() {
                 entry.select_next();
             }
-            state.redraw = true;
         }
-        return;
-    }
-
-    // Up / Shift+Tab / Alt+H / Ctrl+K / Ctrl+P / Ctrl+B — previous result.
-    if key == KEY_UP
-        || (key == KEY_TAB && shift)
-        || (key == KEY_H && alt)
-        || ((key == KEY_K || key == KEY_P || key == KEY_B) && (ctrl || alt))
-    {
-        #[cfg(feature = "renderer")]
-        if let Some(entry) = state.entry.as_mut() {
-            entry.select_prev();
-            state.redraw = true;
+        crate::input::KeyAction::ResetSelection =>
+        {
+            #[cfg(feature = "renderer")]
+            if let Some(entry) = state.entry.as_mut() {
+                entry.reset_selection();
+            }
         }
-        return;
-    }
-
-    // Down / Tab / Alt+L / Ctrl+J / Ctrl+N / Ctrl+F — next result.
-    if key == KEY_DOWN
-        || key == KEY_TAB
-        || (key == KEY_L && alt)
-        || ((key == KEY_J || key == KEY_N || key == KEY_F) && (ctrl || alt))
-    {
-        #[cfg(feature = "renderer")]
-        if let Some(entry) = state.entry.as_mut() {
-            entry.select_next();
-            state.redraw = true;
+        crate::input::KeyAction::PrevPage =>
+        {
+            #[cfg(feature = "renderer")]
+            if let Some(entry) = state.entry.as_mut() {
+                entry.select_prev_page();
+            }
         }
-        return;
-    }
-
-    // Home — reset to first result.
-    if key == KEY_HOME {
-        #[cfg(feature = "renderer")]
-        if let Some(entry) = state.entry.as_mut() {
-            entry.reset_selection();
-            state.redraw = true;
+        crate::input::KeyAction::NextPage =>
+        {
+            #[cfg(feature = "renderer")]
+            if let Some(entry) = state.entry.as_mut() {
+                entry.select_next_page();
+            }
         }
-        return;
     }
 
-    // Page Up — previous page.
-    if key == KEY_PAGEUP {
-        #[cfg(feature = "renderer")]
-        if let Some(entry) = state.entry.as_mut() {
-            entry.select_prev_page();
-            state.redraw = true;
-        }
-        return;
-    }
-
-    // Page Down — next page.
-    if key == KEY_PAGEDOWN {
-        #[cfg(feature = "renderer")]
-        if let Some(entry) = state.entry.as_mut() {
-            entry.select_next_page();
-            state.redraw = true;
-        }
-        return;
-    }
-
-    // ESC / Ctrl+C / Ctrl+[ / Ctrl+G — close.
-    if key == KEY_ESC || ((key == KEY_C || key == KEY_LEFTBRACE || key == KEY_G) && ctrl) {
-        state.closed = true;
-        return;
-    }
-
-    // Enter / KP Enter / Ctrl+M — submit.
-    if key == KEY_ENTER || key == KEY_KPENTER || (key == KEY_M && ctrl) {
-        state.submit = true;
-        return;
-    }
-
-    // auto_accept_single: if only one result remains after input, auto-submit.
+    // auto_accept_single: mirrors C — fires after any bound key that is not
+    // Close, Submit, or Unknown.
     #[cfg(feature = "renderer")]
     if state.auto_accept_single
         && let Some(entry) = state.entry.as_ref()
