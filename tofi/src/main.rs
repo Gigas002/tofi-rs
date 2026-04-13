@@ -149,6 +149,15 @@ fn main() {
         )
         .expect("Failed to create layer surface");
 
+        // Snapshot of the full unfiltered result list, used by `do_submit` for
+        // `print_index` and history lookup.  Declared outside the renderer block
+        // but only compiled in when the renderer feature is active — the event
+        // loop's submit handler is gated on the same feature.
+        //
+        // C reference: `entry->commands` in `do_submit` / `src/main.c`.
+        #[cfg(feature = "renderer")]
+        let all_commands: Vec<String>;
+
         // Step 5.2 / 6.1 — initialise the Entry layout engine and store it in
         // `state.entry` so keyboard event handlers can update it.
         //
@@ -295,6 +304,10 @@ fn main() {
                 }
             };
 
+            // Snapshot the full unfiltered list for `print_index` (Step 6.5).
+            // C reference: `entry->commands` in `do_submit`.
+            all_commands = entry.results.clone();
+
             entry.flush();
 
             // Commit the initial rendered frame.
@@ -362,16 +375,18 @@ fn main() {
             }
 
             if state.submit {
-                // Step 6.5 (do_submit): print the selected result to stdout.
-                // Full history-append and drun-launch logic lands in Step 6.5.
+                state.submit = false;
+                // C reference: `do_submit` in `src/main.c`.
                 #[cfg(feature = "renderer")]
-                if let Some(entry) = state.entry.as_ref() {
-                    let abs_idx = entry.first_result + entry.selection;
-                    if let Some(result) = entry.results.get(abs_idx) {
-                        println!("{result}");
+                {
+                    let submitted = do_submit(&state, &config, mode, &all_commands);
+                    if submitted {
+                        tracing::debug!("Submit — exiting");
+                        break 'event_loop;
                     }
+                    // No result to accept (require_match / empty) — continue.
                 }
-                tracing::debug!("Submit — exiting");
+                #[cfg(not(feature = "renderer"))]
                 break 'event_loop;
             }
 
@@ -396,6 +411,155 @@ fn main() {
     }
 
     libtofi_rs::noop();
+}
+
+// ── do_submit ─────────────────────────────────────────────────────────────────
+
+/// Handle selection acceptance — print to stdout, update history, optionally
+/// launch the app.  Returns `true` when the selection was accepted and the
+/// launcher should exit; `false` when no match is available and the loop
+/// should continue.
+///
+/// C reference: `do_submit` in `src/main.c`.
+#[cfg(all(feature = "wayland", feature = "renderer"))]
+fn do_submit(
+    state: &libtofi_rs::wayland::WaylandState,
+    config: &config::TofiConfig,
+    mode: LaunchMode,
+    all_commands: &[String],
+) -> bool {
+    let Some(entry) = state.entry.as_ref() else {
+        return false;
+    };
+
+    // ── No results ────────────────────────────────────────────────────────────
+    if entry.results.is_empty() {
+        // In drun mode (or when require_match is set) reject silently.
+        // C: `if (tofi->require_match || entry->mode == TOFI_MODE_DRUN) return false`.
+        #[cfg(feature = "drun")]
+        if matches!(mode, LaunchMode::Drun) {
+            return false;
+        }
+        if config.require_match {
+            return false;
+        }
+        // Stdin/run mode without require_match: echo back raw input.
+        println!("{}", entry.input);
+        return true;
+    }
+
+    let abs_idx = (entry.first_result + entry.selection).min(entry.results.len() - 1);
+    let result = &entry.results[abs_idx];
+
+    // ── Dispatch by mode ──────────────────────────────────────────────────────
+    #[cfg(feature = "drun")]
+    if matches!(mode, LaunchMode::Drun) {
+        // Find the desktop entry by display name.
+        // C: linear scan because the list may be history-sorted.
+        let app = state.drun_entries.iter().find(|e| e.name == *result);
+        let Some(app) = app else {
+            tracing::error!("Couldn't find application '{result}' in drun_entries");
+            return false;
+        };
+        if config.drun_launch {
+            drun_launch(app, config.default_terminal.as_deref());
+        } else {
+            drun_print(app, config.default_terminal.as_deref());
+        }
+    } else {
+        // stdin / run modes.
+        // C: `if (entry->mode == TOFI_MODE_PLAIN && tofi->print_index)`.
+        if matches!(mode, LaunchMode::Stdin) && config.print_index {
+            if let Some(idx) = all_commands.iter().position(|s| s == result) {
+                println!("{}", idx + 1);
+            }
+        } else {
+            println!("{result}");
+        }
+    }
+    #[cfg(not(feature = "drun"))]
+    {
+        // Without drun support only stdin/run exist.
+        if matches!(mode, LaunchMode::Stdin) && config.print_index {
+            if let Some(idx) = all_commands.iter().position(|s| s == result) {
+                println!("{}", idx + 1);
+            }
+        } else {
+            println!("{result}");
+        }
+    }
+
+    // ── History ───────────────────────────────────────────────────────────────
+    // C: `if (tofi->use_history) { history_add; history_save_default_file; }`.
+    #[cfg(feature = "history")]
+    if config.use_history {
+        let is_drun = cfg!(feature = "drun") && matches!(mode, LaunchMode::Drun);
+        let hist_path = config
+            .history_file
+            .as_deref()
+            .map(std::path::PathBuf::from)
+            .or_else(|| history::default_history_path(is_drun));
+        if let Some(hp) = hist_path {
+            let mut hist = history::load(&hp).unwrap_or_default();
+            hist.add(result);
+            if let Err(e) = history::save(&hist, &hp) {
+                tracing::warn!("Failed to save history: {e}");
+            }
+        }
+    }
+
+    true
+}
+
+/// Print the expanded exec command for a desktop entry to stdout.
+///
+/// Prepends the terminal command when `entry.terminal` is `true`.
+///
+/// C reference: `drun_print` in `src/drun.c`.
+#[cfg(all(feature = "wayland", feature = "drun"))]
+fn drun_print(entry: &libtofi_rs::drun::DesktopEntry, terminal: Option<&str>) {
+    let cmd = libtofi_rs::drun::exec_command(entry);
+    if entry.terminal {
+        match terminal {
+            Some(t) if !t.is_empty() => print!("{t} "),
+            _ => tracing::warn!(
+                "Terminal application '{}' launched but no terminal is configured \
+                 (set --terminal or $TERMINAL).",
+                entry.name
+            ),
+        }
+    }
+    println!("{cmd}");
+}
+
+/// Launch a desktop application directly via `std::process::Command`.
+///
+/// The exec string is split on whitespace for argument handling.  A proper
+/// shell-quoting parser (e.g. `shlex`) would be more robust, but matches the
+/// typical exec strings found in `.desktop` files.
+///
+/// C reference: `drun_launch` in `src/drun.c` (uses `g_desktop_app_info_new_from_filename`).
+#[cfg(all(feature = "wayland", feature = "drun"))]
+fn drun_launch(entry: &libtofi_rs::drun::DesktopEntry, terminal: Option<&str>) {
+    let cmd = libtofi_rs::drun::exec_command(entry);
+    let full_cmd = if entry.terminal {
+        let term = terminal.filter(|t| !t.is_empty()).unwrap_or("xterm");
+        format!("{term} {cmd}")
+    } else {
+        cmd
+    };
+
+    let mut parts = full_cmd.split_whitespace();
+    let Some(program) = parts.next() else {
+        tracing::error!("Empty exec command for '{}'", entry.name);
+        return;
+    };
+    let args: Vec<&str> = parts.collect();
+
+    match std::process::Command::new(program).args(&args).spawn() {
+        Ok(_) => tracing::debug!("Launched '{}': {full_cmd}", entry.name),
+        Err(e) => tracing::error!("Failed to launch '{}': {e}", entry.name),
+    }
 }
 
 // ── History-sort helpers ──────────────────────────────────────────────────────
