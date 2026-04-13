@@ -10,6 +10,10 @@
 //! * **Step 4.5** — [`surface::create_surface`] uses output integer scale or
 //!   `wp_fractional_scale_v1` to compute physical buffer dimensions; sets up
 //!   `wp_viewport` for correct fractional HiDPI presentation.
+//! * **Step 6.1** — [`WaylandState`] receives `wl_keyboard` events; XKB
+//!   keymap and modifier state are maintained in
+//!   [`crate::input::keyboard::KeyboardState`]; key events update the entry
+//!   and set [`WaylandState::redraw`].
 //!
 //! # C reference
 //!
@@ -17,10 +21,13 @@
 
 pub mod surface;
 
+use std::io::Read as _;
+
 use wayland_client::{
     Connection, Dispatch, EventQueue, QueueHandle,
     protocol::{
-        wl_buffer, wl_compositor, wl_output, wl_registry, wl_seat, wl_shm, wl_shm_pool, wl_surface,
+        wl_buffer, wl_compositor, wl_keyboard, wl_output, wl_pointer, wl_registry, wl_seat, wl_shm,
+        wl_shm_pool, wl_surface,
     },
 };
 use wayland_protocols::wp::{
@@ -91,13 +98,12 @@ impl OutputInfo {
 
 // ── WaylandState ─────────────────────────────────────────────────────────────
 
-/// Bound Wayland globals, live connection, and (after Step 4.3) the launcher
-/// surface.
+/// Bound Wayland globals, live connection, entry widget, and event flags.
 ///
 /// Created by [`connect`]; drop to disconnect cleanly.  The [`EventQueue`]
 /// returned alongside must be dispatched to keep the connection alive.
 ///
-/// C reference: `struct tofi` (Wayland globals section) in `src/tofi.h`.
+/// C reference: `struct tofi` in `src/tofi.h`.
 pub struct WaylandState {
     /// Raw connection; held to keep the backend alive for the session.
     pub connection: Connection,
@@ -116,6 +122,57 @@ pub struct WaylandState {
         Option<wp_fractional_scale_manager_v1::WpFractionalScaleManagerV1>,
     /// All advertised outputs; names/modes populated after the second roundtrip.
     pub outputs: Vec<OutputInfo>,
+
+    // ── Step 6.1: keyboard ───────────────────────────────────────────────────
+    /// `wl_keyboard` obtained from `wl_seat` capabilities.
+    pub keyboard: Option<wl_keyboard::WlKeyboard>,
+
+    // ── Step 6.3: pointer ────────────────────────────────────────────────────
+    /// `wl_pointer` obtained from `wl_seat` capabilities.
+    pub pointer: Option<wl_pointer::WlPointer>,
+    /// When `true`, the pointer cursor is hidden on `wl_pointer::enter`.
+    ///
+    /// C reference: `tofi->hide_cursor` in `src/tofi.h`.
+    pub hide_cursor: bool,
+    /// XKB keymap, modifier state, and key-repeat tracking.
+    ///
+    /// C reference: `tofi->xkb_*` and `tofi->repeat` in `src/tofi.h`.
+    pub keyboard_state: crate::input::keyboard::KeyboardState,
+
+    // ── Step 6.1: entry widget ───────────────────────────────────────────────
+    // Declared before `surface` so it is dropped before the SHM pool is freed.
+    /// The entry layout widget.  Populated after `create_surface` and kept
+    /// alive for the duration of the session.  `None` before initialisation or
+    /// when the `renderer` feature is disabled.
+    ///
+    /// C reference: `tofi->window.entry` in `src/tofi.h`.
+    #[cfg(feature = "renderer")]
+    pub entry: Option<crate::entry::Entry>,
+
+    // ── Step 6.4: drun desktop entries ───────────────────────────────────────
+    /// Desktop entries loaded in drun mode; kept for submit (Step 6.5).
+    ///
+    /// C reference: `tofi->window.entry.apps` in `src/tofi.h`.
+    #[cfg(feature = "drun")]
+    pub drun_entries: Vec<crate::drun::DesktopEntry>,
+
+    // ── Step 6.1: event flags ────────────────────────────────────────────────
+    /// Set by keyboard / repeat handlers when the entry needs to be redrawn.
+    ///
+    /// C reference: `tofi->window.surface.redraw` in `src/tofi.h`.
+    pub redraw: bool,
+    /// Set when the user presses Enter — the main loop prints the result and
+    /// exits.
+    ///
+    /// C reference: `tofi->submit` in `src/tofi.h`.
+    pub submit: bool,
+
+    // ── Step 6.1: config options forwarded from `TofiConfig` ─────────────────
+    /// See `TofiConfig::physical_keybindings`.  Default: `true`.
+    pub physical_keybindings: bool,
+    /// See `TofiConfig::auto_accept_single`.  Default: `false`.
+    pub auto_accept_single: bool,
+
     /// The launcher's layer surface; populated by [`surface::create_surface`].
     pub surface: Option<surface::SurfaceState>,
     /// Set to `true` when the compositor sends `zwlr_layer_surface_v1::closed`.
@@ -140,6 +197,18 @@ impl WaylandState {
             viewporter: None,
             fractional_scale_manager: None,
             outputs: Vec::new(),
+            keyboard: None,
+            keyboard_state: crate::input::keyboard::KeyboardState::new(true),
+            pointer: None,
+            hide_cursor: false,
+            #[cfg(feature = "drun")]
+            drun_entries: Vec::new(),
+            #[cfg(feature = "renderer")]
+            entry: None,
+            redraw: false,
+            submit: false,
+            physical_keybindings: true,
+            auto_accept_single: false,
             surface: None,
             closed: false,
             fractional_scale: 0,
@@ -244,16 +313,170 @@ impl Dispatch<wl_shm::WlShm, ()> for WaylandState {
     }
 }
 
+/// Seat capabilities — obtain `wl_keyboard` and/or `wl_pointer` as advertised.
+///
+/// C reference: `wl_seat_capabilities` in `src/main.c`.
 impl Dispatch<wl_seat::WlSeat, ()> for WaylandState {
     fn event(
-        _: &mut Self,
-        _: &wl_seat::WlSeat,
-        _event: wl_seat::Event,
+        state: &mut Self,
+        seat: &wl_seat::WlSeat,
+        event: wl_seat::Event,
+        _: &(),
+        _: &Connection,
+        qh: &QueueHandle<Self>,
+    ) {
+        let wl_seat::Event::Capabilities {
+            capabilities: wayland_client::WEnum::Value(caps),
+        } = event
+        else {
+            return;
+        };
+
+        // ── Keyboard ──────────────────────────────────────────────────────────
+        let have_keyboard = caps.contains(wl_seat::Capability::Keyboard);
+        if have_keyboard && state.keyboard.is_none() {
+            let kb = seat.get_keyboard(qh, ());
+            tracing::debug!("Got keyboard from seat");
+            state.keyboard = Some(kb);
+        } else if !have_keyboard && let Some(kb) = state.keyboard.take() {
+            kb.release();
+            tracing::debug!("Released keyboard");
+        }
+
+        // ── Pointer ───────────────────────────────────────────────────────────
+        // C: `wl_seat_get_pointer` + `wl_pointer_add_listener` in
+        // `wl_seat_capabilities` in `src/main.c`.
+        let have_pointer = caps.contains(wl_seat::Capability::Pointer);
+        if have_pointer && state.pointer.is_none() {
+            let ptr = seat.get_pointer(qh, ());
+            tracing::debug!("Got pointer from seat");
+            state.pointer = Some(ptr);
+        } else if !have_pointer && let Some(ptr) = state.pointer.take() {
+            ptr.release();
+            tracing::debug!("Released pointer");
+        }
+    }
+}
+
+/// `wl_keyboard` events — keymap, modifier state, and key presses.
+///
+/// C reference: `wl_keyboard_listener` in `src/main.c`.
+impl Dispatch<wl_keyboard::WlKeyboard, ()> for WaylandState {
+    fn event(
+        state: &mut Self,
+        _proxy: &wl_keyboard::WlKeyboard,
+        event: wl_keyboard::Event,
         _: &(),
         _: &Connection,
         _: &QueueHandle<Self>,
     ) {
-        // Capabilities and name handled in Step 6.1 (keyboard/pointer setup).
+        match event {
+            // ── Keymap ────────────────────────────────────────────────────────
+            // C: wl_keyboard_keymap — mmap the fd, parse XKB string, build
+            // xkb_keymap + xkb_state.
+            wl_keyboard::Event::Keymap {
+                format,
+                fd,
+                size: _,
+            } => {
+                if !matches!(
+                    format,
+                    wayland_client::WEnum::Value(wl_keyboard::KeymapFormat::XkbV1)
+                ) {
+                    tracing::warn!("Unsupported keymap format; ignoring");
+                    return;
+                }
+                // Read the keymap string from the fd (file ends at EOF).
+                let mut file = std::fs::File::from(fd);
+                let mut keymap_str = String::new();
+                if file.read_to_string(&mut keymap_str).is_err() {
+                    tracing::error!("Failed to read keymap from fd");
+                    return;
+                }
+                state.keyboard_state.load_keymap(&keymap_str);
+            }
+
+            // ── Enter / Leave ─────────────────────────────────────────────────
+            // C: deliberately blank.
+            wl_keyboard::Event::Enter { .. } | wl_keyboard::Event::Leave { .. } => {}
+
+            // ── Key ───────────────────────────────────────────────────────────
+            // C: wl_keyboard_key — start/stop repeat, call input_handle_keypress.
+            wl_keyboard::Event::Key {
+                key,
+                state: wayland_client::WEnum::Value(key_state),
+                ..
+            } => {
+                // XKB keycode = evdev key + 8.
+                let keycode = key + 8;
+
+                match key_state {
+                    wl_keyboard::KeyState::Released => {
+                        state.keyboard_state.disarm_repeat(keycode);
+                    }
+                    wl_keyboard::KeyState::Pressed => {
+                        if state.keyboard_state.key_repeats(keycode)
+                            && state.keyboard_state.repeat.rate != 0
+                        {
+                            state.keyboard_state.arm_repeat(keycode);
+                        }
+                        handle_keypress(state, keycode);
+                    }
+                    _ => {}
+                }
+            }
+
+            // ── Modifiers ─────────────────────────────────────────────────────
+            // C: wl_keyboard_modifiers — xkb_state_update_mask.
+            wl_keyboard::Event::Modifiers {
+                mods_depressed,
+                mods_latched,
+                mods_locked,
+                group,
+                ..
+            } => {
+                state.keyboard_state.update_modifiers(
+                    mods_depressed,
+                    mods_latched,
+                    mods_locked,
+                    group,
+                );
+            }
+
+            // ── Repeat info ───────────────────────────────────────────────────
+            // C: wl_keyboard_repeat_info — store rate + delay.
+            wl_keyboard::Event::RepeatInfo { rate, delay } => {
+                state.keyboard_state.set_repeat_info(rate, delay);
+            }
+
+            _ => {}
+        }
+    }
+}
+
+/// Pointer events — only `enter` is meaningful (cursor hiding).
+///
+/// All other events (`leave`, `motion`, `button`, `axis`, `frame`, …) are
+/// intentionally left blank, matching the C implementation.
+///
+/// C reference: `wl_pointer_listener` in `src/main.c`.
+impl Dispatch<wl_pointer::WlPointer, ()> for WaylandState {
+    fn event(
+        state: &mut Self,
+        pointer: &wl_pointer::WlPointer,
+        event: wl_pointer::Event,
+        _: &(),
+        _: &Connection,
+        _: &QueueHandle<Self>,
+    ) {
+        // C: `wl_pointer_enter` — hide by setting cursor surface to NULL.
+        // All other pointer events (leave, motion, button, axis, frame, …)
+        // are deliberately left blank — same as C.
+        if let wl_pointer::Event::Enter { serial, .. } = event
+            && state.hide_cursor
+        {
+            pointer.set_cursor(serial, None, 0, 0);
+        }
     }
 }
 
@@ -470,6 +693,173 @@ impl Dispatch<wp_viewport::WpViewport, ()> for WaylandState {
         _: &QueueHandle<Self>,
     ) {
     }
+}
+
+// ── handle_keypress ───────────────────────────────────────────────────────────
+
+/// Process one XKB keycode — classify the key into a [`crate::input::KeyAction`]
+/// and apply it to the entry widget and event flags.
+///
+/// Called from the `wl_keyboard::key` event handler and from the key-repeat
+/// ticker in the main event loop.
+///
+/// `Close` and `Submit` actions return early without setting `redraw`.
+/// `Unknown` (unbound key) returns early without triggering `auto_accept_single`
+/// or `redraw`.  All other actions set `redraw = true` and, when
+/// `auto_accept_single` is enabled and exactly one result remains, set
+/// `submit = true` — matching the C behaviour where the check follows the
+/// entire if-else chain.
+///
+/// C reference: `input_handle_keypress` in `src/input.c`.
+pub fn handle_keypress(state: &mut WaylandState, keycode: u32) {
+    if !state.keyboard_state.is_ready() {
+        return;
+    }
+
+    let ctrl = state.keyboard_state.mod_ctrl();
+    let alt = state.keyboard_state.mod_alt();
+    let shift = state.keyboard_state.mod_shift();
+    let ch = state.keyboard_state.key_get_utf32(keycode);
+    let key = state.keyboard_state.keycode_to_linux_key(keycode);
+
+    let action = crate::input::classify_keypress(ctrl, alt, shift, key, ch);
+
+    match action {
+        // ── Terminal actions (return immediately, no redraw) ───────────────────
+        crate::input::KeyAction::Close => {
+            state.closed = true;
+            return;
+        }
+        crate::input::KeyAction::Submit => {
+            state.submit = true;
+            return;
+        }
+        // ── Unbound key ───────────────────────────────────────────────────────
+        crate::input::KeyAction::Unknown => {
+            return;
+        }
+
+        // ── Text editing ──────────────────────────────────────────────────────
+        crate::input::KeyAction::InsertChar(c) =>
+        {
+            #[cfg(feature = "renderer")]
+            if let Some(entry) = state.entry.as_mut() {
+                crate::input::add_char(
+                    &mut entry.input,
+                    &mut entry.cursor_position,
+                    c,
+                    crate::entry::MAX_INPUT_LENGTH,
+                );
+                entry.reset_selection();
+            }
+        }
+        crate::input::KeyAction::DeleteChar =>
+        {
+            #[cfg(feature = "renderer")]
+            if let Some(entry) = state.entry.as_mut() {
+                crate::input::delete_char(&mut entry.input, &mut entry.cursor_position);
+                entry.reset_selection();
+            }
+        }
+        crate::input::KeyAction::DeleteWord =>
+        {
+            #[cfg(feature = "renderer")]
+            if let Some(entry) = state.entry.as_mut() {
+                crate::input::delete_word(&mut entry.input, &mut entry.cursor_position);
+                entry.reset_selection();
+            }
+        }
+        crate::input::KeyAction::ClearInput =>
+        {
+            #[cfg(feature = "renderer")]
+            if let Some(entry) = state.entry.as_mut() {
+                crate::input::clear_input(&mut entry.input, &mut entry.cursor_position);
+                entry.reset_selection();
+            }
+        }
+
+        // ── Clipboard (Step 7.1 stub) ─────────────────────────────────────────
+        crate::input::KeyAction::Paste => {
+            tracing::debug!("Paste: not yet implemented (Step 7.1)");
+        }
+
+        // ── Navigation ────────────────────────────────────────────────────────
+        // C: `previous_cursor_or_result`.
+        crate::input::KeyAction::PrevCursorOrResult =>
+        {
+            #[cfg(feature = "renderer")]
+            if let Some(entry) = state.entry.as_mut() {
+                if entry.config.cursor_theme.show
+                    && entry.selection == 0
+                    && entry.cursor_position > 0
+                {
+                    entry.cursor_position -= 1;
+                } else {
+                    entry.select_prev();
+                }
+            }
+        }
+        // C: `next_cursor_or_result`.
+        crate::input::KeyAction::NextCursorOrResult =>
+        {
+            #[cfg(feature = "renderer")]
+            if let Some(entry) = state.entry.as_mut() {
+                let n_chars = entry.input.chars().count();
+                if entry.config.cursor_theme.show && entry.cursor_position < n_chars {
+                    entry.cursor_position += 1;
+                } else {
+                    entry.select_next();
+                }
+            }
+        }
+        crate::input::KeyAction::PrevResult =>
+        {
+            #[cfg(feature = "renderer")]
+            if let Some(entry) = state.entry.as_mut() {
+                entry.select_prev();
+            }
+        }
+        crate::input::KeyAction::NextResult =>
+        {
+            #[cfg(feature = "renderer")]
+            if let Some(entry) = state.entry.as_mut() {
+                entry.select_next();
+            }
+        }
+        crate::input::KeyAction::ResetSelection =>
+        {
+            #[cfg(feature = "renderer")]
+            if let Some(entry) = state.entry.as_mut() {
+                entry.reset_selection();
+            }
+        }
+        crate::input::KeyAction::PrevPage =>
+        {
+            #[cfg(feature = "renderer")]
+            if let Some(entry) = state.entry.as_mut() {
+                entry.select_prev_page();
+            }
+        }
+        crate::input::KeyAction::NextPage =>
+        {
+            #[cfg(feature = "renderer")]
+            if let Some(entry) = state.entry.as_mut() {
+                entry.select_next_page();
+            }
+        }
+    }
+
+    // auto_accept_single: mirrors C — fires after any bound key that is not
+    // Close, Submit, or Unknown.
+    #[cfg(feature = "renderer")]
+    if state.auto_accept_single
+        && let Some(entry) = state.entry.as_ref()
+        && entry.results.len() == 1
+    {
+        state.submit = true;
+    }
+
+    state.redraw = true;
 }
 
 // ── Public API ────────────────────────────────────────────────────────────────
