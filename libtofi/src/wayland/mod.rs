@@ -26,7 +26,7 @@ use std::io::Read as _;
 use wayland_client::{
     Connection, Dispatch, EventQueue, QueueHandle,
     protocol::{
-        wl_buffer, wl_compositor, wl_keyboard, wl_output, wl_registry, wl_seat, wl_shm,
+        wl_buffer, wl_compositor, wl_keyboard, wl_output, wl_pointer, wl_registry, wl_seat, wl_shm,
         wl_shm_pool, wl_surface,
     },
 };
@@ -126,6 +126,14 @@ pub struct WaylandState {
     // ── Step 6.1: keyboard ───────────────────────────────────────────────────
     /// `wl_keyboard` obtained from `wl_seat` capabilities.
     pub keyboard: Option<wl_keyboard::WlKeyboard>,
+
+    // ── Step 6.3: pointer ────────────────────────────────────────────────────
+    /// `wl_pointer` obtained from `wl_seat` capabilities.
+    pub pointer: Option<wl_pointer::WlPointer>,
+    /// When `true`, the pointer cursor is hidden on `wl_pointer::enter`.
+    ///
+    /// C reference: `tofi->hide_cursor` in `src/tofi.h`.
+    pub hide_cursor: bool,
     /// XKB keymap, modifier state, and key-repeat tracking.
     ///
     /// C reference: `tofi->xkb_*` and `tofi->repeat` in `src/tofi.h`.
@@ -184,6 +192,8 @@ impl WaylandState {
             outputs: Vec::new(),
             keyboard: None,
             keyboard_state: crate::input::keyboard::KeyboardState::new(true),
+            pointer: None,
+            hide_cursor: false,
             #[cfg(feature = "renderer")]
             entry: None,
             redraw: false,
@@ -294,7 +304,7 @@ impl Dispatch<wl_shm::WlShm, ()> for WaylandState {
     }
 }
 
-/// Seat capabilities — obtain `wl_keyboard` when a keyboard is present.
+/// Seat capabilities — obtain `wl_keyboard` and/or `wl_pointer` as advertised.
 ///
 /// C reference: `wl_seat_capabilities` in `src/main.c`.
 impl Dispatch<wl_seat::WlSeat, ()> for WaylandState {
@@ -313,8 +323,8 @@ impl Dispatch<wl_seat::WlSeat, ()> for WaylandState {
             return;
         };
 
+        // ── Keyboard ──────────────────────────────────────────────────────────
         let have_keyboard = caps.contains(wl_seat::Capability::Keyboard);
-
         if have_keyboard && state.keyboard.is_none() {
             let kb = seat.get_keyboard(qh, ());
             tracing::debug!("Got keyboard from seat");
@@ -322,6 +332,19 @@ impl Dispatch<wl_seat::WlSeat, ()> for WaylandState {
         } else if !have_keyboard && let Some(kb) = state.keyboard.take() {
             kb.release();
             tracing::debug!("Released keyboard");
+        }
+
+        // ── Pointer ───────────────────────────────────────────────────────────
+        // C: `wl_seat_get_pointer` + `wl_pointer_add_listener` in
+        // `wl_seat_capabilities` in `src/main.c`.
+        let have_pointer = caps.contains(wl_seat::Capability::Pointer);
+        if have_pointer && state.pointer.is_none() {
+            let ptr = seat.get_pointer(qh, ());
+            tracing::debug!("Got pointer from seat");
+            state.pointer = Some(ptr);
+        } else if !have_pointer && let Some(ptr) = state.pointer.take() {
+            ptr.release();
+            tracing::debug!("Released pointer");
         }
     }
 }
@@ -418,6 +441,32 @@ impl Dispatch<wl_keyboard::WlKeyboard, ()> for WaylandState {
             }
 
             _ => {}
+        }
+    }
+}
+
+/// Pointer events — only `enter` is meaningful (cursor hiding).
+///
+/// All other events (`leave`, `motion`, `button`, `axis`, `frame`, …) are
+/// intentionally left blank, matching the C implementation.
+///
+/// C reference: `wl_pointer_listener` in `src/main.c`.
+impl Dispatch<wl_pointer::WlPointer, ()> for WaylandState {
+    fn event(
+        state: &mut Self,
+        pointer: &wl_pointer::WlPointer,
+        event: wl_pointer::Event,
+        _: &(),
+        _: &Connection,
+        _: &QueueHandle<Self>,
+    ) {
+        // C: `wl_pointer_enter` — hide by setting cursor surface to NULL.
+        // All other pointer events (leave, motion, button, axis, frame, …)
+        // are deliberately left blank — same as C.
+        if let wl_pointer::Event::Enter { serial, .. } = event
+            && state.hide_cursor
+        {
+            pointer.set_cursor(serial, None, 0, 0);
         }
     }
 }

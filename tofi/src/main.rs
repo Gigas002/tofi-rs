@@ -29,9 +29,10 @@ fn main() {
         let (mut state, mut event_queue) =
             libtofi_rs::wayland::connect().expect("Failed to initialize Wayland");
 
-        // Wire config options that the keyboard handler needs.
+        // Wire config options that the keyboard / pointer handlers need.
         state.physical_keybindings = config.physical_keybindings;
         state.auto_accept_single = config.auto_accept_single;
+        state.hide_cursor = config.hide_cursor;
         // Propagate physical_keybindings into the already-constructed KeyboardState.
         state.keyboard_state.physical_keybindings = config.physical_keybindings;
 
