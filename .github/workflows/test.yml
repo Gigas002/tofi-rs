@@ -40,7 +40,7 @@ jobs:
         run: |
           cargo llvm-cov --all-features -p tofi-rs --lcov --output-path lcov-tofi-rs.info
       - name: Upload libtofi-rs coverage to Codecov
-        uses: codecov/codecov-action@v4
+        uses: codecov/codecov-action@v6
         with:
           files: ./lcov-libtofi-rs.info
           flags: libtofi-rs
@@ -50,7 +50,7 @@ jobs:
         env:
           CODECOV_TOKEN: ${{ secrets.CODECOV_TOKEN }}
       - name: Upload tofi-rs coverage to Codecov
-        uses: codecov/codecov-action@v4
+        uses: codecov/codecov-action@v6
         with:
           files: ./lcov-tofi-rs.info
           flags: tofi-rs
