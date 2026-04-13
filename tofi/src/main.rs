@@ -12,6 +12,68 @@ mod run_commands;
 
 use clap::Parser as _;
 
+/// Launch mode — determined from `argv[0]` before Wayland is initialised.
+#[cfg(feature = "wayland")]
+///
+/// C reference: `strstr(argv[0], "-run")` / `-drun` in `src/main.c`.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum LaunchMode {
+    /// Default: read entries from stdin (one per line).
+    Stdin,
+    /// Invoked as `tofi-run`: list executables from `$PATH`.
+    #[cfg(feature = "run-commands")]
+    Run,
+    /// Invoked as `tofi-drun`: list desktop applications.
+    #[cfg(feature = "drun")]
+    Drun,
+}
+
+/// Detect launch mode from `argv[0]`.
+#[cfg(feature = "wayland")]
+///
+/// Checks for `-drun` before `-run` so that a hypothetical binary named
+/// `tofi-drun` is not misdetected; functionally equivalent to the C order
+/// because `"tofi-drun"` does not contain the substring `"-run"`.
+///
+/// C reference: the `strstr` checks in `src/main.c`.
+fn detect_mode() -> LaunchMode {
+    let argv0 = std::env::args().next().unwrap_or_default();
+    #[cfg(feature = "drun")]
+    if argv0.contains("-drun") {
+        return LaunchMode::Drun;
+    }
+    #[cfg(feature = "run-commands")]
+    if argv0.contains("-run") {
+        return LaunchMode::Run;
+    }
+    let _ = argv0;
+    LaunchMode::Stdin
+}
+
+/// Read stdin line-by-line into an owned `Vec<String>`.
+#[cfg(feature = "wayland")]
+///
+/// Empty lines are skipped.  When `normalize` is `true` each line is
+/// NFC-normalised (mirrors C's `utf8_normalize` on the raw buffer).
+///
+/// C reference: `read_stdin` + `string_ref_vec_from_buffer` in `src/main.c`.
+fn read_stdin(normalize: bool) -> Vec<String> {
+    use std::io::BufRead as _;
+    std::io::stdin()
+        .lock()
+        .lines()
+        .map_while(Result::ok)
+        .filter(|l| !l.is_empty())
+        .map(|l| {
+            if normalize {
+                libtofi_rs::unicode::utf8_normalize(&l)
+            } else {
+                l
+            }
+        })
+        .collect()
+}
+
 fn main() {
     // Initialise tracing; verbosity controlled by RUST_LOG (e.g. RUST_LOG=debug).
     tracing_subscriber::fmt()
@@ -28,6 +90,8 @@ fn main() {
 
         let (mut state, mut event_queue) =
             libtofi_rs::wayland::connect().expect("Failed to initialize Wayland");
+
+        let mode = detect_mode();
 
         // Wire config options that the keyboard / pointer handlers need.
         state.physical_keybindings = config.physical_keybindings;
@@ -158,8 +222,78 @@ fn main() {
                 unsafe { Entry::new(data_ptr, phys_w, phys_h, scale_num, entry_config) }
                     .expect("Failed to create entry");
 
-            // Populate results (stdin / run / drun — Phase 6.4).
-            entry.results = vec![];
+            // ── Populate results (Phase 6.4) ──────────────────────────────
+            // C reference: the argv[0] mode detection block in `src/main.c`.
+            entry.results = match mode {
+                // ── stdin ─────────────────────────────────────────────────────
+                LaunchMode::Stdin => {
+                    tracing::debug!("Mode: stdin");
+                    let mut items = read_stdin(!config.ascii_input);
+                    #[cfg(feature = "history")]
+                    if config.use_history {
+                        // C: history only applies in stdin mode when an explicit
+                        // history file is configured (no default path for stdin).
+                        if let Some(ref hf) = config.history_file
+                            && let Ok(hist) = history::load(std::path::Path::new(hf))
+                        {
+                            sort_by_history(&mut items, &hist);
+                        }
+                    }
+                    items
+                }
+
+                // ── run ───────────────────────────────────────────────────────
+                #[cfg(feature = "run-commands")]
+                LaunchMode::Run => {
+                    tracing::debug!("Mode: run");
+                    let path_var = std::env::var("PATH").unwrap_or_default();
+                    let cache_path = run_commands::default_cache_path()
+                        .unwrap_or_else(|| std::path::PathBuf::from("/tmp/tofi-compgen"));
+                    let mut commands =
+                        run_commands::commands_cached(&path_var, &cache_path).unwrap_or_default();
+                    #[cfg(feature = "history")]
+                    if config.use_history {
+                        let hist_path = config
+                            .history_file
+                            .as_deref()
+                            .map(std::path::PathBuf::from)
+                            .or_else(|| history::default_history_path(false));
+                        if let Some(hp) = hist_path
+                            && let Ok(hist) = history::load(&hp)
+                        {
+                            sort_by_history(&mut commands, &hist);
+                        }
+                    }
+                    commands
+                }
+
+                // ── drun ──────────────────────────────────────────────────────
+                #[cfg(feature = "drun")]
+                LaunchMode::Drun => {
+                    tracing::debug!("Mode: drun");
+                    let dirs = libtofi_rs::drun::application_dirs();
+                    let cache_path = libtofi_rs::drun::default_cache_path()
+                        .unwrap_or_else(|| std::path::PathBuf::from("/tmp/tofi-drun"));
+                    let mut entries =
+                        libtofi_rs::drun::entries_cached(&dirs, &cache_path).unwrap_or_default();
+                    #[cfg(feature = "history")]
+                    if config.use_history {
+                        let hist_path = config
+                            .history_file
+                            .as_deref()
+                            .map(std::path::PathBuf::from)
+                            .or_else(|| history::default_history_path(true));
+                        if let Some(hp) = hist_path
+                            && let Ok(hist) = history::load(&hp)
+                        {
+                            sort_drun_by_history(&mut entries, &hist);
+                        }
+                    }
+                    let names: Vec<String> = entries.iter().map(|e| e.name.clone()).collect();
+                    state.drun_entries = entries;
+                    names
+                }
+            };
 
             entry.flush();
 
@@ -262,6 +396,48 @@ fn main() {
     }
 
     libtofi_rs::noop();
+}
+
+// ── History-sort helpers ──────────────────────────────────────────────────────
+
+/// Sort a list of command strings by descending history run-count.
+///
+/// Commands not present in `hist` stay at their original relative order
+/// (stable sort with a score of 0).
+///
+/// C reference: `compgen_history_sort` + `string_ref_vec_history_sort` in
+/// `src/compgen.c` / `src/string_vec.c`.
+#[cfg(feature = "history")]
+fn sort_by_history(items: &mut [String], hist: &history::History) {
+    use std::collections::HashMap;
+    let scores: HashMap<&str, i32> = hist
+        .entries()
+        .iter()
+        .map(|p| (p.name.as_str(), p.run_count as i32))
+        .collect();
+    items.sort_by(|a, b| {
+        let sa = scores.get(a.as_str()).copied().unwrap_or(0);
+        let sb = scores.get(b.as_str()).copied().unwrap_or(0);
+        sb.cmp(&sa)
+    });
+}
+
+/// Sort desktop entries by descending history run-count.
+///
+/// C reference: `drun_history_sort` in `src/drun.c`.
+#[cfg(all(feature = "history", feature = "drun"))]
+fn sort_drun_by_history(entries: &mut [libtofi_rs::drun::DesktopEntry], hist: &history::History) {
+    use std::collections::HashMap;
+    let scores: HashMap<&str, i32> = hist
+        .entries()
+        .iter()
+        .map(|p| (p.name.as_str(), p.run_count as i32))
+        .collect();
+    entries.sort_by(|a, b| {
+        let sa = scores.get(a.name.as_str()).copied().unwrap_or(0);
+        let sb = scores.get(b.name.as_str()).copied().unwrap_or(0);
+        sb.cmp(&sa)
+    });
 }
 
 /// Convert a [`config::TextTheme`] to [`libtofi_rs::entry::TextTheme`].

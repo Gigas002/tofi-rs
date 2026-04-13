@@ -149,6 +149,13 @@ pub struct WaylandState {
     #[cfg(feature = "renderer")]
     pub entry: Option<crate::entry::Entry>,
 
+    // ── Step 6.4: drun desktop entries ───────────────────────────────────────
+    /// Desktop entries loaded in drun mode; kept for submit (Step 6.5).
+    ///
+    /// C reference: `tofi->window.entry.apps` in `src/tofi.h`.
+    #[cfg(feature = "drun")]
+    pub drun_entries: Vec<crate::drun::DesktopEntry>,
+
     // ── Step 6.1: event flags ────────────────────────────────────────────────
     /// Set by keyboard / repeat handlers when the entry needs to be redrawn.
     ///
@@ -194,6 +201,8 @@ impl WaylandState {
             keyboard_state: crate::input::keyboard::KeyboardState::new(true),
             pointer: None,
             hide_cursor: false,
+            #[cfg(feature = "drun")]
+            drun_entries: Vec::new(),
             #[cfg(feature = "renderer")]
             entry: None,
             redraw: false,
