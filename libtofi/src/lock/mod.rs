@@ -1,4 +1,5 @@
 //! Single-instance lock — Rust port of `src/lock.c` (feature **`single-instance-lock`**).
+#![deny(unsafe_code)]
 //!
 //! Calls `flock(2)` with `LOCK_EX | LOCK_NB` on a well-known file so that
 //! only one `tofi` process holds the lock at a time.  The lock is released

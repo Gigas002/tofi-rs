@@ -1,4 +1,5 @@
 //! Desktop-entry / `tofi-drun` support — Rust port of `src/drun.c` + `src/desktop_vec.c`
+#![deny(unsafe_code)]
 //! (feature **`drun`**).
 //!
 //! # Responsibilities

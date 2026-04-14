@@ -620,8 +620,9 @@ Each step: **Goal** · **Scope** · **Deliverables** · **Verification** · **C 
   - **C reference:** [`src/surface.c`](../src/surface.c) comments
   - **Deliverables:** `MADV_HUGEPAGE` hint added to `ShmPool::new` on Linux when pool ≥ 2 MiB (C parity, errors ignored as hint); double buffering already in place (`ShmPool` double-buffered since Step 4.4); redraw minimization already in place (`WaylandState::redraw` flag since Step 6.2).
 
-- [ ] **Step 8.4 — Release hardening**
+- [x] **Step 8.4 — Release hardening**
   - **Goal:** `deny(unsafe_code)` where possible; document `unsafe` blocks for FFI; CI must already enforce **`cargo clippy -- -D warnings`** and **`cargo test --workspace`** (Phase 0 Step 0.2, §2.2). Use §9 for **`cargo deny`**, **deploy**, and other **late** automation (coverage gates, etc.).
+  - **Deliverables:** `#![deny(unsafe_code)]` added to `tofi-rs` crate root (with `#[allow(unsafe_code)]` on `main` for the one `Entry::new` call site); `#![deny(unsafe_code)]` added to all pure `libtofi-rs` modules (`error`, `color`, `unicode`, `matching`, `string_table`, `drun`, `lock`, `input`, `scale`); all existing `unsafe` blocks already carry `// SAFETY:` comments.
   - **Verification:** CI green
 
 - [ ] **Step 8.5 — Replace `nix` with `rustix`**

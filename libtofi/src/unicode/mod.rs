@@ -1,4 +1,5 @@
 //! Unicode helpers — Rust port of `src/unicode.c` (GLib wrappers).
+#![deny(unsafe_code)]
 //!
 //! # Design rationale
 //!

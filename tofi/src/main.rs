@@ -1,4 +1,8 @@
 //! `tofi` binary — wires [`cli::Cli`] to the rest of the program.
+// Deny unsafe across the whole CLI crate.  The one call-site that wraps a raw
+// SHM pointer (Entry::new) is explicitly opted out via #[allow(unsafe_code)]
+// on `main` — all other unsafe in the system lives in `libtofi-rs`.
+#![deny(unsafe_code)]
 
 mod cli;
 #[allow(dead_code)]
@@ -74,6 +78,10 @@ fn read_stdin(normalize: bool) -> Vec<String> {
         .collect()
 }
 
+// Entry::new wraps a raw pointer into the SHM double-buffer.  The SAFETY
+// comment at the call-site documents the lifetime invariant; no other unsafe
+// is present in this crate.
+#[allow(unsafe_code)]
 fn main() {
     // Initialise tracing; verbosity controlled by RUST_LOG (e.g. RUST_LOG=debug).
     tracing_subscriber::fmt()
