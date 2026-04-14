@@ -336,19 +336,41 @@ fn main() {
                 Some(d) => d.as_millis().min(i32::MAX as u128) as i32,
             };
 
-            // Poll the Wayland fd with timeout so key repeat can fire.
+            // Poll the Wayland fd (and clipboard fd when a paste is active)
+            // with timeout so key repeat can fire between events.
+            //
+            // C reference: `poll` loop with `pollfds[0]` (Wayland) and
+            // `pollfds[1]` (clipboard pipe) in `src/main.c`.
             let guard = event_queue.prepare_read();
             if let Some(ref g) = guard {
                 use nix::poll::{PollFd, PollFlags, PollTimeout, poll};
                 use std::os::fd::AsFd as _;
-                let fd = g.connection_fd();
-                let mut pfds = [PollFd::new(fd.as_fd(), PollFlags::POLLIN)];
+                let wayland_fd = g.connection_fd();
                 let pt = if timeout_ms < 0 {
                     PollTimeout::NONE
                 } else {
                     PollTimeout::try_from(timeout_ms).unwrap_or(PollTimeout::NONE)
                 };
-                let _ = poll(&mut pfds, pt);
+
+                // When a clipboard paste is in progress, add its fd so we
+                // wake up as soon as data arrives instead of spinning.
+                #[cfg(feature = "clipboard")]
+                if let Some(cfd) = state.clipboard.read_fd.as_ref() {
+                    let mut pfds = [
+                        PollFd::new(wayland_fd.as_fd(), PollFlags::POLLIN),
+                        PollFd::new(cfd.as_fd(), PollFlags::POLLIN),
+                    ];
+                    let _ = poll(&mut pfds, pt);
+                } else {
+                    let mut pfds = [PollFd::new(wayland_fd.as_fd(), PollFlags::POLLIN)];
+                    let _ = poll(&mut pfds, pt);
+                }
+
+                #[cfg(not(feature = "clipboard"))]
+                {
+                    let mut pfds = [PollFd::new(wayland_fd.as_fd(), PollFlags::POLLIN)];
+                    let _ = poll(&mut pfds, pt);
+                }
             }
             if let Some(g) = guard {
                 let _ = g.read();
@@ -356,6 +378,14 @@ fn main() {
             event_queue
                 .dispatch_pending(&mut state)
                 .expect("Wayland dispatch error");
+
+            // Drain any available clipboard data from the paste pipe.
+            // C reference: `read_clipboard` called when `pollfds[1]` is ready
+            // in `src/main.c`.
+            #[cfg(all(feature = "clipboard", feature = "renderer"))]
+            if state.clipboard.read_fd.is_some() {
+                libtofi_rs::wayland::read_clipboard(&mut state);
+            }
 
             // ── Key repeat ────────────────────────────────────────────────────
             // C: poll timerfd / gettime_ms check in the main loop.

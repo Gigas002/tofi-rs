@@ -30,6 +30,9 @@ use wayland_client::{
         wl_shm_pool, wl_surface,
     },
 };
+
+#[cfg(feature = "clipboard")]
+use wayland_client::protocol::{wl_data_device, wl_data_device_manager, wl_data_offer};
 use wayland_protocols::wp::{
     fractional_scale::v1::client::{wp_fractional_scale_manager_v1, wp_fractional_scale_v1},
     viewporter::client::{wp_viewport, wp_viewporter},
@@ -127,6 +130,23 @@ pub struct WaylandState {
     /// `wl_keyboard` obtained from `wl_seat` capabilities.
     pub keyboard: Option<wl_keyboard::WlKeyboard>,
 
+    // ── Step 7.1: clipboard ──────────────────────────────────────────────────
+    /// `wl_data_device_manager` — bound from registry; required for clipboard.
+    ///
+    /// C reference: `tofi->wl_data_device_manager` in `src/tofi.h`.
+    #[cfg(feature = "clipboard")]
+    pub data_device_manager: Option<wl_data_device_manager::WlDataDeviceManager>,
+    /// `wl_data_device` — created from the manager; delivers selection events.
+    ///
+    /// C reference: `tofi->wl_data_device` in `src/tofi.h`.
+    #[cfg(feature = "clipboard")]
+    pub data_device: Option<wl_data_device::WlDataDevice>,
+    /// Clipboard paste state — current offer and active paste pipe.
+    ///
+    /// C reference: `tofi->clipboard` in `src/tofi.h`.
+    #[cfg(feature = "clipboard")]
+    pub clipboard: clipboard::ClipboardState,
+
     // ── Step 6.3: pointer ────────────────────────────────────────────────────
     /// `wl_pointer` obtained from `wl_seat` capabilities.
     pub pointer: Option<wl_pointer::WlPointer>,
@@ -197,6 +217,12 @@ impl WaylandState {
             viewporter: None,
             fractional_scale_manager: None,
             outputs: Vec::new(),
+            #[cfg(feature = "clipboard")]
+            data_device_manager: None,
+            #[cfg(feature = "clipboard")]
+            data_device: None,
+            #[cfg(feature = "clipboard")]
+            clipboard: clipboard::ClipboardState::default(),
             keyboard: None,
             keyboard_state: crate::input::keyboard::KeyboardState::new(true),
             pointer: None,
@@ -281,6 +307,12 @@ impl Dispatch<wl_registry::WlRegistry, ()> for WaylandState {
             "wp_fractional_scale_manager_v1" => {
                 state.fractional_scale_manager = Some(registry.bind(name, 1, qh, ()));
                 tracing::debug!("Bound wp_fractional_scale_manager_v1 v1");
+            }
+            #[cfg(feature = "clipboard")]
+            "wl_data_device_manager" => {
+                let v = version.min(3);
+                state.data_device_manager = Some(registry.bind(name, v, qh, ()));
+                tracing::debug!("Bound wl_data_device_manager v{v}");
             }
             _ => {}
         }
@@ -695,6 +727,121 @@ impl Dispatch<wp_viewport::WpViewport, ()> for WaylandState {
     }
 }
 
+// ── Step 7.1: clipboard dispatch ─────────────────────────────────────────────
+
+/// `wl_data_device_manager` has no events; impl required by dispatch machinery.
+///
+/// C reference: `wl_data_device_manager_get_data_device` in `src/main.c`.
+#[cfg(feature = "clipboard")]
+impl Dispatch<wl_data_device_manager::WlDataDeviceManager, ()> for WaylandState {
+    fn event(
+        _: &mut Self,
+        _: &wl_data_device_manager::WlDataDeviceManager,
+        _event: wl_data_device_manager::Event,
+        _: &(),
+        _: &Connection,
+        _: &QueueHandle<Self>,
+    ) {
+    }
+}
+
+/// `wl_data_device` events — track the current clipboard selection offer.
+///
+/// `DataOffer` creates a new offer object (opcode 0) and replaces the
+/// previous one.  `Selection` with `None` clears the current selection.
+/// `Enter` (DnD) is rejected by accepting with `None` mime type.
+/// `Leave`, `Motion`, `Drop` are blank (DnD not supported).
+///
+/// C reference: `wl_data_device_listener` in `src/main.c`.
+#[cfg(feature = "clipboard")]
+impl Dispatch<wl_data_device::WlDataDevice, ()> for WaylandState {
+    fn event(
+        state: &mut Self,
+        _proxy: &wl_data_device::WlDataDevice,
+        event: wl_data_device::Event,
+        _: &(),
+        _: &Connection,
+        _: &QueueHandle<Self>,
+    ) {
+        match event {
+            // A new offer object was created; replace the old one.
+            // C: `wl_data_device_data_offer` — reset clipboard, store new offer,
+            // add listener (here: Dispatch handles events automatically).
+            wl_data_device::Event::DataOffer { id } => {
+                state.clipboard.reset();
+                state.clipboard.offer = Some(id);
+                tracing::debug!("wl_data_device: new data_offer");
+            }
+
+            // The compositor announces the current clipboard selection.
+            // C: `wl_data_device_selection` — if NULL, reset clipboard.
+            wl_data_device::Event::Selection { id } => {
+                if id.is_none() {
+                    state.clipboard.reset();
+                    tracing::debug!("wl_data_device: selection cleared");
+                }
+                // If Some: the offer was already stored by DataOffer; no action.
+            }
+
+            // DnD drag enters our surface — reject it (we don't support DnD).
+            // C: `wl_data_device_enter` — accept with NULL + set_actions(none).
+            wl_data_device::Event::Enter {
+                serial,
+                id: Some(offer),
+                ..
+            } => {
+                offer.accept(serial, None);
+            }
+
+            // Leave / Motion / Drop: deliberately blank.
+            // C: `wl_data_device_leave`, `motion`, `drop` — blank.
+            _ => {}
+        }
+    }
+
+    // The `DataOffer` event (opcode 0) creates a new `wl_data_offer` object.
+    // Provide user-data type `()` for its dispatch.
+    wayland_client::event_created_child!(WaylandState, wl_data_device::WlDataDevice, [
+        0 => (wl_data_offer::WlDataOffer, ())
+    ]);
+}
+
+/// `wl_data_offer` events — negotiate MIME type for the current selection.
+///
+/// `Offer` events arrive immediately after the offer object is created and
+/// announce which MIME types the clipboard source supports.  We prefer
+/// `text/plain;charset=utf-8` and fall back to `text/plain`.
+/// `SourceActions` and `Action` are DnD-only; ignored.
+///
+/// C reference: `wl_data_offer_listener` in `src/main.c`.
+#[cfg(feature = "clipboard")]
+impl Dispatch<wl_data_offer::WlDataOffer, ()> for WaylandState {
+    fn event(
+        state: &mut Self,
+        _proxy: &wl_data_offer::WlDataOffer,
+        event: wl_data_offer::Event,
+        _: &(),
+        _: &Connection,
+        _: &QueueHandle<Self>,
+    ) {
+        // C: `wl_data_offer_offer` — prefer UTF-8, accept plain as fallback.
+        if let wl_data_offer::Event::Offer { mime_type } = event {
+            let current = state.clipboard.mime_type.as_deref();
+            if mime_type == clipboard::MIME_TEXT_UTF8 {
+                // UTF-8 is the best option; always upgrade to it.
+                state.clipboard.mime_type = Some(mime_type);
+            } else if mime_type == clipboard::MIME_TEXT_PLAIN
+                && current != Some(clipboard::MIME_TEXT_UTF8)
+            {
+                // Accept plain text only if we haven't seen UTF-8 yet.
+                state.clipboard.mime_type = Some(mime_type);
+            }
+        }
+        // SourceActions and Action events are DnD-only; intentionally blank.
+        // C: `wl_data_offer_source_actions`, `wl_data_offer_action` — blank.
+    }
+}
+
 // ── handle_keypress ───────────────────────────────────────────────────────────
 
 /// Process one XKB keycode — classify the key into a [`crate::input::KeyAction`]
@@ -778,9 +925,15 @@ pub fn handle_keypress(state: &mut WaylandState, keycode: u32) {
             }
         }
 
-        // ── Clipboard (Step 7.1 stub) ─────────────────────────────────────────
+        // ── Clipboard ─────────────────────────────────────────────────────────
+        // C: `paste` in `src/input.c` — open pipe, call wl_data_offer_receive.
         crate::input::KeyAction::Paste => {
-            tracing::debug!("Paste: not yet implemented (Step 7.1)");
+            #[cfg(feature = "clipboard")]
+            {
+                state.clipboard.begin_paste();
+            }
+            #[cfg(not(feature = "clipboard"))]
+            tracing::debug!("Paste: clipboard feature disabled");
         }
 
         // ── Navigation ────────────────────────────────────────────────────────
@@ -924,5 +1077,86 @@ pub fn connect() -> Result<(WaylandState, EventQueue<WaylandState>)> {
         state.outputs.len(),
     );
 
+    // Create a data device so the compositor delivers clipboard selection
+    // events.  This mirrors the C setup in `src/main.c` after the roundtrips.
+    //
+    // C reference: `wl_data_device_manager_get_data_device` + listener in
+    // `src/main.c`.
+    #[cfg(feature = "clipboard")]
+    if let (Some(manager), Some(seat)) = (state.data_device_manager.as_ref(), state.seat.as_ref()) {
+        let device = manager.get_data_device(seat, &qh, ());
+        state.data_device = Some(device);
+        tracing::debug!("Created wl_data_device for clipboard");
+    } else {
+        tracing::warn!(
+            "wl_data_device_manager not advertised by compositor; \
+             clipboard (paste) will be unavailable"
+        );
+    }
+
     Ok((state, event_queue))
+}
+
+/// Read available clipboard data from the active paste pipe and insert the
+/// decoded UTF-8 characters into the entry widget at the current cursor.
+///
+/// Should be called from the main event loop whenever the clipboard fd may
+/// be readable (after a blocking poll that includes the fd, or after any
+/// Wayland dispatch when a paste is in progress).  The fd is opened with
+/// `O_NONBLOCK`, so this function returns immediately when no data is
+/// available (`EAGAIN`).
+///
+/// On EOF the pipe is closed and a redraw is triggered.  On a read error
+/// the paste is cancelled.
+///
+/// C reference: `read_clipboard` in `src/main.c`.
+#[cfg(all(feature = "clipboard", feature = "renderer"))]
+pub fn read_clipboard(state: &mut WaylandState) {
+    use std::os::fd::AsRawFd as _;
+
+    let Some(rawfd) = state.clipboard.read_fd.as_ref().map(|f| f.as_raw_fd()) else {
+        return;
+    };
+
+    let mut buf = [0u8; 4096];
+    match nix::unistd::read(rawfd, &mut buf) {
+        Ok(0) => {
+            // EOF — compositor finished writing; paste is complete.
+            state.clipboard.finish_paste();
+            state.redraw = true;
+            tracing::debug!("Clipboard paste complete (EOF)");
+        }
+        Ok(n) => {
+            // Insert received bytes as UTF-8 characters into the entry input.
+            // C: `entry->input_utf32[cursor_position] = unichar; cursor_position++`
+            match std::str::from_utf8(&buf[..n]) {
+                Ok(text) => {
+                    if let Some(entry) = state.entry.as_mut() {
+                        for c in text.chars() {
+                            crate::input::add_char(
+                                &mut entry.input,
+                                &mut entry.cursor_position,
+                                c,
+                                crate::entry::MAX_INPUT_LENGTH,
+                            );
+                        }
+                        entry.reset_selection();
+                    }
+                    state.redraw = true;
+                }
+                Err(_) => {
+                    tracing::warn!("Clipboard data is not valid UTF-8; discarding chunk");
+                    state.clipboard.finish_paste();
+                }
+            }
+        }
+        Err(nix::errno::Errno::EAGAIN) => {
+            // No data available right now — will retry on next poll wakeup.
+            // (On Linux EAGAIN == EWOULDBLOCK.)
+        }
+        Err(e) => {
+            tracing::error!("Failed to read clipboard: {e}");
+            state.clipboard.finish_paste();
+        }
+    }
 }
