@@ -34,8 +34,8 @@ Install the necessary dependencies.
 # Runtime dependencies
 sudo pacman -S freetype2 harfbuzz cairo pango wayland libxkbcommon
 
-# Build-time dependencies
-sudo pacman -S meson scdoc wayland-protocols
+# Build-time dependency
+sudo pacman -S rust
 ```
 
 #### For Fedora
@@ -43,8 +43,8 @@ sudo pacman -S meson scdoc wayland-protocols
 # Runtime dependencies
 sudo dnf install freetype-devel cairo-devel pango-devel wayland-devel libxkbcommon-devel harfbuzz
 
-# Build-time dependencies
-sudo dnf install meson scdoc wayland-protocols-devel
+# Build-time dependency
+sudo dnf install rust cargo
 ```
 
 #### For Debian/Ubuntu
@@ -53,13 +53,17 @@ sudo dnf install meson scdoc wayland-protocols-devel
 # Runtime dependencies
 sudo apt install libfreetype-dev libcairo2-dev libpango1.0-dev libwayland-dev libxkbcommon-dev libharfbuzz-dev
 
-# Build-time dependencies
-sudo apt install meson scdoc wayland-protocols
+# Build-time dependency
+sudo apt install rustup
 ```
 
-Then build:
+Then build and install:
 ```sh
-meson build && ninja -C build install
+cargo build --release
+# Install binary and symlinks
+install -Dm755 target/release/tofi /usr/local/bin/tofi
+ln -sf tofi /usr/local/bin/tofi-run
+ln -sf tofi /usr/local/bin/tofi-drun
 ```
 
 ### Arch
