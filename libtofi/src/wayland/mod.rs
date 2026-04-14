@@ -1112,14 +1112,12 @@ pub fn connect() -> Result<(WaylandState, EventQueue<WaylandState>)> {
 /// C reference: `read_clipboard` in `src/main.c`.
 #[cfg(all(feature = "clipboard", feature = "renderer"))]
 pub fn read_clipboard(state: &mut WaylandState) {
-    use std::os::fd::AsRawFd as _;
-
-    let Some(rawfd) = state.clipboard.read_fd.as_ref().map(|f| f.as_raw_fd()) else {
+    let Some(fd) = state.clipboard.read_fd.as_ref() else {
         return;
     };
 
     let mut buf = [0u8; 4096];
-    match nix::unistd::read(rawfd, &mut buf) {
+    match rustix::io::read(fd, &mut buf) {
         Ok(0) => {
             // EOF — compositor finished writing; paste is complete.
             state.clipboard.finish_paste();
@@ -1150,7 +1148,7 @@ pub fn read_clipboard(state: &mut WaylandState) {
                 }
             }
         }
-        Err(nix::errno::Errno::EAGAIN) => {
+        Err(rustix::io::Errno::AGAIN) => {
             // No data available right now — will retry on next poll wakeup.
             // (On Linux EAGAIN == EWOULDBLOCK.)
         }

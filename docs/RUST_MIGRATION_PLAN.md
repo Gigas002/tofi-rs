@@ -625,13 +625,13 @@ Each step: **Goal** · **Scope** · **Deliverables** · **Verification** · **C 
   - **Deliverables:** `#![deny(unsafe_code)]` added to `tofi-rs` crate root (with `#[allow(unsafe_code)]` on `main` for the one `Entry::new` call site); `#![deny(unsafe_code)]` added to all pure `libtofi-rs` modules (`error`, `color`, `unicode`, `matching`, `string_table`, `drun`, `lock`, `input`, `scale`); all existing `unsafe` blocks already carry `// SAFETY:` comments.
   - **Verification:** CI green
 
-- [ ] **Step 8.5 — Replace `nix` with `rustix`**
+- [x] **Step 8.5 — Replace `nix` with `rustix`**
   - **Goal:** Swap the `nix` crate for [`rustix`](https://crates.io/crates/rustix) across all `libtofi-rs` (and any `tofi-rs`) usage sites. `rustix` exposes a **safe**, ergonomic POSIX API without the broad `unsafe` surface that `nix` carries; it is actively maintained and widely adopted in the Wayland/wlroots ecosystem (e.g. Smithay).
   - **Scope:** All call sites that currently import `nix`:
     - `libtofi::shm` — `memfd_create`, `ftruncate`, `mmap`, `munmap`  (feature **`wayland`**)
     - `libtofi::lock` — `fcntl::Flock` (feature **`single-instance-lock`**)
     - Any future uses added during Phases 5–7.
-  - **Deliverables:** `nix` removed from `libtofi/Cargo.toml` (and `tofi/Cargo.toml` if used there); replaced with `rustix` (appropriate `features = [...]` per call site — e.g. `"fs"`, `"mm"`, `"process"`); all existing tests still pass; no new `unsafe` blocks introduced by the migration (the goal is to reduce or eliminate them).
+  - **Deliverables:** `nix` removed from `libtofi/Cargo.toml` and `tofi/Cargo.toml`; replaced with `rustix = { version = "1", features = ["fs", "mm", "pipe"] }` (libtofi) and `rustix = { version = "1", features = ["event"] }` (tofi); `lock::Lock` now uses manual `Drop` with `rustix::fs::flock(Unlock)` instead of `nix::Flock` RAII; `pipe2` → `rustix::pipe::pipe_with`; `nix::unistd::read` + raw fd → `rustix::io::read` + `AsFd`; `nix::poll` → `rustix::event::poll` (with `Timespec` timeout); `grep -r 'nix::' …` returns empty; 122 tests pass; `cargo clippy --all-features -D warnings` clean.
   - **Verification:** `grep -r 'nix::' libtofi/src/ tofi/src/` returns empty; **`cargo test --workspace`** green; **`cargo clippy --all-features -- -D warnings`** clean.
   - **Notes:** `rustix` uses a feature-per-subsystem model — only enable what you need to keep compile times low. Consult the [rustix docs](https://docs.rs/rustix) for the exact feature flags corresponding to `memfd_create` (`"fs"`), `mmap` (`"mm"`), `flock` (`"fs"`), etc. Do **not** rush this into earlier phases — `nix` is correct and functional; this is a polish/polish-debt step.
 

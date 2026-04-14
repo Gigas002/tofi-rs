@@ -15,16 +15,14 @@
 //! `src/shm.c` `shm_allocate_file`, `src/surface.c` `surface_init` /
 //! `surface_destroy`.
 
-use std::ffi::{CString, c_void};
-use std::num::NonZeroUsize;
+use std::ffi::c_void;
 use std::os::unix::io::{AsFd, OwnedFd};
-use std::ptr::NonNull;
+use std::ptr::{self, NonNull};
 
-use nix::sys::memfd::{MemFdCreateFlag, memfd_create};
-use nix::sys::mman::{MapFlags, ProtFlags, mmap, munmap};
+use rustix::fs::{MemfdFlags, ftruncate, memfd_create};
 #[cfg(target_os = "linux")]
-use nix::sys::mman::{MmapAdvise, madvise};
-use nix::unistd::ftruncate;
+use rustix::mm::{Advice, madvise};
+use rustix::mm::{MapFlags, ProtFlags, mmap, munmap};
 use wayland_client::{
     QueueHandle,
     protocol::{wl_buffer, wl_shm, wl_shm_pool},
@@ -90,25 +88,25 @@ where
 
         // ── Allocate shared memory file ────────────────────────────────────────
         // C: shm_allocate_file (memfd_create branch)
-        let name = CString::new("wl_shm").expect("static CStr");
-        let fd = memfd_create(&name, MemFdCreateFlag::MFD_CLOEXEC)
+        let fd: OwnedFd = memfd_create("wl_shm", MemfdFlags::CLOEXEC)
             .map_err(|e| Error::Wayland(format!("memfd_create: {e}")))?;
-        ftruncate(&fd, pool_size as i64).map_err(|e| Error::Wayland(format!("ftruncate: {e}")))?;
+        ftruncate(&fd, pool_size as u64).map_err(|e| Error::Wayland(format!("ftruncate: {e}")))?;
 
         // ── Map the pool into process address space ────────────────────────────
-        let len = NonZeroUsize::new(pool_size).expect("non-zero pool size");
         // SAFETY: fd is valid, size matches ftruncate, MAP_SHARED is correct for shm.
-        let ptr: NonNull<c_void> = unsafe {
+        let raw: *mut c_void = unsafe {
             mmap(
-                None,
-                len,
-                ProtFlags::PROT_READ | ProtFlags::PROT_WRITE,
-                MapFlags::MAP_SHARED,
-                fd.as_fd(),
+                ptr::null_mut(),
+                pool_size,
+                ProtFlags::READ | ProtFlags::WRITE,
+                MapFlags::SHARED,
+                &fd,
                 0,
             )
             .map_err(|e| Error::Wayland(format!("mmap: {e}")))?
         };
+        // SAFETY: rustix converts MAP_FAILED to Err; a successful mmap is never null.
+        let ptr: NonNull<c_void> = unsafe { NonNull::new_unchecked(raw) };
 
         // ── MADV_HUGEPAGE (Linux only) ────────────────────────────────────────
         // C: src/surface.c — madvise(MADV_HUGEPAGE) when pool >= 2 MiB.
@@ -118,7 +116,7 @@ where
         #[cfg(target_os = "linux")]
         if pool_size >= 2 * 1024 * 1024 {
             // SAFETY: ptr is a valid mmap of `pool_size` bytes.
-            if let Err(e) = unsafe { madvise(ptr, pool_size, MmapAdvise::MADV_HUGEPAGE) } {
+            if let Err(e) = unsafe { madvise(ptr.as_ptr(), pool_size, Advice::LinuxHugepage) } {
                 tracing::debug!("MADV_HUGEPAGE unavailable (ignored): {e}");
             }
         }
@@ -206,7 +204,7 @@ where
 impl<D> Drop for ShmPool<D> {
     fn drop(&mut self) {
         // SAFETY: ptr/pool_size came from a successful mmap and are only freed here.
-        unsafe { munmap(self.ptr, self.pool_size).ok() };
+        unsafe { munmap(self.ptr.as_ptr(), self.pool_size).ok() };
         // _fd, _pool, and buffers drop automatically; compositor releases them
         // after the next wl_buffer::release event.
     }

@@ -11,7 +11,7 @@ path = "src/main.rs"
 clap = { version = "4", features = ["derive"] }
 # Features mirror libtofi-rs (§4.2); `default-features = false` so this crate's `[features]` control the library.
 libtofi-rs = { path = "../libtofi", default-features = false }
-nix = { version = "0.29", features = ["poll"] }
+rustix = { version = "1", features = ["event"] }
 tracing = "0.1"
 tracing-subscriber = { version = "0.3", features = ["env-filter"] }
 

@@ -17,8 +17,8 @@
 use std::fs;
 use std::path::{Path, PathBuf};
 
-use nix::errno::Errno;
-use nix::fcntl::{Flock, FlockArg};
+use rustix::fs::{FlockOperation, flock};
+use rustix::io::Errno;
 
 use crate::Result;
 
@@ -26,11 +26,18 @@ const LOCK_FILENAME: &str = "tofi.lock";
 
 /// An acquired single-instance lock.
 ///
-/// Wraps [`nix::fcntl::Flock`], which releases the `flock` lock automatically
-/// when dropped.
+/// Holds the open [`fs::File`] whose `flock` is released automatically on
+/// [`Drop`] via `rustix::fs::flock(Unlock)`.
 #[must_use]
 pub struct Lock {
-    _flock: Flock<fs::File>,
+    file: fs::File,
+}
+
+impl Drop for Lock {
+    fn drop(&mut self) {
+        // Best-effort unlock; ignore errors (process exit also releases flock).
+        let _ = flock(&self.file, FlockOperation::Unlock);
+    }
 }
 
 /// Try to acquire the single-instance lock at `path`.
@@ -55,10 +62,11 @@ pub fn try_acquire(path: &Path) -> Result<Option<Lock>> {
         .truncate(false)
         .open(path)?;
 
-    match Flock::lock(file, FlockArg::LockExclusiveNonblock) {
-        Ok(flock) => Ok(Some(Lock { _flock: flock })),
-        Err((_, Errno::EWOULDBLOCK)) => Ok(None),
-        Err((_, e)) => Err(std::io::Error::from(e).into()),
+    match flock(&file, FlockOperation::NonBlockingLockExclusive) {
+        Ok(()) => Ok(Some(Lock { file })),
+        // EAGAIN == EWOULDBLOCK on Linux; match just AGAIN.
+        Err(Errno::AGAIN) => Ok(None),
+        Err(e) => Err(std::io::Error::from(e).into()),
     }
 }
 
