@@ -1,4 +1,8 @@
 //! `tofi` binary — wires [`cli::Cli`] to the rest of the program.
+// Deny unsafe across the whole CLI crate.  The one call-site that wraps a raw
+// SHM pointer (Entry::new) is explicitly opted out via #[allow(unsafe_code)]
+// on `main` — all other unsafe in the system lives in `libtofi-rs`.
+#![deny(unsafe_code)]
 
 mod cli;
 #[allow(dead_code)]
@@ -74,6 +78,10 @@ fn read_stdin(normalize: bool) -> Vec<String> {
         .collect()
 }
 
+// Entry::new wraps a raw pointer into the SHM double-buffer.  The SAFETY
+// comment at the call-site documents the lifetime invariant; no other unsafe
+// is present in this crate.
+#[allow(unsafe_code)]
 fn main() {
     // Initialise tracing; verbosity controlled by RUST_LOG (e.g. RUST_LOG=debug).
     tracing_subscriber::fmt()
@@ -343,13 +351,21 @@ fn main() {
             // `pollfds[1]` (clipboard pipe) in `src/main.c`.
             let guard = event_queue.prepare_read();
             if let Some(ref g) = guard {
-                use nix::poll::{PollFd, PollFlags, PollTimeout, poll};
-                use std::os::fd::AsFd as _;
+                use rustix::event::{PollFd, PollFlags, Timespec, poll};
                 let wayland_fd = g.connection_fd();
-                let pt = if timeout_ms < 0 {
-                    PollTimeout::NONE
+
+                // Convert timeout_ms (-1 = block, ≥0 = milliseconds) to
+                // the Timespec form that rustix::event::poll expects.
+                let ts;
+                let timeout: Option<&Timespec> = if timeout_ms < 0 {
+                    None // block indefinitely
                 } else {
-                    PollTimeout::try_from(timeout_ms).unwrap_or(PollTimeout::NONE)
+                    let ms = timeout_ms as i64;
+                    ts = Timespec {
+                        tv_sec: ms / 1000,
+                        tv_nsec: (ms % 1000) * 1_000_000,
+                    };
+                    Some(&ts)
                 };
 
                 // When a clipboard paste is in progress, add its fd so we
@@ -357,19 +373,19 @@ fn main() {
                 #[cfg(feature = "clipboard")]
                 if let Some(cfd) = state.clipboard.read_fd.as_ref() {
                     let mut pfds = [
-                        PollFd::new(wayland_fd.as_fd(), PollFlags::POLLIN),
-                        PollFd::new(cfd.as_fd(), PollFlags::POLLIN),
+                        PollFd::new(&wayland_fd, PollFlags::IN),
+                        PollFd::new(cfd, PollFlags::IN),
                     ];
-                    let _ = poll(&mut pfds, pt);
+                    let _ = poll(&mut pfds, timeout);
                 } else {
-                    let mut pfds = [PollFd::new(wayland_fd.as_fd(), PollFlags::POLLIN)];
-                    let _ = poll(&mut pfds, pt);
+                    let mut pfds = [PollFd::new(&wayland_fd, PollFlags::IN)];
+                    let _ = poll(&mut pfds, timeout);
                 }
 
                 #[cfg(not(feature = "clipboard"))]
                 {
-                    let mut pfds = [PollFd::new(wayland_fd.as_fd(), PollFlags::POLLIN)];
-                    let _ = poll(&mut pfds, pt);
+                    let mut pfds = [PollFd::new(&wayland_fd, PollFlags::IN)];
+                    let _ = poll(&mut pfds, timeout);
                 }
             }
             if let Some(g) = guard {

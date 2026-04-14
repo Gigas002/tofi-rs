@@ -9,7 +9,7 @@
 //! `src/clipboard.c`, `src/clipboard.h`, and the clipboard listeners /
 //! `paste` function in `src/main.c` / `src/input.c`.
 
-use nix::{fcntl::OFlag, unistd::pipe2};
+use rustix::pipe::{PipeFlags, pipe_with};
 use std::os::fd::OwnedFd;
 use wayland_client::protocol::wl_data_offer;
 
@@ -77,7 +77,7 @@ impl ClipboardState {
         let mime_type = self.mime_type.clone().expect("checked above");
 
         let (read_fd, write_fd): (OwnedFd, OwnedFd) =
-            match pipe2(OFlag::O_CLOEXEC | OFlag::O_NONBLOCK) {
+            match pipe_with(PipeFlags::CLOEXEC | PipeFlags::NONBLOCK) {
                 Ok(fds) => fds,
                 Err(e) => {
                     tracing::error!("Failed to open pipe for clipboard: {e}");

@@ -1,4 +1,5 @@
 //! Input handling — text editing helpers, key binding dispatch, and XKB
+#![deny(unsafe_code)]
 //! keyboard state.
 //!
 //! # Structure

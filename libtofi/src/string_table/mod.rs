@@ -1,4 +1,5 @@
 //! Scored string collections — Rust port of `src/string_vec.c`.
+#![deny(unsafe_code)]
 //!
 //! # Design
 //!

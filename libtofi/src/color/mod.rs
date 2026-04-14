@@ -1,4 +1,5 @@
 //! Color type and hex-string parsing — Rust port of `src/color.c`.
+#![deny(unsafe_code)]
 //!
 //! # Format
 //!

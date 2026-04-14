@@ -1,4 +1,5 @@
 //! Scale factor helpers.
+#![deny(unsafe_code)]
 //!
 //! Ports `src/scale.c`: `scale_apply` and `scale_apply_inverse`.
 //!

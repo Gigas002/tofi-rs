@@ -1,4 +1,5 @@
 //! Matching algorithms — Rust port of `src/matching.c`.
+#![deny(unsafe_code)]
 //!
 //! # Algorithms
 //!

@@ -1,4 +1,5 @@
 //! Library-wide error type (`libtofi::Error`) and `Result` alias.
+#![deny(unsafe_code)]
 //!
 //! # Design
 //!
