@@ -676,9 +676,10 @@ Each step: **Goal** · **Scope** · **Deliverables** · **Verification** · **C 
   - **Verification:** **`cargo test --workspace`** green; changing **`examples/config/`** updates **config** tests; changing **`examples/themes/`** updates **theme** tests.
   - **Notes:** Theme tests are separate `#[test]` functions in `config/tests.rs` (not the same function as config tests); a future refactor can move them to a dedicated file if preferred.
 
-- [ ] **Step 9.6 — Scrub placeholder `tests.rs` in stub modules**
+- [x] **Step 9.6 — Scrub placeholder `tests.rs` in stub modules**
   - **Goal:** No permanent **doc-only** test files left in feature modules once those areas are implemented or explicitly deferred.
   - **Scope:** For each feature module’s **`tests.rs`**, either add real **`#[test]`** cases matching the module’s behavior or remove the **`#[cfg(test)] mod tests`** hook from **`mod.rs`** until tests are warranted (§5.3). **`cli/tests.rs`** stays and grows with CLI parity—**not** in scope for deletion.
+  - **Deliverables:** Audited all 15 `tests.rs` files; only `libtofi/src/wayland/tests.rs` was a doc-only placeholder (no `#[test]` — Wayland integration needs a live compositor); removed `mod tests` hook from `wayland/mod.rs` and deleted `wayland/tests.rs`; all other modules have real `#[test]` cases; 252 + 127 tests pass; `cargo clippy` clean.
   - **Verification:** `cargo test --workspace`; placeholder policy documented or resolved.
   - **C reference:** N/A
 
@@ -760,6 +761,7 @@ These are **not** required to declare the C→Rust migration “done” for §5.
 
 ### Revision history
 
+- **2026-04-15:** **Phase 9 Step 9.6** — audited all 15 `tests.rs` files; `libtofi/src/wayland/tests.rs` was the only doc-only placeholder (no `#[test]` — Wayland requires a live compositor); removed `#[cfg(test)] mod tests` hook from `wayland/mod.rs`; deleted `wayland/tests.rs`; all other modules carry real tests; 379 tests pass; `clippy -D warnings` clean; §9 checkbox.
 - **2026-04-15:** **Phase 9 Steps 9.3 / 9.4 / 9.5** — `examples/config/` directory created: `defaults` (canonical all-keys-at-defaults, from `doc/config`), `complete` (all-keys non-default, from flat `examples/config-complete`), `minimal` (empty / comment-only, from flat `examples/config-minimal`), `personal` (personal config, `include` path updated to `../themes/Sweet`); `examples/themes/` expanded: `dark-paper`, `dmenu`, `dos`, `fullscreen`, `soy-milk` migrated from `themes/`; `themes/` dir deleted; `doc/config` deleted; flat `examples/config-complete` / `examples/config-minimal` deleted; README theme links → `examples/themes/*`, config link → `examples/config/defaults`; `config/tests.rs` updated: fixture paths corrected to `config/*`, `load_doc_config_fixture` → `load_examples_config_defaults`, five new theme `#[test]` functions (`dmenu`, `fullscreen`, `dos`, `dark_paper`, `soy_milk`); 127 tests (+ 5) pass; `clippy -D warnings` clean; §9 checkboxes.
 - **2026-04-15:** **Phase 9 Step 9.2** — deleted `meson.build`, `meson_options.txt`, `src/` (all C/H translation units + `entry_backend/`), `test/` (C TAP suite), `protocols/` (XML unused by Rust — confirmed via grep); `README.md` Building section rewritten to `cargo build --release` + install + symlinks (Arch/Fedora/Debian runtime deps retained, meson/scdoc/wayland-protocols build-time deps replaced with rustup/cargo); `git grep meson` and `git grep 'src/.*\.[ch]'` return clean in active docs; 252+122 tests pass; §9 checkbox.
 - **2026-04-15:** **Phase 9 Step 9.1** — `docs/CUTOVER.md` created: removal inventory (C sources, Meson build, C tests, protocol XML, old `themes/` tree, `doc/config`), items-to-keep table (Rust crates, `examples/`, `LICENSE`, `docs/`, CI), cutover criteria checklist mirroring §5.4, and post-removal verification commands; Step 9.9 added to plan (remove redundant `#[cfg(target_os = "linux")]` / `#[cfg(unix)]` guards from Rust source — Linux-only project, these are dead weight); §9 checkbox.

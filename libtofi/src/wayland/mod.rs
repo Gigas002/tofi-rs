@@ -52,9 +52,6 @@ pub use wl_output::Transform as OutputTransform;
 #[cfg(feature = "clipboard")]
 pub mod clipboard;
 
-#[cfg(test)]
-mod tests;
-
 // ── OutputInfo ───────────────────────────────────────────────────────────────
 
 /// Information about a bound `wl_output`.

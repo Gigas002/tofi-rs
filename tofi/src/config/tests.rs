@@ -924,7 +924,10 @@ fn load_theme_dmenu() {
     }
     let mut c = TofiConfig::default();
     let errs = load(&path, &mut c).unwrap();
-    assert!(errs.is_empty(), "parse errors in examples/themes/dmenu: {errs:?}");
+    assert!(
+        errs.is_empty(),
+        "parse errors in examples/themes/dmenu: {errs:?}"
+    );
     assert_eq!(c.anchor, Anchor::Top);
     assert_eq!(c.width, UnitValue::percent(100));
     assert_eq!(c.height, UnitValue::pixels(30));
@@ -958,7 +961,10 @@ fn load_theme_dos() {
     }
     let mut c = TofiConfig::default();
     let errs = load(&path, &mut c).unwrap();
-    assert!(errs.is_empty(), "parse errors in examples/themes/dos: {errs:?}");
+    assert!(
+        errs.is_empty(),
+        "parse errors in examples/themes/dos: {errs:?}"
+    );
     assert_eq!(c.corner_radius, 60);
     assert_eq!(c.width, UnitValue::pixels(640));
     assert_eq!(c.height, UnitValue::pixels(480));
