@@ -598,24 +598,27 @@ Each step: **Goal** · **Scope** · **Deliverables** · **Verification** · **C 
   - **Verification:** Copy from another Wayland app, paste into tofi (Ctrl+V).
   - **C reference:** [`src/main.c`](../src/main.c) `read_clipboard`, clipboard listeners
 
-- [ ] **Step 7.2 — Optional arboard path** (optional step)
+- [x] **Step 7.2 — Optional arboard path** (optional step)
   - **Only if** you need a fallback feature for non-Wayland testing; not required for parity.
+  - **Skipped:** Not required for functional parity; `wl_data_device` path (Step 7.1) is sufficient.
 
 ---
 
 ### Phase 8 — Packaging and polish
 
-- [ ] **Step 8.1 — Install paths**
+- [x] **Step 8.1 — Install paths**
   - **Goal:** Match Meson where still relevant: e.g. default config under `sysconfdir/…/tofi`, theme paths—**no man-page install** (not a target).
-  - **Notes:** Use `build.rs` or distro packaging; document install layout for packagers.
+  - **Notes:** Install layout documented for packagers: binary `$(BINDIR)/tofi`, symlinks `tofi-run`/`tofi-drun`, config `$(SYSCONFDIR)/xdg/tofi/config`, license `$(DATADIR)/licenses/tofi/LICENSE`. No Makefile — use `cargo build --release` + distro packaging scripts directly.
 
-- [ ] **Step 8.2 — (Deferred)** Shell completions **not** in 1.0.0
+- [x] **Step 8.2 — (Deferred)** Shell completions **not** in 1.0.0
   - **Goal:** Omit shipping hand-maintained completion files in the first Rust release.
   - **Follow-up:** Generated completions via **`clap_complete`** (and friends) for multiple shells—see §9.
+  - **Skipped:** Deferred to post-1.0 per plan; no action required.
 
-- [ ] **Step 8.3 — Performance passes**
+- [x] **Step 8.3 — Performance passes**
   - **Goal:** `MADV_HUGEPAGE` equivalent if applicable, double buffering, minimize redraws—match C hot paths.
   - **C reference:** [`src/surface.c`](../src/surface.c) comments
+  - **Deliverables:** `MADV_HUGEPAGE` hint added to `ShmPool::new` on Linux when pool ≥ 2 MiB (C parity, errors ignored as hint); double buffering already in place (`ShmPool` double-buffered since Step 4.4); redraw minimization already in place (`WaylandState::redraw` flag since Step 6.2).
 
 - [ ] **Step 8.4 — Release hardening**
   - **Goal:** `deny(unsafe_code)` where possible; document `unsafe` blocks for FFI; CI must already enforce **`cargo clippy -- -D warnings`** and **`cargo test --workspace`** (Phase 0 Step 0.2, §2.2). Use §9 for **`cargo deny`**, **deploy**, and other **late** automation (coverage gates, etc.).

@@ -22,6 +22,8 @@ use std::ptr::NonNull;
 
 use nix::sys::memfd::{MemFdCreateFlag, memfd_create};
 use nix::sys::mman::{MapFlags, ProtFlags, mmap, munmap};
+#[cfg(target_os = "linux")]
+use nix::sys::mman::{MmapAdvise, madvise};
 use nix::unistd::ftruncate;
 use wayland_client::{
     QueueHandle,
@@ -107,6 +109,19 @@ where
             )
             .map_err(|e| Error::Wayland(format!("mmap: {e}")))?
         };
+
+        // ── MADV_HUGEPAGE (Linux only) ────────────────────────────────────────
+        // C: src/surface.c — madvise(MADV_HUGEPAGE) when pool >= 2 MiB.
+        // Transparent HugePages can reduce page-fault overhead on the first
+        // cairo_paint().  Disabled for shared memory in many kernels, but the
+        // hint is harmless and costs nothing to request.
+        #[cfg(target_os = "linux")]
+        if pool_size >= 2 * 1024 * 1024 {
+            // SAFETY: ptr is a valid mmap of `pool_size` bytes.
+            if let Err(e) = unsafe { madvise(ptr, pool_size, MmapAdvise::MADV_HUGEPAGE) } {
+                tracing::debug!("MADV_HUGEPAGE unavailable (ignored): {e}");
+            }
+        }
 
         // ── Create Wayland pool + two buffers ──────────────────────────────────
         // C: wl_shm_create_pool + wl_shm_pool_create_buffer ×2
