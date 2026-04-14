@@ -106,8 +106,8 @@ See the main [manpage](doc/tofi.1.md) for more info.
 
 ### Theming
 
-Tofi supports a fair number of theming options - see the default [config
-file](doc/config) or the config file [manpage](doc/tofi.5.md) for a complete
+Tofi supports a fair number of theming options - see the canonical [config
+file](examples/config/defaults) or the config file [manpage](doc/tofi.5.md) for a complete
 description. Theming is based on the box model shown below:
 
 ![Default theme screenshot](screenshot_default.png)
@@ -134,19 +134,19 @@ with optionally rounded corners,
 A few example themes are included and shown below. Note that you may need to
 tweak them to look correct on your display.
 
-[`themes/fullscreen`](themes/fullscreen)
+[`examples/themes/fullscreen`](examples/themes/fullscreen)
 ![Fullscreen theme screenshot](screenshot_fullscreen.png)
 
-[`themes/dmenu`](themes/dmenu)
+[`examples/themes/dmenu`](examples/themes/dmenu)
 ![dmenu theme screenshot](screenshot_dmenu.png)
 
-[`themes/dos`](themes/dos)
+[`examples/themes/dos`](examples/themes/dos)
 ![DOS theme screenshot](screenshot_dos.png)
 
-[`themes/dark-paper`](themes/dark-paper)
+[`examples/themes/dark-paper`](examples/themes/dark-paper)
 ![Dark paper theme screenshot](screenshot_dark_paper.png)
 
-[`themes/soy-milk`](themes/soy-milk)
+[`examples/themes/soy-milk`](examples/themes/soy-milk)
 ![Soy milk theme screenshot](screenshot_soy_milk.png)
 
 ## Performance

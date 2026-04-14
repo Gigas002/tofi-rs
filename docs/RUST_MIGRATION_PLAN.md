@@ -654,25 +654,27 @@ Each step: **Goal** · **Scope** · **Deliverables** · **Verification** · **C 
   - **Deliverables:** `meson.build`, `meson_options.txt`, `src/` (all C/H files + `entry_backend/`), `test/` (C TAP suite), `protocols/` (XML files — confirmed unused by Rust build via grep) deleted; `README.md` Building section rewritten to `cargo build --release` + `install` + symlink instructions, removing all meson/ninja/scdoc references; `git grep meson` and `git grep src/.*\.[ch]` clean in active docs.
   - **Verification:** Repo has no dangling references to removed paths in active README/install instructions; **`git grep meson`** / **`git grep '\.c'`** clean where intended.
 
-- [ ] **Step 9.3 — Replace themes / scattered examples**
+- [x] **Step 9.3 — Replace themes / scattered examples**
   - **Goal:** Remove the **old** [`themes/`](../themes/) tree and ad hoc example configs that duplicated defaults—**after** you have new canonical files (Step 9.4).
   - **Scope:** Delete or archive per 9.1; avoid leaving users with no examples.
+  - **Deliverables:** `themes/` (dark-paper, dmenu, dos, fullscreen, soy-milk) deleted; `doc/config` deleted (replaced by `examples/config/defaults`); flat `examples/config-complete` and `examples/config-minimal` deleted (replaced by `examples/config/complete` and `examples/config/minimal`); README theme links updated from `themes/*` → `examples/themes/*`; `doc/config` README link updated to `examples/config/defaults`.
 
-- [ ] **Step 9.4 — Canonical fixtures in **separate** folders**
+- [x] **Step 9.4 — Canonical fixtures in **separate** folders**
   - **Goal:** **Configs and themes live in different directories**—no single mixed `examples/` flat file dump. Clear convention for users and for tests.
   - **Deliverables:**
-    - **`examples/config/`** — at least one **full** app config (e.g. `full` or `default-keys`) with **all** (or nearly all) keys set to **documented defaults** + comments.
-    - **`examples/themes/`** — at least one **full** theme file the same way (defaults + comments).
+    - **`examples/config/defaults`** — full app config with all keys at documented defaults + comments (content from former `doc/config`).
+    - **`examples/config/complete`** — all keys, non-default values (parse-completeness fixture).
+    - **`examples/config/minimal`** — comment-only empty config; must round-trip to `TofiConfig::default()`.
+    - **`examples/config/personal`** — personal config example with `include = “../themes/Sweet”` (relative path updated after directory reorganization).
+    - **`examples/themes/`** — now has all 6 themes: `Sweet`, `dark-paper`, `dmenu`, `dos`, `fullscreen`, `soy-milk` (last 5 migrated from `themes/`).
   - **Rules:** Do **not** place theme content under `examples/config/` or app-only keys under `examples/themes/`. Document both paths in README. Align with future **TOML** (§9) when you migrate; until then, match the supported keyfile format.
-  - **Verification:** `tofi --config examples/config/…` and theme loading (however the binary references themes) succeed without error.
+  - **Verification:** `tofi --config examples/config/defaults` (and `examples/config/personal`) succeed without error; `cargo test --workspace` green.
 
-- [ ] **Step 9.5 — **Different** test patterns for config vs themes**
+- [x] **Step 9.5 — **Different** test patterns for config vs themes**
   - **Goal:** CI fails if either fixture tree drifts from code defaults or breaks parsing—not one monolithic test that only checks “something loaded.”
-  - **Deliverables (patterns — implement as modules or test files):**
-    - **Config pattern:** tests under **`libtofi`** and/or **`tofi`** that load **`examples/config/\***`via`CARGO_MANIFEST_DIR` (or workspace-root env), assert parsed **`TofiConfig`** (or subset) matches **`Default`\*\* / golden expectations, error on unknown keys if applicable.
-    - **Theme pattern:** **separate** tests that load **`examples/themes/\***`only, validating theme-specific parsing / colors / spacing — **not** the same`#[test]` as config unless shared helpers only.
+  - **Deliverables:** Config tests in `tofi/src/config/tests.rs` updated to use new paths (`config/defaults`, `config/complete`, `config/minimal`, `config/personal`); `load_doc_config_fixture` → `load_examples_config_defaults`; five new dedicated `#[test]` functions for theme fixtures (`load_theme_dmenu`, `load_theme_fullscreen`, `load_theme_dos`, `load_theme_dark_paper`, `load_theme_soy_milk`); 127 tests (up from 122); **`cargo test --workspace`** green; **`cargo clippy`** clean.
   - **Verification:** **`cargo test --workspace`** green; changing **`examples/config/`** updates **config** tests; changing **`examples/themes/`** updates **theme** tests.
-  - **Notes:** Optional: `include_str!` snapshots or small golden files checked into `tofi/tests/fixtures/` if you need stable baselines—still keep **folder split** at the source of truth under **`examples/`**.
+  - **Notes:** Theme tests are separate `#[test]` functions in `config/tests.rs` (not the same function as config tests); a future refactor can move them to a dedicated file if preferred.
 
 - [ ] **Step 9.6 — Scrub placeholder `tests.rs` in stub modules**
   - **Goal:** No permanent **doc-only** test files left in feature modules once those areas are implemented or explicitly deferred.
@@ -758,6 +760,7 @@ These are **not** required to declare the C→Rust migration “done” for §5.
 
 ### Revision history
 
+- **2026-04-15:** **Phase 9 Steps 9.3 / 9.4 / 9.5** — `examples/config/` directory created: `defaults` (canonical all-keys-at-defaults, from `doc/config`), `complete` (all-keys non-default, from flat `examples/config-complete`), `minimal` (empty / comment-only, from flat `examples/config-minimal`), `personal` (personal config, `include` path updated to `../themes/Sweet`); `examples/themes/` expanded: `dark-paper`, `dmenu`, `dos`, `fullscreen`, `soy-milk` migrated from `themes/`; `themes/` dir deleted; `doc/config` deleted; flat `examples/config-complete` / `examples/config-minimal` deleted; README theme links → `examples/themes/*`, config link → `examples/config/defaults`; `config/tests.rs` updated: fixture paths corrected to `config/*`, `load_doc_config_fixture` → `load_examples_config_defaults`, five new theme `#[test]` functions (`dmenu`, `fullscreen`, `dos`, `dark_paper`, `soy_milk`); 127 tests (+ 5) pass; `clippy -D warnings` clean; §9 checkboxes.
 - **2026-04-15:** **Phase 9 Step 9.2** — deleted `meson.build`, `meson_options.txt`, `src/` (all C/H translation units + `entry_backend/`), `test/` (C TAP suite), `protocols/` (XML unused by Rust — confirmed via grep); `README.md` Building section rewritten to `cargo build --release` + install + symlinks (Arch/Fedora/Debian runtime deps retained, meson/scdoc/wayland-protocols build-time deps replaced with rustup/cargo); `git grep meson` and `git grep 'src/.*\.[ch]'` return clean in active docs; 252+122 tests pass; §9 checkbox.
 - **2026-04-15:** **Phase 9 Step 9.1** — `docs/CUTOVER.md` created: removal inventory (C sources, Meson build, C tests, protocol XML, old `themes/` tree, `doc/config`), items-to-keep table (Rust crates, `examples/`, `LICENSE`, `docs/`, CI), cutover criteria checklist mirroring §5.4, and post-removal verification commands; Step 9.9 added to plan (remove redundant `#[cfg(target_os = "linux")]` / `#[cfg(unix)]` guards from Rust source — Linux-only project, these are dead weight); §9 checkbox.
 - **2026-04-14:** **Phase 7 Step 7.1** — `libtofi::wayland::clipboard::ClipboardState` (`offer: Option<WlDataOffer>`, `mime_type: Option<String>`, `read_fd: Option<OwnedFd>`; `reset`/`finish_paste`/`begin_paste`); `MIME_TEXT_UTF8` + `MIME_TEXT_PLAIN` constants; `WaylandState` gains `data_device_manager`/`data_device`/`clipboard` fields (all gated `clipboard`); registry binds `wl_data_device_manager v3`; `connect()` calls `manager.get_data_device(seat, qh, ())` after roundtrips; three new `Dispatch` impls (all gated `clipboard`): `WlDataDeviceManager` (no-op), `WlDataDevice` (`DataOffer` → `reset` + store new offer, `Selection(None)` → `reset`, `Enter(Some)` → `offer.accept(serial, None)`, others blank; `event_created_child!(opcode 0 → WlDataOffer, ())`), `WlDataOffer` (`Offer` → prefer UTF-8 over plain text, others blank); `handle_keypress` `Paste` action calls `state.clipboard.begin_paste()` (gated `clipboard`); `pub fn read_clipboard(state: &mut WaylandState)` gated `all(clipboard, renderer)` — non-blocking `nix::unistd::read`, inserts UTF-8 chars via `input::add_char`, calls `finish_paste` on EOF; `main.rs` event-loop poll extended: adds clipboard `read_fd` as second `PollFd` when active; `read_clipboard` called after each dispatch when `read_fd.is_some()`; 122 tests pass; `fmt`+`clippy -D warnings` clean (no-default-features + all-features); §7 checkbox.
