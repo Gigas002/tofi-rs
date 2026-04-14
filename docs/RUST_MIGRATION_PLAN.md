@@ -643,10 +643,10 @@ Each step: **Goal** · **Scope** · **Deliverables** · **Verification** · **C 
 
 **Goal:** Delete upstream C/Meson/legacy assets that are obsolete, and replace scattered **themes** / **examples** with **dedicated trees**: **`examples/config/`** (app config only) and **`examples/themes/`** (theme files only)—each with at least one **large** reference file listing defaults. **Run separate test patterns** for config vs theme fixtures so they stay in sync with parsers and with each other (see 9.5).
 
-- [ ] **Step 9.1 — Inventory & cutover criteria**
+- [x] **Step 9.1 — Inventory & cutover criteria**
   - **Goal:** Written checklist of what gets removed vs kept; agreement that **`cargo build --release`** is the only supported build.
-  - **Deliverables:** Short note in repo (e.g. `docs/CUTOVER.md` or a section in README) — optional; can be a PR description if you prefer minimal docs.
-  - **Verification:** Team sign-off / self-review.
+  - **Deliverables:** [`docs/CUTOVER.md`](CUTOVER.md) — removal inventory, items-to-keep table, cutover criteria checklist, and post-removal verification commands.
+  - **Verification:** Self-review; `docs/CUTOVER.md` committed.
 
 - [ ] **Step 9.2 — Remove C build and sources**
   - **Goal:** No Meson/C toolchain in-tree for the product.
@@ -693,6 +693,16 @@ Each step: **Goal** · **Scope** · **Deliverables** · **Verification** · **C 
     - Each sub-module has its own `tests.rs`; existing tests are redistributed accordingly.
   - **Deliverables:** No single file in `tofi/src/` exceeds ~300 lines; `main.rs` ≤ 40 lines.
   - **Verification:** `cargo test --workspace` green; `cargo clippy` clean; no public API changes visible to users.
+
+- [ ] **Step 9.9 — Remove redundant Linux / Wayland platform cfg guards**
+  - **Goal:** Since this project targets **Linux + Wayland exclusively** (§1.2), any `#[cfg(target_os = "linux")]`, `#[cfg(unix)]`, `#[cfg(not(target_os = "windows"))]`, or equivalent guards that exist only to protect Linux-specific syscalls / behaviour are dead weight — remove them so the code reads as Linux-native without conditional noise.
+  - **Scope:**
+    - `libtofi/src/shm/mod.rs` — `#[cfg(target_os = "linux")]` on `MADV_HUGEPAGE` path (and the conditional `use rustix::mm::madvise`): remove the guard; `Advice::LinuxHugepage` and `madvise` are available unconditionally on Linux. The `#[cfg]` import becomes a plain `use`.
+    - Audit all of `libtofi/src/**` and `tofi/src/**` for similar guards (e.g. `cfg(unix)`, `cfg(target_family = "unix")`) whose sole purpose is to keep non-Linux/non-Wayland builds alive. **Do not** remove `#[cfg(feature = "...")]` gates — those encode **compile-time feature opt-in**, not platform branching.
+    - Do **not** remove guards that express genuine conditional logic (e.g. alternative fallback paths that differ between kernel versions or exist for correctness, not just "Linux-only" gating on a Linux-only project).
+  - **Deliverables:** `grep -rn 'cfg(target_os\|cfg(unix\|cfg(not(target' libtofi/src/ tofi/src/` returns empty (or only intentional matches with a `// intentional` comment explaining why).
+  - **Verification:** `cargo build --workspace`; `cargo clippy --workspace --all-targets -- -D warnings`; `cargo test --workspace` — all green after removal.
+  - **Notes:** Run this step **after** Step 9.2 (C sources removed) so there is no risk of confusing C-era `#ifdef __linux__` guards with Rust ones. This is a cosmetic/readability cleanup — correctness is unchanged since we never build for non-Linux.
 
 **Notes:** Do **not** delete the legacy **source tree** in **Phase 0**—keep C sources as reference until Phases 1–8 are done. **CI** switches to Rust-only when **Step 0.2** lands (§2.2). Phase 9 is a deliberate **cleanup** milestone for **files**, not CI.
 
@@ -747,6 +757,7 @@ These are **not** required to declare the C→Rust migration “done” for §5.
 
 ### Revision history
 
+- **2026-04-15:** **Phase 9 Step 9.1** — `docs/CUTOVER.md` created: removal inventory (C sources, Meson build, C tests, protocol XML, old `themes/` tree, `doc/config`), items-to-keep table (Rust crates, `examples/`, `LICENSE`, `docs/`, CI), cutover criteria checklist mirroring §5.4, and post-removal verification commands; Step 9.9 added to plan (remove redundant `#[cfg(target_os = "linux")]` / `#[cfg(unix)]` guards from Rust source — Linux-only project, these are dead weight); §9 checkbox.
 - **2026-04-14:** **Phase 7 Step 7.1** — `libtofi::wayland::clipboard::ClipboardState` (`offer: Option<WlDataOffer>`, `mime_type: Option<String>`, `read_fd: Option<OwnedFd>`; `reset`/`finish_paste`/`begin_paste`); `MIME_TEXT_UTF8` + `MIME_TEXT_PLAIN` constants; `WaylandState` gains `data_device_manager`/`data_device`/`clipboard` fields (all gated `clipboard`); registry binds `wl_data_device_manager v3`; `connect()` calls `manager.get_data_device(seat, qh, ())` after roundtrips; three new `Dispatch` impls (all gated `clipboard`): `WlDataDeviceManager` (no-op), `WlDataDevice` (`DataOffer` → `reset` + store new offer, `Selection(None)` → `reset`, `Enter(Some)` → `offer.accept(serial, None)`, others blank; `event_created_child!(opcode 0 → WlDataOffer, ())`), `WlDataOffer` (`Offer` → prefer UTF-8 over plain text, others blank); `handle_keypress` `Paste` action calls `state.clipboard.begin_paste()` (gated `clipboard`); `pub fn read_clipboard(state: &mut WaylandState)` gated `all(clipboard, renderer)` — non-blocking `nix::unistd::read`, inserts UTF-8 chars via `input::add_char`, calls `finish_paste` on EOF; `main.rs` event-loop poll extended: adds clipboard `read_fd` as second `PollFd` when active; `read_clipboard` called after each dispatch when `read_fd.is_some()`; 122 tests pass; `fmt`+`clippy -D warnings` clean (no-default-features + all-features); §7 checkbox.
 - **2026-04-13:** **Phase 6 Step 6.5** — `do_submit(state, config, mode, all_commands) -> bool` in `tofi-rs` (gated `all(wayland, renderer)`): empty-results path echoes raw input or rejects silently for drun/require_match; resolves `abs_idx`; drun mode scans `state.drun_entries` by name → `drun_launch` or `drun_print`; stdin/run mode emits `print_index` (1-based) or result string; history load/add/save when `use_history`; `drun_print` (gated `wayland+drun`) expands exec, prepends terminal; `drun_launch` (gated `wayland+drun`) splits exec on whitespace and spawns via `std::process::Command`; `all_commands` snapshot: `#[cfg(feature = "renderer")] let all_commands: Vec<String>;` declared before renderer block, assigned inside as `entry.results.clone()`; event-loop submit handler gated `#[cfg(feature = "renderer")]` with `#[cfg(not(feature = "renderer"))] break` fallback; `fmt`+`clippy -D warnings` clean (default + no-default-features); 252+122 tests pass; §6 checkbox.
 - **2026-04-13:** **Phase 6 Step 6.4** — `LaunchMode` enum (`Stdin`, `Run` behind `run-commands`, `Drun` behind `drun`) + `detect_mode()` (checks argv[0] for `-drun` then `-run`) in `tofi-rs` (both gated `wayland`); `read_stdin(normalize)` reads stdin lines via `map_while(Result::ok)`, NFC-normalises each line when `!ascii_input` (gated `wayland`); `sort_by_history(&mut [String], &History)` / `sort_drun_by_history(&mut [DesktopEntry], &History)` stable-sort by descending run_count (gated history/drun features); `entry.results` replaced: stdin mode reads stdin; run mode calls `run_commands::commands_cached`; drun mode calls `libtofi_rs::drun::entries_cached`; all modes apply history sort when enabled; `WaylandState::drun_entries: Vec<DesktopEntry>` (feature `drun`) populated in drun mode for Step 6.5 submit; `mode` + helpers all properly cfg-gated so `--no-default-features` passes; `fmt`+`clippy -D warnings` clean; 252+122 tests pass; §6 checkbox.
