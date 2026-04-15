@@ -628,7 +628,7 @@ Each step: **Goal** · **Scope** · **Deliverables** · **Verification** · **C 
 - [x] **Step 8.5 — Replace `nix` with `rustix`**
   - **Goal:** Swap the `nix` crate for [`rustix`](https://crates.io/crates/rustix) across all `libtofi-rs` (and any `tofi-rs`) usage sites. `rustix` exposes a **safe**, ergonomic POSIX API without the broad `unsafe` surface that `nix` carries; it is actively maintained and widely adopted in the Wayland/wlroots ecosystem (e.g. Smithay).
   - **Scope:** All call sites that currently import `nix`:
-    - `libtofi::shm` — `memfd_create`, `ftruncate`, `mmap`, `munmap`  (feature **`wayland`**)
+    - `libtofi::shm` — `memfd_create`, `ftruncate`, `mmap`, `munmap` (feature **`wayland`**)
     - `libtofi::lock` — `fcntl::Flock` (feature **`single-instance-lock`**)
     - Any future uses added during Phases 5–7.
   - **Deliverables:** `nix` removed from `libtofi/Cargo.toml` and `tofi/Cargo.toml`; replaced with `rustix = { version = "1", features = ["fs", "mm", "pipe"] }` (libtofi) and `rustix = { version = "1", features = ["event"] }` (tofi); `lock::Lock` now uses manual `Drop` with `rustix::fs::flock(Unlock)` instead of `nix::Flock` RAII; `pipe2` → `rustix::pipe::pipe_with`; `nix::unistd::read` + raw fd → `rustix::io::read` + `AsFd`; `nix::poll` → `rustix::event::poll` (with `Timespec` timeout); `grep -r 'nix::' …` returns empty; 122 tests pass; `cargo clippy --all-features -D warnings` clean.
@@ -683,7 +683,7 @@ Each step: **Goal** · **Scope** · **Deliverables** · **Verification** · **C 
   - **Verification:** `cargo test --workspace`; placeholder policy documented or resolved.
   - **C reference:** N/A
 
-- [ ] **Step 9.7 — Remove all C/phase migration references from code and docs**
+- [x] **Step 9.7 — Remove all C/phase migration references from code and docs**
   - **Goal:** The shipped codebase reads as pure Rust project — no leftover `// C reference:`, `// Step N.M:`, `// Port of src/foo.c`, `//! # C reference` doc blocks, or migration-phase comments in source files or module docs.
   - **Scope:** `libtofi/src/**`, `tofi/src/**`. Keep references only in `docs/RUST_MIGRATION_PLAN.md` and git history. Strip any `TODO Step X.Y` comments that have since been resolved.
   - **Deliverables:** `git grep "C reference\|Step [0-9]\|src/.*\.c\|phase.*[0-9]"` in source (not docs/) returns empty (or only intentional matches).

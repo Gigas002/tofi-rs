@@ -18,8 +18,6 @@ use clap::Parser as _;
 
 /// Launch mode — determined from `argv[0]` before Wayland is initialised.
 #[cfg(feature = "wayland")]
-///
-/// C reference: `strstr(argv[0], "-run")` / `-drun` in `src/main.c`.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum LaunchMode {
     /// Default: read entries from stdin (one per line).
@@ -33,13 +31,9 @@ enum LaunchMode {
 }
 
 /// Detect launch mode from `argv[0]`.
+///
+/// Checks for `-drun` before `-run` so that `tofi-drun` is not misdetected.
 #[cfg(feature = "wayland")]
-///
-/// Checks for `-drun` before `-run` so that a hypothetical binary named
-/// `tofi-drun` is not misdetected; functionally equivalent to the C order
-/// because `"tofi-drun"` does not contain the substring `"-run"`.
-///
-/// C reference: the `strstr` checks in `src/main.c`.
 fn detect_mode() -> LaunchMode {
     let argv0 = std::env::args().next().unwrap_or_default();
     #[cfg(feature = "drun")]
@@ -55,12 +49,10 @@ fn detect_mode() -> LaunchMode {
 }
 
 /// Read stdin line-by-line into an owned `Vec<String>`.
+///
+/// Empty lines are skipped. When `normalize` is `true` each line is
+/// NFC-normalised.
 #[cfg(feature = "wayland")]
-///
-/// Empty lines are skipped.  When `normalize` is `true` each line is
-/// NFC-normalised (mirrors C's `utf8_normalize` on the raw buffer).
-///
-/// C reference: `read_stdin` + `string_ref_vec_from_buffer` in `src/main.c`.
 fn read_stdin(normalize: bool) -> Vec<String> {
     use std::io::BufRead as _;
     std::io::stdin()
@@ -110,7 +102,6 @@ fn main() {
 
         // Resolve UnitValues to pixels using the first output's dimensions.
         // Swap width/height for rotated outputs (90°/270°).
-        // C reference: transform handling in src/main.c ~1427–1438.
         let (out_w, out_h) = state
             .outputs
             .first()
@@ -146,7 +137,7 @@ fn main() {
             margin_right: resolve_px(&config.margin_right, out_w) as i32,
             margin_bottom: resolve_px(&config.margin_bottom, out_h) as i32,
             margin_left: resolve_px(&config.margin_left, out_w) as i32,
-            output: None, // Step 6.4: target_output_name selection
+            output: None,
         };
 
         libtofi_rs::wayland::surface::create_surface(
@@ -161,17 +152,12 @@ fn main() {
         // `print_index` and history lookup.  Declared outside the renderer block
         // but only compiled in when the renderer feature is active — the event
         // loop's submit handler is gated on the same feature.
-        //
-        // C reference: `entry->commands` in `do_submit` / `src/main.c`.
         #[cfg(feature = "renderer")]
         let all_commands: Vec<String>;
 
-        // Step 5.2 / 6.1 — initialise the Entry layout engine and store it in
-        // `state.entry` so keyboard event handlers can update it.
-        //
-        // Declared here (after create_surface) so the SHM pool is already
-        // allocated.  The entry is placed in `state.entry` rather than dropped,
-        // keeping it alive for the duration of the event loop.
+        // Initialise the Entry layout engine and store it in `state.entry` so
+        // keyboard event handlers can update it.  Declared here (after
+        // create_surface) so the SHM pool is already allocated.
         #[cfg(feature = "renderer")]
         {
             use libtofi_rs::entry::{Entry, EntryConfig};
@@ -239,8 +225,6 @@ fn main() {
                 unsafe { Entry::new(data_ptr, phys_w, phys_h, scale_num, entry_config) }
                     .expect("Failed to create entry");
 
-            // ── Populate results (Phase 6.4) ──────────────────────────────
-            // C reference: the argv[0] mode detection block in `src/main.c`.
             entry.results = match mode {
                 // ── stdin ─────────────────────────────────────────────────────
                 LaunchMode::Stdin => {
@@ -248,8 +232,7 @@ fn main() {
                     let mut items = read_stdin(!config.ascii_input);
                     #[cfg(feature = "history")]
                     if config.use_history {
-                        // C: history only applies in stdin mode when an explicit
-                        // history file is configured (no default path for stdin).
+                        // History for stdin mode requires an explicit history file path.
                         if let Some(ref hf) = config.history_file
                             && let Ok(hist) = history::load(std::path::Path::new(hf))
                         {
@@ -312,8 +295,7 @@ fn main() {
                 }
             };
 
-            // Snapshot the full unfiltered list for `print_index` (Step 6.5).
-            // C reference: `entry->commands` in `do_submit`.
+            // Snapshot the full unfiltered list for `print_index`.
             all_commands = entry.results.clone();
 
             entry.flush();
@@ -321,7 +303,7 @@ fn main() {
             // Commit the initial rendered frame.
             libtofi_rs::wayland::surface::draw(&mut state).expect("Failed to commit entry frame");
             event_queue.flush().expect("Wayland flush failed");
-            tracing::debug!("Step 6.1: entry initial frame committed");
+            tracing::debug!("Entry initial frame committed");
 
             // Keep the entry alive in state so keyboard handlers can update it.
             state.entry = Some(entry);
@@ -330,8 +312,6 @@ fn main() {
         // ── Event loop ────────────────────────────────────────────────────────
         // Non-blocking dispatch with key-repeat timeout so held keys fire
         // repeated input events between Wayland events.
-        //
-        // C reference: poll loop (wl_display fd + timerfd) in `src/main.c`.
         tracing::debug!("Entering event loop");
 
         'event_loop: loop {
@@ -346,9 +326,6 @@ fn main() {
 
             // Poll the Wayland fd (and clipboard fd when a paste is active)
             // with timeout so key repeat can fire between events.
-            //
-            // C reference: `poll` loop with `pollfds[0]` (Wayland) and
-            // `pollfds[1]` (clipboard pipe) in `src/main.c`.
             let guard = event_queue.prepare_read();
             if let Some(ref g) = guard {
                 use rustix::event::{PollFd, PollFlags, Timespec, poll};
@@ -396,15 +373,12 @@ fn main() {
                 .expect("Wayland dispatch error");
 
             // Drain any available clipboard data from the paste pipe.
-            // C reference: `read_clipboard` called when `pollfds[1]` is ready
-            // in `src/main.c`.
             #[cfg(all(feature = "clipboard", feature = "renderer"))]
             if state.clipboard.read_fd.is_some() {
                 libtofi_rs::wayland::read_clipboard(&mut state);
             }
 
             // ── Key repeat ────────────────────────────────────────────────────
-            // C: poll timerfd / gettime_ms check in the main loop.
             if state.keyboard_state.repeat.active && state.keyboard_state.repeat.rate > 0 {
                 use std::time::Instant;
                 if Instant::now() >= state.keyboard_state.repeat.next {
@@ -422,7 +396,6 @@ fn main() {
 
             if state.submit {
                 state.submit = false;
-                // C reference: `do_submit` in `src/main.c`.
                 #[cfg(feature = "renderer")]
                 {
                     let submitted = do_submit(&state, &config, mode, &all_commands);
@@ -437,7 +410,6 @@ fn main() {
             }
 
             // ── Redraw ────────────────────────────────────────────────────────
-            // C: `if (tofi->window.surface.redraw) { entry_update; surface_draw; }`
             if state.redraw {
                 state.redraw = false;
 
@@ -465,8 +437,6 @@ fn main() {
 /// launch the app.  Returns `true` when the selection was accepted and the
 /// launcher should exit; `false` when no match is available and the loop
 /// should continue.
-///
-/// C reference: `do_submit` in `src/main.c`.
 #[cfg(all(feature = "wayland", feature = "renderer"))]
 fn do_submit(
     state: &libtofi_rs::wayland::WaylandState,
@@ -480,8 +450,6 @@ fn do_submit(
 
     // ── No results ────────────────────────────────────────────────────────────
     if entry.results.is_empty() {
-        // In drun mode (or when require_match is set) reject silently.
-        // C: `if (tofi->require_match || entry->mode == TOFI_MODE_DRUN) return false`.
         #[cfg(feature = "drun")]
         if matches!(mode, LaunchMode::Drun) {
             return false;
@@ -500,8 +468,6 @@ fn do_submit(
     // ── Dispatch by mode ──────────────────────────────────────────────────────
     #[cfg(feature = "drun")]
     if matches!(mode, LaunchMode::Drun) {
-        // Find the desktop entry by display name.
-        // C: linear scan because the list may be history-sorted.
         let app = state.drun_entries.iter().find(|e| e.name == *result);
         let Some(app) = app else {
             tracing::error!("Couldn't find application '{result}' in drun_entries");
@@ -514,7 +480,6 @@ fn do_submit(
         }
     } else {
         // stdin / run modes.
-        // C: `if (entry->mode == TOFI_MODE_PLAIN && tofi->print_index)`.
         if matches!(mode, LaunchMode::Stdin) && config.print_index {
             if let Some(idx) = all_commands.iter().position(|s| s == result) {
                 println!("{}", idx + 1);
@@ -536,7 +501,6 @@ fn do_submit(
     }
 
     // ── History ───────────────────────────────────────────────────────────────
-    // C: `if (tofi->use_history) { history_add; history_save_default_file; }`.
     #[cfg(feature = "history")]
     if config.use_history {
         let is_drun = cfg!(feature = "drun") && matches!(mode, LaunchMode::Drun);
@@ -560,8 +524,6 @@ fn do_submit(
 /// Print the expanded exec command for a desktop entry to stdout.
 ///
 /// Prepends the terminal command when `entry.terminal` is `true`.
-///
-/// C reference: `drun_print` in `src/drun.c`.
 #[cfg(all(feature = "wayland", feature = "drun"))]
 fn drun_print(entry: &libtofi_rs::drun::DesktopEntry, terminal: Option<&str>) {
     let cmd = libtofi_rs::drun::exec_command(entry);
@@ -581,10 +543,8 @@ fn drun_print(entry: &libtofi_rs::drun::DesktopEntry, terminal: Option<&str>) {
 /// Launch a desktop application directly via `std::process::Command`.
 ///
 /// The exec string is split on whitespace for argument handling.  A proper
-/// shell-quoting parser (e.g. `shlex`) would be more robust, but matches the
-/// typical exec strings found in `.desktop` files.
-///
-/// C reference: `drun_launch` in `src/drun.c` (uses `g_desktop_app_info_new_from_filename`).
+/// shell-quoting parser (e.g. `shlex`) would be more robust for complex exec
+/// strings, but is sufficient for typical `.desktop` file entries.
 #[cfg(all(feature = "wayland", feature = "drun"))]
 fn drun_launch(entry: &libtofi_rs::drun::DesktopEntry, terminal: Option<&str>) {
     let cmd = libtofi_rs::drun::exec_command(entry);
@@ -614,9 +574,6 @@ fn drun_launch(entry: &libtofi_rs::drun::DesktopEntry, terminal: Option<&str>) {
 ///
 /// Commands not present in `hist` stay at their original relative order
 /// (stable sort with a score of 0).
-///
-/// C reference: `compgen_history_sort` + `string_ref_vec_history_sort` in
-/// `src/compgen.c` / `src/string_vec.c`.
 #[cfg(feature = "history")]
 fn sort_by_history(items: &mut [String], hist: &history::History) {
     use std::collections::HashMap;
@@ -633,8 +590,6 @@ fn sort_by_history(items: &mut [String], hist: &history::History) {
 }
 
 /// Sort desktop entries by descending history run-count.
-///
-/// C reference: `drun_history_sort` in `src/drun.c`.
 #[cfg(all(feature = "history", feature = "drun"))]
 fn sort_drun_by_history(entries: &mut [libtofi_rs::drun::DesktopEntry], hist: &history::History) {
     use std::collections::HashMap;
@@ -685,8 +640,6 @@ fn config_cursor_to_entry(c: &config::CursorTheme) -> libtofi_rs::entry::CursorT
 }
 
 /// Convert [`config::Anchor`] to `zwlr_layer_surface_v1` anchor bit-flags.
-///
-/// Mirrors the `ANCHOR_*` macros in `src/config.c`.
 #[cfg(feature = "wayland")]
 fn config_anchor_to_layer(anchor: config::Anchor) -> libtofi_rs::wayland::Anchor {
     use config::Anchor as A;

@@ -1,8 +1,8 @@
 //! CLI parameters and parsing (`clap`) only — no app logic here.
 //!
-//! Options are **argv-only** (no `#[arg(env = …)]`; §1.4).
+//! Options are **argv-only** (no `#[arg(env = …)]`).
 //!
-//! # Two-pass design (mirrors `parse_args` in `src/main.c`)
+//! # Two-pass design
 //!
 //! 1. **Config file pass** — `--config <path>` (or the default XDG path) is
 //!    loaded first.  `--include <path>` applies an extra file on top.
@@ -20,10 +20,10 @@ use clap::Parser;
 use crate::config::{ParseError, TofiConfig, apply_key, default_config_path, load};
 
 // ---------------------------------------------------------------------------
-// Cli struct — one field per long_option from `src/main.c`
+// Cli struct
 // ---------------------------------------------------------------------------
 
-/// Wayland application launcher (Rust port).
+/// Wayland application launcher.
 ///
 /// Reads `$XDG_CONFIG_HOME/tofi/config` (or `$HOME/.config/tofi/config`)
 /// unless `--config` is given.  Command-line flags override the config file.
@@ -411,8 +411,7 @@ pub struct Cli {
 // ---------------------------------------------------------------------------
 
 impl Cli {
-    /// Build a [`TofiConfig`] from the CLI arguments using the same two-pass
-    /// strategy as `parse_args` in `src/main.c`:
+    /// Build a [`TofiConfig`] from the CLI arguments:
     ///
     /// 1. Load the config file (`--config` or the XDG default).
     /// 2. Apply `--include` if given.

@@ -3,30 +3,19 @@
 //! Tracks the current `wl_data_offer` announced by the compositor, negotiates
 //! a plain-text MIME type, and provides [`ClipboardState::begin_paste`] to
 //! open a pipe and request the compositor write clipboard data into it.
-//!
-//! # C reference
-//!
-//! `src/clipboard.c`, `src/clipboard.h`, and the clipboard listeners /
-//! `paste` function in `src/main.c` / `src/input.c`.
 
 use rustix::pipe::{PipeFlags, pipe_with};
 use std::os::fd::OwnedFd;
 use wayland_client::protocol::wl_data_offer;
 
 /// Preferred MIME type — UTF-8 plain text.
-///
-/// C reference: `mime_type_text_plain_utf8` in `src/main.c`.
 pub const MIME_TEXT_UTF8: &str = "text/plain;charset=utf-8";
 
 /// Fallback MIME type — accepted when the UTF-8 variant is not offered.
-///
-/// C reference: `mime_type_text_plain` in `src/main.c`.
 pub const MIME_TEXT_PLAIN: &str = "text/plain";
 
 /// Clipboard paste state — tracks the current `wl_data_offer` and the
 /// read end of the pipe used to receive clipboard data from the compositor.
-///
-/// C reference: `struct clipboard` in `src/clipboard.h`.
 #[derive(Default)]
 pub struct ClipboardState {
     /// The current data offer from the compositor; `None` when no selection
@@ -45,8 +34,6 @@ impl ClipboardState {
     ///
     /// Called when a new `wl_data_offer` arrives (replacing the previous one)
     /// or when the compositor clears the selection.
-    ///
-    /// C reference: `clipboard_reset` in `src/clipboard.c`.
     pub fn reset(&mut self) {
         // Dropping WlDataOffer sends the destructor request automatically.
         self.offer = None;
@@ -56,8 +43,6 @@ impl ClipboardState {
     }
 
     /// Close the clipboard pipe after paste is complete or on error.
-    ///
-    /// C reference: `clipboard_finish_paste` in `src/clipboard.c`.
     pub fn finish_paste(&mut self) {
         self.read_fd = None;
     }
@@ -68,8 +53,6 @@ impl ClipboardState {
     ///
     /// Returns `true` when a paste was successfully started (an offer with a
     /// known MIME type is available), `false` otherwise (nothing queued).
-    ///
-    /// C reference: `paste` in `src/input.c`.
     pub fn begin_paste(&mut self) -> bool {
         if self.offer.is_none() || self.mime_type.is_none() {
             return false;

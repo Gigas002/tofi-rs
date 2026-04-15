@@ -5,7 +5,7 @@
 //! - [`apply_key`] — apply one `key = value` pair (used by both file loader and CLI)
 //! - [`default_config_path`] — resolve the default config file path
 //!
-//! # Format (from `src/config.c`)
+//! # Format
 //!
 //! - Lines starting with `#`, `;`, or `[` (after stripping leading whitespace) are comments.
 //! - Options are `key = value` (whitespace stripped; surrounding `"…"` stripped from value).
@@ -23,7 +23,7 @@ use libtofi_rs::matching::MatchingAlgorithm;
 use super::{Anchor, CursorStyle, Directional, HiddenCharacter, TextTheme, TofiConfig, UnitValue};
 
 // ---------------------------------------------------------------------------
-// Constants (mirrors src/config.c)
+// Constants
 // ---------------------------------------------------------------------------
 
 const MAX_ERRORS: usize = 5;
@@ -666,14 +666,13 @@ fn load_inner(
 }
 
 // ---------------------------------------------------------------------------
-// strip — mirrors `strip()` in src/config.c
+// strip
 // ---------------------------------------------------------------------------
 
 /// Trim leading/trailing whitespace; strip surrounding `"…"` if both present.
 ///
 /// Returns `None` only when the input is entirely whitespace (no content).
-/// An explicitly empty value `""` returns `Some("")` — matching `strip()` in
-/// `src/config.c`, which returns a non-NULL empty string for `""`.
+/// An explicitly empty value `""` returns `Some("")`.
 fn strip(s: &str) -> Option<String> {
     let s = s.trim();
     if s.is_empty() {
@@ -692,7 +691,7 @@ fn strip(s: &str) -> Option<String> {
 // Value parsers
 // ---------------------------------------------------------------------------
 
-/// `true` / `false` (case-insensitive). Mirrors `parse_bool` in `src/config.c`.
+/// `true` / `false` (case-insensitive).
 fn parse_bool(s: &str) -> Option<bool> {
     match s.to_ascii_lowercase().as_str() {
         "true" => Some(true),
@@ -711,7 +710,7 @@ fn parse_i32(s: &str) -> Option<i32> {
     s.trim().parse::<i32>().ok()
 }
 
-/// Non-negative integer with optional `%` suffix. Mirrors `parse_uint32_percent`.
+/// Non-negative integer with optional `%` suffix.
 fn parse_unit_value(s: &str) -> Option<UnitValue> {
     let s = s.trim();
     if let Some(digits) = s.strip_suffix('%') {
@@ -724,7 +723,6 @@ fn parse_unit_value(s: &str) -> Option<UnitValue> {
 }
 
 /// CSS-style directional value (1–4 comma-separated `i32`s).
-/// Mirrors `parse_directional` in `src/config.c`.
 fn parse_directional(s: &str) -> Option<Directional> {
     let parts: Vec<&str> = s.split(',').collect();
     if parts.len() > 4 || parts.is_empty() {
@@ -761,7 +759,7 @@ fn parse_color(s: &str) -> Option<Color> {
     s.parse::<Color>().ok()
 }
 
-/// Parse an anchor string. Mirrors `parse_anchor` in `src/config.c`.
+/// Parse an anchor string.
 fn parse_anchor(s: &str) -> Option<Anchor> {
     match s.to_ascii_lowercase().as_str() {
         "top-left" => Some(Anchor::TopLeft),
@@ -777,7 +775,7 @@ fn parse_anchor(s: &str) -> Option<Anchor> {
     }
 }
 
-/// Parse a cursor style. Mirrors `parse_cursor_style` in `src/config.c`.
+/// Parse a cursor style.
 fn parse_cursor_style(s: &str) -> Option<CursorStyle> {
     match s.to_ascii_lowercase().as_str() {
         "bar" => Some(CursorStyle::Bar),
@@ -787,7 +785,7 @@ fn parse_cursor_style(s: &str) -> Option<CursorStyle> {
     }
 }
 
-/// Parse a matching algorithm. Mirrors `parse_matching_algorithm` in `src/config.c`.
+/// Parse a matching algorithm.
 fn parse_matching_algorithm(s: &str) -> Option<MatchingAlgorithm> {
     match s.to_ascii_lowercase().as_str() {
         "normal" => Some(MatchingAlgorithm::Normal),
@@ -798,7 +796,6 @@ fn parse_matching_algorithm(s: &str) -> Option<MatchingAlgorithm> {
 }
 
 /// Parse a single Unicode character (or empty string → `None` = completely hidden).
-/// Mirrors `parse_char` in `src/config.c`.
 fn parse_hidden_character(s: &str) -> Option<HiddenCharacter> {
     if s.is_empty() {
         return Some(HiddenCharacter(None));
@@ -812,7 +809,7 @@ fn parse_hidden_character(s: &str) -> Option<HiddenCharacter> {
     Some(HiddenCharacter(Some(ch)))
 }
 
-/// Expand a leading `~/` to `$HOME/`. Mirrors the C font-path expansion.
+/// Expand a leading `~/` to `$HOME/`.
 fn expand_home(s: &str) -> String {
     if let Some(rest) = s.strip_prefix("~/")
         && let Ok(home) = std::env::var("HOME")

@@ -1,8 +1,6 @@
-//! Cached `$PATH` executable list for **`tofi-run`** — Rust port of `src/compgen.c`
-//! (feature **`run-commands`**).
+//! Cached `$PATH` executable list for **`tofi-run`** (feature **`run-commands`**).
 //!
-//! Despite the C name "compgen", this has nothing to do with shell tab-completion
-//! scripts. It scans `$PATH` directories directly for executable regular files,
+//! Scans `$PATH` directories directly for executable regular files,
 //! caches the sorted, deduplicated list, and invalidates the cache when any
 //! `$PATH` directory is newer than the cache file.
 //!
@@ -24,8 +22,6 @@ const CACHE_BASENAME: &str = "tofi-compgen";
 
 /// Scan every directory in `path_var` (colon-separated) and return a sorted,
 /// deduplicated list of executable regular-file names.
-///
-/// Mirrors `compgen()` in `src/compgen.c`.
 pub fn scan(path_var: &str) -> Vec<String> {
     let mut names: BTreeSet<String> = BTreeSet::new();
 
@@ -92,8 +88,6 @@ fn path_dirs_mtime(path_var: &str) -> Option<SystemTime> {
 /// - If the cache file does not exist → scan and write it.
 /// - If any `$PATH` directory is newer than the cache → rescan and overwrite.
 /// - Otherwise → load and return the cache.
-///
-/// Mirrors `compgen_cached()` in `src/compgen.c`.
 pub fn commands_cached(path_var: &str, cache_path: &Path) -> io::Result<Vec<String>> {
     match fs::metadata(cache_path) {
         Err(e) if e.kind() == io::ErrorKind::NotFound => {
@@ -121,8 +115,6 @@ pub fn commands_cached(path_var: &str, cache_path: &Path) -> io::Result<Vec<Stri
 }
 
 /// Resolve the default cache file path.
-///
-/// Mirrors `get_cache_path()` in `src/compgen.c`.
 pub fn default_cache_path() -> Option<PathBuf> {
     resolve_cache_path(std::env::var_os("XDG_CACHE_HOME"), std::env::var_os("HOME"))
 }

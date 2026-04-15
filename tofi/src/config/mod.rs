@@ -2,17 +2,12 @@
 //!
 //! This module defines [`TofiConfig`] (and its supporting value types) as **plain data**.
 //! There is **no** file I/O or argument parsing here — the file loader lives in
-//! `tofi::config::load` (Step 2.2) and CLI parsing in `tofi::cli` (Step 2.4).
+//! [`crate::config::load`] and CLI parsing in [`crate::cli`].
 //!
 //! # Defaults
 //!
-//! [`TofiConfig::default()`] mirrors the hard-coded defaults in `src/main.c` and
+//! [`TofiConfig::default()`] reflects the defaults documented in
 //! [`doc/config`](../../../doc/config).
-//!
-//! # C reference
-//!
-//! - `src/tofi.h` — top-level options + window geometry
-//! - `src/entry.h` — font, color, theme, and layout options
 
 use libtofi_rs::color::Color;
 use libtofi_rs::matching::MatchingAlgorithm;
@@ -22,8 +17,6 @@ use libtofi_rs::matching::MatchingAlgorithm;
 // ---------------------------------------------------------------------------
 
 /// A value that can be expressed in absolute pixels or as a percentage.
-///
-/// Mirrors the `struct uint32_percent` pattern in `src/config.c`.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct UnitValue {
     pub value: u32,
@@ -47,8 +40,6 @@ impl UnitValue {
 }
 
 /// CSS-style directional insets (top / right / bottom / left).
-///
-/// Mirrors `struct directional` from `src/entry.h`.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub struct Directional {
     pub top: i32,
@@ -69,8 +60,6 @@ impl Directional {
 }
 
 /// Text-cursor drawing style.
-///
-/// Mirrors `enum cursor_style` from `src/entry.h`.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 #[allow(dead_code)]
 pub enum CursorStyle {
@@ -82,8 +71,7 @@ pub enum CursorStyle {
 
 /// Visual theme for the text cursor.
 ///
-/// `None` fields mean "inherit from context" (same semantics as the
-/// `*_specified` booleans in `struct cursor_theme` / `src/entry.h`).
+/// `None` fields mean "inherit from context".
 #[derive(Debug, Clone, PartialEq)]
 pub struct CursorTheme {
     /// Whether the cursor is visible.
@@ -117,7 +105,6 @@ impl Default for CursorTheme {
 /// Visual theme for a text element (prompt, input, results, selection, …).
 ///
 /// `None` means the element inherits from the parent / global setting.
-/// Mirrors `struct text_theme` from `src/entry.h`.
 #[derive(Debug, Clone, PartialEq, Default)]
 pub struct TextTheme {
     pub foreground_color: Option<Color>,
@@ -127,9 +114,6 @@ pub struct TextTheme {
 }
 
 /// Screen-edge anchor position for the launcher window.
-///
-/// Mirrors the `ANCHOR_*` macros from `src/config.c` (built from
-/// `ZWLR_LAYER_SURFACE_V1_ANCHOR_*` bit-flags).
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 #[allow(dead_code)]
 pub enum Anchor {
@@ -147,7 +131,7 @@ pub enum Anchor {
 
 /// The character shown in place of real input when `hide_input = true`.
 ///
-/// `None` means input is completely hidden (empty-string case in C).
+/// `None` means input is completely hidden.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct HiddenCharacter(pub Option<char>);
 
@@ -165,9 +149,6 @@ impl Default for HiddenCharacter {
 ///
 /// This is **plain data** — no I/O, no Wayland, no file parsing.
 /// Populated by [`crate::config`] (file + CLI) and passed into the engine.
-///
-/// Mirrors the configurable fields of `struct tofi` (`src/tofi.h`) and
-/// `struct entry` (`src/entry.h`), with Wayland handles and buffers excluded.
 #[derive(Debug, Clone, PartialEq)]
 pub struct TofiConfig {
     // --- Window geometry -------------------------------------------------------
@@ -414,7 +395,6 @@ impl Default for TofiConfig {
 }
 
 pub mod load;
-// Re-exported for callers (Step 2.3+); dead_code suppressed until wired in Step 2.4.
 #[allow(unused_imports)]
 pub use load::{ParseError, apply_key, default_config_path, load};
 

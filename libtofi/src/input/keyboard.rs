@@ -2,12 +2,6 @@
 //!
 //! Wraps `libxkbcommon` via the [`xkbcommon`] crate.  The keymap string is
 //! received from the compositor via the `wl_keyboard::keymap` event.
-//!
-//! # C reference
-//!
-//! Keyboard listener (`wl_keyboard_keymap`, `wl_keyboard_modifiers`,
-//! `wl_keyboard_repeat_info`) and `input_handle_keypress` in `src/main.c` /
-//! `src/input.c`.
 
 use std::time::{Duration, Instant};
 
@@ -23,8 +17,6 @@ use super::{
 // ── RepeatInfo ────────────────────────────────────────────────────────────────
 
 /// Per-key repeat tracking.
-///
-/// C reference: `struct repeat` in `src/tofi.h`.
 #[derive(Debug)]
 pub struct RepeatInfo {
     /// Repeat rate in events per second; 0 = repeat disabled.
@@ -66,9 +58,6 @@ impl RepeatInfo {
 // ── KeyboardState ─────────────────────────────────────────────────────────────
 
 /// XKB keyboard context, keymap, and modifier state.
-///
-/// C reference: `tofi->xkb_context`, `tofi->xkb_keymap`, `tofi->xkb_state`,
-/// and `tofi->repeat` in `src/tofi.h`.
 pub struct KeyboardState {
     context: xkb::Context,
     keymap: Option<xkb::Keymap>,
@@ -76,8 +65,6 @@ pub struct KeyboardState {
     /// Key repeat timing and arming state.
     pub repeat: RepeatInfo,
     /// If `true`, shortcuts use physical key positions (layout-independent).
-    ///
-    /// C reference: `tofi->physical_keybindings` in `src/tofi.h`.
     pub physical_keybindings: bool,
 }
 
@@ -100,9 +87,6 @@ impl KeyboardState {
     /// Parse and install a keymap from its XKB text representation.
     ///
     /// Called from the `wl_keyboard::keymap` event handler.
-    ///
-    /// C reference: `xkb_keymap_new_from_string` + `xkb_state_new` in
-    /// `wl_keyboard_keymap`.
     pub fn load_keymap(&mut self, keymap_str: &str) {
         let Some(km) = xkb::Keymap::new_from_string(
             &self.context,
@@ -120,8 +104,6 @@ impl KeyboardState {
     }
 
     /// Update the modifier state from a `wl_keyboard::modifiers` event.
-    ///
-    /// C reference: `xkb_state_update_mask` in `wl_keyboard_modifiers`.
     pub fn update_modifiers(
         &mut self,
         mods_depressed: u32,
@@ -135,8 +117,6 @@ impl KeyboardState {
     }
 
     /// Record the compositor's key-repeat settings.
-    ///
-    /// C reference: `wl_keyboard_repeat_info` in `src/main.c`.
     pub fn set_repeat_info(&mut self, rate: i32, delay_ms: i32) {
         self.repeat.rate = rate;
         self.repeat.delay_ms = delay_ms;
@@ -151,8 +131,6 @@ impl KeyboardState {
     }
 
     /// Returns `true` if `keycode` is configured to repeat in the current keymap.
-    ///
-    /// C reference: `xkb_keymap_key_repeats` in `wl_keyboard_key`.
     pub fn key_repeats(&self, keycode: u32) -> bool {
         self.keymap
             .as_ref()
@@ -168,8 +146,6 @@ impl KeyboardState {
     ///
     /// Returns `0` when the state is not initialised or the key maps to no
     /// character.
-    ///
-    /// C reference: `xkb_state_key_get_utf32` in `add_character`.
     pub fn key_get_utf32(&self, keycode: u32) -> u32 {
         self.state
             .as_ref()
@@ -204,9 +180,6 @@ impl KeyboardState {
     /// (layout-independent physical positions).  With `false`: the keysym is
     /// resolved first, then mapped to a Linux key code, so shortcuts track the
     /// active layout.
-    ///
-    /// C reference: the `key` / `physical_keybindings` block in
-    /// `input_handle_keypress`.
     pub fn keycode_to_linux_key(&self, keycode: u32) -> u32 {
         if self.physical_keybindings {
             keycode - 8
@@ -221,8 +194,6 @@ impl KeyboardState {
 
     /// Arm key repeat for `keycode` (called on key-press when the key repeats
     /// and the repeat rate is non-zero).
-    ///
-    /// C reference: `tofi->repeat.active = true; …` in `wl_keyboard_key`.
     pub fn arm_repeat(&mut self, keycode: u32) {
         self.repeat.active = true;
         self.repeat.keycode = keycode;
@@ -230,8 +201,6 @@ impl KeyboardState {
     }
 
     /// Disarm key repeat (called on key-release for the repeated key).
-    ///
-    /// C reference: `tofi->repeat.active = false` in `wl_keyboard_key`.
     pub fn disarm_repeat(&mut self, keycode: u32) {
         if self.repeat.keycode == keycode {
             self.repeat.active = false;
@@ -239,9 +208,6 @@ impl KeyboardState {
     }
 
     /// Advance the repeat deadline after a repeat event fires.
-    ///
-    /// C reference: `tofi->repeat.next += 1000 / tofi->repeat.rate` in the
-    /// main loop.
     pub fn advance_repeat(&mut self) {
         if self.repeat.rate > 0 {
             self.repeat.next += Duration::from_millis(1000 / self.repeat.rate as u64);
@@ -255,8 +221,6 @@ impl KeyboardState {
 /// shortcut resolution.
 ///
 /// Returns `u32::MAX` for keysyms that are not mapped.
-///
-/// C reference: `keysym_to_key` in `src/input.c`.
 pub fn keysym_to_linux_key(sym: Keysym) -> u32 {
     match sym.raw() {
         keysyms::KEY_BackSpace => KEY_BACKSPACE,

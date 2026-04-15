@@ -1,13 +1,13 @@
-//! Matching algorithms — Rust port of `src/matching.c`.
+//! Matching algorithms.
 #![deny(unsafe_code)]
 //!
 //! # Algorithms
 //!
-//! | Variant | C function | Behaviour |
-//! |---|---|---|
-//! | [`Normal`] | `simple_match_words` | Case-insensitive substring; all words must appear |
-//! | [`Prefix`] | `prefix_match_words` | Each word must be a prefix of `str` |
-//! | [`Fuzzy`]  | `fuzzy_match_words`  | fts_fuzzy_match v0.2.0–style recursive scoring |
+//! | Variant | Behaviour |
+//! |---|---|
+//! | [`Normal`] | Case-insensitive substring; all words must appear |
+//! | [`Prefix`] | Each word must be a prefix of the candidate |
+//! | [`Fuzzy`]  | fts_fuzzy_match v0.2.0–style recursive scoring |
 //!
 //! All algorithms:
 //! - Split the query on whitespace (NFC-normalised first).
@@ -34,8 +34,6 @@ use crate::unicode::{
 };
 
 /// The matching algorithm to use when filtering candidates.
-///
-/// Mirrors `enum matching_algorithm` from `src/matching.h`.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub enum MatchingAlgorithm {
     /// Case-insensitive substring match; each query word must appear anywhere
@@ -58,8 +56,6 @@ pub enum MatchingAlgorithm {
 ///
 /// Returns `i32::MIN` if the candidate does not match.
 /// Larger values are better.
-///
-/// Mirrors `match_words` from `src/matching.c`.
 pub fn match_words(algorithm: MatchingAlgorithm, patterns: &str, s: &str) -> i32 {
     match algorithm {
         MatchingAlgorithm::Normal => simple_match_words(patterns, s),
@@ -72,8 +68,6 @@ pub fn match_words(algorithm: MatchingAlgorithm, patterns: &str, s: &str) -> i32
 
 /// Returns the negative sum of byte offsets at which each query word appears
 /// in `s` (all words must be found), or `i32::MIN` on any miss.
-///
-/// Mirrors `simple_match_words`.
 fn simple_match_words(patterns: &str, s: &str) -> i32 {
     let normalised = utf8_normalize(patterns);
     let mut score: i32 = 0;
@@ -92,8 +86,6 @@ fn simple_match_words(patterns: &str, s: &str) -> i32 {
 
 /// Each query word must appear at position 0 of `s`; score = negative sum of
 /// unmatched suffix codepoint counts, or `i32::MIN` on any miss.
-///
-/// Mirrors `prefix_match_words`.
 fn prefix_match_words(patterns: &str, s: &str) -> i32 {
     let normalised = utf8_normalize(patterns);
     let mut score: i32 = 0;
@@ -112,8 +104,6 @@ fn prefix_match_words(patterns: &str, s: &str) -> i32 {
 // ── Fuzzy ─────────────────────────────────────────────────────────────────────
 
 /// Sums `fuzzy_match` over each query word; returns `i32::MIN` if any fails.
-///
-/// Mirrors `fuzzy_match_words`.
 fn fuzzy_match_words(patterns: &str, s: &str) -> i32 {
     let normalised = utf8_normalize(patterns);
     let mut total: i32 = 0;
@@ -127,9 +117,7 @@ fn fuzzy_match_words(patterns: &str, s: &str) -> i32 {
     total
 }
 
-/// Fuzzy-match a single `pattern` word against `s`.
-///
-/// Mirrors `fuzzy_match` (fts_fuzzy_match v0.2.0, public domain).
+/// Fuzzy-match a single `pattern` word against `s` (fts_fuzzy_match v0.2.0, public domain).
 fn fuzzy_match(pattern: &str, s: &str) -> i32 {
     const UNMATCHED_LETTER_PENALTY: i32 = -1;
 
@@ -148,7 +136,7 @@ fn fuzzy_match(pattern: &str, s: &str) -> i32 {
     let base_score = UNMATCHED_LETTER_PENALTY * (slen - plen) as i32;
 
     // For long strings, only find the first match (not the best) to avoid
-    // combinatorial explosion — matches C's `first_match_only = slen > 100`.
+    // combinatorial explosion.
     let first_match_only = slen > 100;
 
     fuzzy_match_recurse(pattern, s, None, base_score, first_match_only, true)
@@ -160,8 +148,6 @@ fn fuzzy_match(pattern: &str, s: &str) -> i32 {
 ///   in the original string (needed for separator/CamelCase scoring).
 /// - `score`: the score earned by the character match that led here.
 /// - `first_char`: true for the first character of the pattern.
-///
-/// Mirrors `fuzzy_match_recurse`.
 fn fuzzy_match_recurse(
     pattern: &str,
     haystack: &str,
@@ -180,7 +166,7 @@ fn fuzzy_match_recurse(
     let mut prev = prev_char;
 
     for (jump, (byte_idx, ch)) in (0_i32..).zip(haystack.char_indices()) {
-        // Case-insensitive codepoint comparison (mirrors `utf8_strcasechr`).
+        // Case-insensitive codepoint comparison.
         let ch_lower = ch.to_lowercase().next().unwrap_or(ch);
         let pf_lower = pattern_first.to_lowercase().next().unwrap_or(pattern_first);
 
@@ -216,7 +202,6 @@ fn fuzzy_match_recurse(
 /// Score a single character match within a fuzzy match pass.
 ///
 /// Scoring system from fts_fuzzy_match v0.2.0 (public domain, Forrest Smith).
-/// Mirrors `compute_score`.
 fn compute_score(jump: i32, first_char: bool, cur: char, prev: Option<char>) -> i32 {
     const ADJACENCY_BONUS: i32 = 15;
     const SEPARATOR_BONUS: i32 = 30;

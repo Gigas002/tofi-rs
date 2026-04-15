@@ -1,4 +1,4 @@
-//! Single-instance lock — Rust port of `src/lock.c` (feature **`single-instance-lock`**).
+//! Single-instance lock (feature **`single-instance-lock`**).
 #![deny(unsafe_code)]
 //!
 //! Calls `flock(2)` with `LOCK_EX | LOCK_NB` on a well-known file so that
@@ -46,8 +46,6 @@ impl Drop for Lock {
 /// - Returns `Ok(None)` when another process already holds the lock
 ///   (`EWOULDBLOCK`), i.e. another `tofi` instance is running.
 /// - Returns `Err(_)` for unexpected I/O failures (e.g. permission denied).
-///
-/// Mirrors `lock_check` in `src/lock.c`.
 pub fn try_acquire(path: &Path) -> Result<Option<Lock>> {
     if let Some(parent) = path.parent()
         && !parent.as_os_str().is_empty()
@@ -84,8 +82,7 @@ pub fn try_acquire_default() -> Result<Option<Lock>> {
 
 /// Resolve the default lock file path.
 ///
-/// Mirrors `get_lock_path` in `src/lock.c`:
-/// `XDG_RUNTIME_DIR` → `XDG_CACHE_HOME` → `$HOME/.cache/`.
+/// Priority: `XDG_RUNTIME_DIR` → `XDG_CACHE_HOME` → `$HOME/.cache/`.
 pub fn default_lock_path() -> Option<PathBuf> {
     resolve_lock_path(
         std::env::var_os("XDG_RUNTIME_DIR"),
