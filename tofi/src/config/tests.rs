@@ -1,7 +1,9 @@
 use std::io::Write as _;
 
-use super::load::{apply_key, load};
+use libtofi_rs::matching::MatchingAlgorithm;
+
 use super::*;
+use super::{apply_key, load};
 
 // ---------------------------------------------------------------------------
 // UnitValue

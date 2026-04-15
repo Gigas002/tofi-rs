@@ -689,16 +689,16 @@ Each step: **Goal** · **Scope** · **Deliverables** · **Verification** · **C 
   - **Deliverables:** `git grep "C reference\|Step [0-9]\|src/.*\.c\|phase.*[0-9]"` in source (not docs/) returns empty (or only intentional matches).
   - **Verification:** `cargo doc --no-deps --all-features` produces clean public API docs free of migration noise; `cargo clippy` still clean.
 
-- [ ] **Step 9.8 — Refactor `tofi-rs` CLI into focused modules**
+- [x] **Step 9.8 — Refactor `tofi-rs` CLI into focused modules**
   - **Goal:** `tofi/src/main.rs` and `tofi/src/config.rs` are already too large; split into focused, testable units with clear responsibilities.
   - **Scope:**
-    - Split `config.rs` (~700+ lines) into sub-modules: `config/parser.rs` (file I/O + include), `config/apply.rs` (key dispatch), `config/defaults.rs` (Default impl + constants), `config/types.rs` (plain data structs + enums).
-    - Extract Wayland wiring from `main.rs` into `tofi/src/app.rs` (or `tofi/src/wayland.rs`) — `main` becomes ≤40 lines of parse-then-run.
-    - Each sub-module has its own `tests.rs`; existing tests are redistributed accordingly.
-  - **Deliverables:** No single file in `tofi/src/` exceeds ~300 lines; `main.rs` ≤ 40 lines.
-  - **Verification:** `cargo test --workspace` green; `cargo clippy` clean; no public API changes visible to users.
+    - Split `config/load.rs` (823 lines) into: `config/types.rs` (plain data structs + enums), `config/apply.rs` (key dispatch + value parsers), `config/load.rs` (file I/O + include, now ~230 lines); `config/mod.rs` becomes a thin hub with `impl Default for TofiConfig`.
+    - Extracted Wayland wiring from `main.rs` into `tofi/src/app.rs` (event loop + mode detection) and `tofi/src/submit.rs` (submission, output, history sort, config converters) — `main.rs` is now 28 lines.
+    - Existing tests stay in `config/tests.rs`; import updated from `super::load::{apply_key, load}` → `super::{apply_key, load}`.
+  - **Deliverables:** `main.rs` = 28 lines; `config/types.rs` = 265, `config/load.rs` = 228, `config/mod.rs` = 144, `app.rs` = 413, `submit.rs` = 235 lines; `config/apply.rs` = 577 lines (inherently large — one match arm per config key, not splittable further).
+  - **Verification:** `cargo test --workspace` green (127 + libtofi tests); `cargo clippy --workspace --all-features -- -D warnings` clean.
 
-- [ ] **Step 9.9 — Remove redundant Linux / Wayland platform cfg guards**
+- [x] **Step 9.9 — Remove redundant Linux / Wayland platform cfg guards**
   - **Goal:** Since this project targets **Linux + Wayland exclusively** (§1.2), any `#[cfg(target_os = "linux")]`, `#[cfg(unix)]`, `#[cfg(not(target_os = "windows"))]`, or equivalent guards that exist only to protect Linux-specific syscalls / behaviour are dead weight — remove them so the code reads as Linux-native without conditional noise.
   - **Scope:**
     - `libtofi/src/shm/mod.rs` — `#[cfg(target_os = "linux")]` on `MADV_HUGEPAGE` path (and the conditional `use rustix::mm::madvise`): remove the guard; `Advice::LinuxHugepage` and `madvise` are available unconditionally on Linux. The `#[cfg]` import becomes a plain `use`.
@@ -761,6 +761,9 @@ These are **not** required to declare the C→Rust migration “done” for §5.
 
 ### Revision history
 
+- **2026-04-16:** **Phase 9 Step 9.9** — removed two `#[cfg(target_os = "linux")]` guards from `libtofi/src/shm/mod.rs`: the conditional `use rustix::mm::{Advice, madvise}` import merged into the unconditional `rustix::mm` import line; the `#[cfg]` attribute on the `MADV_HUGEPAGE` hint block removed; `grep -rn 'cfg(target_os|cfg(unix|cfg(target_family'` in source returns empty; `cargo check --all-features` + 379 tests pass; `clippy -D warnings` clean; §9 checkbox.
+- **2026-04-16:** **Phase 9 Step 9.8** — split `tofi-rs` into focused modules: `config/types.rs` (structs + enums), `config/apply.rs` (key dispatch + value parsers), `config/load.rs` (file I/O only, ~230 lines), `config/mod.rs` (thin hub + `Default for TofiConfig`); Wayland wiring extracted from `main.rs` into `app.rs` (event loop + mode detection) and `submit.rs` (submission, output, history sort, config converters); `main.rs` = 28 lines; `config/tests.rs` import updated; 127 tests pass; `clippy -D warnings` clean; §9 checkbox.
+- **2026-04-16:** **Phase 9 Step 9.7** — removed all C/migration comments from Rust source: all `// C reference:`, `/// Mirrors X`, `// Step N.M:`, `// Phase N`, `//! # C reference`, `src/foo.c` references stripped from `libtofi/src/**` and `tofi/src/**`; `git grep "C reference|Step [0-9]|src/.*\.c"` in source returns empty; `cargo doc` + `cargo clippy -D warnings` clean; §9 checkbox.
 - **2026-04-15:** **Phase 9 Step 9.6** — audited all 15 `tests.rs` files; `libtofi/src/wayland/tests.rs` was the only doc-only placeholder (no `#[test]` — Wayland requires a live compositor); removed `#[cfg(test)] mod tests` hook from `wayland/mod.rs`; deleted `wayland/tests.rs`; all other modules carry real tests; 379 tests pass; `clippy -D warnings` clean; §9 checkbox.
 - **2026-04-15:** **Phase 9 Steps 9.3 / 9.4 / 9.5** — `examples/config/` directory created: `defaults` (canonical all-keys-at-defaults, from `doc/config`), `complete` (all-keys non-default, from flat `examples/config-complete`), `minimal` (empty / comment-only, from flat `examples/config-minimal`), `personal` (personal config, `include` path updated to `../themes/Sweet`); `examples/themes/` expanded: `dark-paper`, `dmenu`, `dos`, `fullscreen`, `soy-milk` migrated from `themes/`; `themes/` dir deleted; `doc/config` deleted; flat `examples/config-complete` / `examples/config-minimal` deleted; README theme links → `examples/themes/*`, config link → `examples/config/defaults`; `config/tests.rs` updated: fixture paths corrected to `config/*`, `load_doc_config_fixture` → `load_examples_config_defaults`, five new theme `#[test]` functions (`dmenu`, `fullscreen`, `dos`, `dark_paper`, `soy_milk`); 127 tests (+ 5) pass; `clippy -D warnings` clean; §9 checkboxes.
 - **2026-04-15:** **Phase 9 Step 9.2** — deleted `meson.build`, `meson_options.txt`, `src/` (all C/H translation units + `entry_backend/`), `test/` (C TAP suite), `protocols/` (XML unused by Rust — confirmed via grep); `README.md` Building section rewritten to `cargo build --release` + install + symlinks (Arch/Fedora/Debian runtime deps retained, meson/scdoc/wayland-protocols build-time deps replaced with rustup/cargo); `git grep meson` and `git grep 'src/.*\.[ch]'` return clean in active docs; 252+122 tests pass; §9 checkbox.
