@@ -3,12 +3,6 @@
 //! Implements: prompt, input field (with cursor), result list, selection
 //! highlight.  All drawing uses **logical** pixel coordinates (the Cairo
 //! device scale handles physical-pixel mapping).
-//!
-//! # C reference
-//!
-//! `src/entry_backend/pango.c` — `entry_backend_pango_init`,
-//! `entry_backend_pango_update`, and the static helpers
-//! `render_text_themed` / `render_input` / `rounded_rectangle`.
 
 use std::f64;
 
@@ -24,8 +18,6 @@ use super::{
 // ── PangoBackend ──────────────────────────────────────────────────────────────
 
 /// Pango state held by [`Entry`] for the lifetime of the widget.
-///
-/// C equivalent: `struct entry_backend_pango` from `src/entry_backend/pango.h`.
 pub struct PangoBackend {
     /// Kept alive as a lifetime anchor for the layout (GObject refcount).
     /// The Pango layout internally holds a strong ref to its context, so this
@@ -38,8 +30,6 @@ impl PangoBackend {
     /// Initialise the Pango context and layout; compute cursor metrics.
     ///
     /// Returns `(PangoBackend, ResolvedCursorTheme)`.
-    ///
-    /// C reference: `entry_backend_pango_init` in `src/entry_backend/pango.c`.
     pub(crate) fn init(
         cr: &Context,
         config: &EntryConfig,
@@ -47,10 +37,8 @@ impl PangoBackend {
         _default_fg: crate::color::Color,
         default_bg: crate::color::Color,
     ) -> Result<(Self, ResolvedCursorTheme)> {
-        // C: pango_cairo_create_context(cr)
         let context = pangocairo::functions::create_context(cr);
 
-        // C: pango_font_description_from_string(entry->font_name)
         let mut font_desc = FontDescription::from_string(&config.font_name);
         font_desc.set_size(config.font_size as i32 * pango::SCALE);
 
@@ -60,7 +48,6 @@ impl PangoBackend {
 
         context.set_font_description(Some(&font_desc));
 
-        // C: pango_layout_new(context)
         let layout = pango::Layout::new(&context);
 
         // Font features attribute.
@@ -72,7 +59,6 @@ impl PangoBackend {
         }
 
         // Measure font metrics for cursor sizing.
-        // C: pango_context_load_font → pango_font_get_metrics
         let font = context
             .load_font(&font_desc)
             .ok_or_else(|| Error::Renderer("Pango: failed to load font".into()))?;
@@ -100,7 +86,6 @@ impl PangoBackend {
         };
 
         // Resolve cursor colors.
-        // C: cursor color defaults to input foreground; text_color defaults to background.
         let resolved_cursor = ResolvedCursorTheme {
             color: config
                 .cursor_theme
@@ -146,8 +131,6 @@ struct ClipRect {
 /// Render all text elements into `cr`.
 ///
 /// Called by [`Entry::pango_update`] with the current back-buffer context.
-///
-/// C reference: `entry_backend_pango_update` in `src/entry_backend/pango.c`.
 pub(crate) fn update(cr: &Context, entry: &mut Entry) {
     // Clone layout (GObject refcount) to avoid a split-borrow conflict with
     // the later `&mut entry` access for `num_results_drawn`.
@@ -364,8 +347,6 @@ pub(crate) fn update(cr: &Context, entry: &mut Entry) {
 ///
 /// If the theme has a non-transparent background, paint a rounded rectangle
 /// behind the text first.
-///
-/// C reference: `render_text_themed` in `src/entry_backend/pango.c`.
 fn render_text_themed(
     cr: &Context,
     layout: &pango::Layout,
@@ -434,8 +415,6 @@ fn render_text_themed(
 // ── render_input ──────────────────────────────────────────────────────────────
 
 /// Render the input field text and cursor at the current CTM origin.
-///
-/// C reference: `render_input` in `src/entry_backend/pango.c`.
 #[allow(clippy::too_many_arguments)]
 fn render_input(
     cr: &Context,
@@ -577,9 +556,6 @@ fn render_input(
 ///
 /// Drawn in two passes: first the background rectangle, then the foreground
 /// text (with differently-coloured match segment).
-///
-/// C reference: the `else` branch for `i == entry->selection` in
-/// `entry_backend_pango_update`.
 #[allow(clippy::too_many_arguments)]
 fn render_selected_result(
     cr: &Context,
@@ -683,8 +659,6 @@ fn render_selected_result(
 
 /// Return `true` if a rectangle of `extra_w` × `extra_h` would overflow the
 /// clip region in the current direction.
-///
-/// C reference: `size_overflows` in `src/entry_backend/pango.c`.
 fn size_overflows(
     cr: &Context,
     clip: ClipRect,
@@ -706,8 +680,6 @@ fn size_overflows(
 ///
 /// Returns `Some((pre_end_byte, match_end_byte))` when `needle` is found in
 /// `haystack`, where both values are byte offsets.
-///
-/// C reference: `utf8_strcasestr` call in `entry_backend_pango_update`.
 fn find_match_position(haystack: &str, needle: &str) -> Option<(usize, usize)> {
     if needle.is_empty() {
         return None;

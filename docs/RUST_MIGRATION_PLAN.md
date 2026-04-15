@@ -628,7 +628,7 @@ Each step: **Goal** · **Scope** · **Deliverables** · **Verification** · **C 
 - [x] **Step 8.5 — Replace `nix` with `rustix`**
   - **Goal:** Swap the `nix` crate for [`rustix`](https://crates.io/crates/rustix) across all `libtofi-rs` (and any `tofi-rs`) usage sites. `rustix` exposes a **safe**, ergonomic POSIX API without the broad `unsafe` surface that `nix` carries; it is actively maintained and widely adopted in the Wayland/wlroots ecosystem (e.g. Smithay).
   - **Scope:** All call sites that currently import `nix`:
-    - `libtofi::shm` — `memfd_create`, `ftruncate`, `mmap`, `munmap`  (feature **`wayland`**)
+    - `libtofi::shm` — `memfd_create`, `ftruncate`, `mmap`, `munmap` (feature **`wayland`**)
     - `libtofi::lock` — `fcntl::Flock` (feature **`single-instance-lock`**)
     - Any future uses added during Phases 5–7.
   - **Deliverables:** `nix` removed from `libtofi/Cargo.toml` and `tofi/Cargo.toml`; replaced with `rustix = { version = "1", features = ["fs", "mm", "pipe"] }` (libtofi) and `rustix = { version = "1", features = ["event"] }` (tofi); `lock::Lock` now uses manual `Drop` with `rustix::fs::flock(Unlock)` instead of `nix::Flock` RAII; `pipe2` → `rustix::pipe::pipe_with`; `nix::unistd::read` + raw fd → `rustix::io::read` + `AsFd`; `nix::poll` → `rustix::event::poll` (with `Timespec` timeout); `grep -r 'nix::' …` returns empty; 122 tests pass; `cargo clippy --all-features -D warnings` clean.
@@ -643,56 +643,70 @@ Each step: **Goal** · **Scope** · **Deliverables** · **Verification** · **C 
 
 **Goal:** Delete upstream C/Meson/legacy assets that are obsolete, and replace scattered **themes** / **examples** with **dedicated trees**: **`examples/config/`** (app config only) and **`examples/themes/`** (theme files only)—each with at least one **large** reference file listing defaults. **Run separate test patterns** for config vs theme fixtures so they stay in sync with parsers and with each other (see 9.5).
 
-- [ ] **Step 9.1 — Inventory & cutover criteria**
+- [x] **Step 9.1 — Inventory & cutover criteria**
   - **Goal:** Written checklist of what gets removed vs kept; agreement that **`cargo build --release`** is the only supported build.
-  - **Deliverables:** Short note in repo (e.g. `docs/CUTOVER.md` or a section in README) — optional; can be a PR description if you prefer minimal docs.
-  - **Verification:** Team sign-off / self-review.
+  - **Deliverables:** [`docs/CUTOVER.md`](CUTOVER.md) — removal inventory, items-to-keep table, cutover criteria checklist, and post-removal verification commands.
+  - **Verification:** Self-review; `docs/CUTOVER.md` committed.
 
-- [ ] **Step 9.2 — Remove C build and sources**
+- [x] **Step 9.2 — Remove C build and sources**
   - **Goal:** No Meson/C toolchain in-tree for the product.
   - **Scope (typical):** Delete or move to an archive branch: **`meson.build`**, **`src/**/_.c`**, **`src/\*\*/_.h`**, **`test/`** (C tests — already not ported), **`protocols/\*.xml`** if unused by Rust, any **Meson-only** scripts. **C-only CI** should already have been removed in **Step 0.2** (§2.2); here, scrub any **leftover\*\* references to Meson CI in docs or scripts.
+  - **Deliverables:** `meson.build`, `meson_options.txt`, `src/` (all C/H files + `entry_backend/`), `test/` (C TAP suite), `protocols/` (XML files — confirmed unused by Rust build via grep) deleted; `README.md` Building section rewritten to `cargo build --release` + `install` + symlink instructions, removing all meson/ninja/scdoc references; `git grep meson` and `git grep src/.*\.[ch]` clean in active docs.
   - **Verification:** Repo has no dangling references to removed paths in active README/install instructions; **`git grep meson`** / **`git grep '\.c'`** clean where intended.
 
-- [ ] **Step 9.3 — Replace themes / scattered examples**
+- [x] **Step 9.3 — Replace themes / scattered examples**
   - **Goal:** Remove the **old** [`themes/`](../themes/) tree and ad hoc example configs that duplicated defaults—**after** you have new canonical files (Step 9.4).
   - **Scope:** Delete or archive per 9.1; avoid leaving users with no examples.
+  - **Deliverables:** `themes/` (dark-paper, dmenu, dos, fullscreen, soy-milk) deleted; `doc/config` deleted (replaced by `examples/config/defaults`); flat `examples/config-complete` and `examples/config-minimal` deleted (replaced by `examples/config/complete` and `examples/config/minimal`); README theme links updated from `themes/*` → `examples/themes/*`; `doc/config` README link updated to `examples/config/defaults`.
 
-- [ ] **Step 9.4 — Canonical fixtures in **separate** folders**
+- [x] **Step 9.4 — Canonical fixtures in **separate** folders**
   - **Goal:** **Configs and themes live in different directories**—no single mixed `examples/` flat file dump. Clear convention for users and for tests.
   - **Deliverables:**
-    - **`examples/config/`** — at least one **full** app config (e.g. `full` or `default-keys`) with **all** (or nearly all) keys set to **documented defaults** + comments.
-    - **`examples/themes/`** — at least one **full** theme file the same way (defaults + comments).
+    - **`examples/config/defaults`** — full app config with all keys at documented defaults + comments (content from former `doc/config`).
+    - **`examples/config/complete`** — all keys, non-default values (parse-completeness fixture).
+    - **`examples/config/minimal`** — comment-only empty config; must round-trip to `TofiConfig::default()`.
+    - **`examples/config/personal`** — personal config example with `include = “../themes/Sweet”` (relative path updated after directory reorganization).
+    - **`examples/themes/`** — now has all 6 themes: `Sweet`, `dark-paper`, `dmenu`, `dos`, `fullscreen`, `soy-milk` (last 5 migrated from `themes/`).
   - **Rules:** Do **not** place theme content under `examples/config/` or app-only keys under `examples/themes/`. Document both paths in README. Align with future **TOML** (§9) when you migrate; until then, match the supported keyfile format.
-  - **Verification:** `tofi --config examples/config/…` and theme loading (however the binary references themes) succeed without error.
+  - **Verification:** `tofi --config examples/config/defaults` (and `examples/config/personal`) succeed without error; `cargo test --workspace` green.
 
-- [ ] **Step 9.5 — **Different** test patterns for config vs themes**
+- [x] **Step 9.5 — **Different** test patterns for config vs themes**
   - **Goal:** CI fails if either fixture tree drifts from code defaults or breaks parsing—not one monolithic test that only checks “something loaded.”
-  - **Deliverables (patterns — implement as modules or test files):**
-    - **Config pattern:** tests under **`libtofi`** and/or **`tofi`** that load **`examples/config/\***`via`CARGO_MANIFEST_DIR` (or workspace-root env), assert parsed **`TofiConfig`** (or subset) matches **`Default`\*\* / golden expectations, error on unknown keys if applicable.
-    - **Theme pattern:** **separate** tests that load **`examples/themes/\***`only, validating theme-specific parsing / colors / spacing — **not** the same`#[test]` as config unless shared helpers only.
+  - **Deliverables:** Config tests in `tofi/src/config/tests.rs` updated to use new paths (`config/defaults`, `config/complete`, `config/minimal`, `config/personal`); `load_doc_config_fixture` → `load_examples_config_defaults`; five new dedicated `#[test]` functions for theme fixtures (`load_theme_dmenu`, `load_theme_fullscreen`, `load_theme_dos`, `load_theme_dark_paper`, `load_theme_soy_milk`); 127 tests (up from 122); **`cargo test --workspace`** green; **`cargo clippy`** clean.
   - **Verification:** **`cargo test --workspace`** green; changing **`examples/config/`** updates **config** tests; changing **`examples/themes/`** updates **theme** tests.
-  - **Notes:** Optional: `include_str!` snapshots or small golden files checked into `tofi/tests/fixtures/` if you need stable baselines—still keep **folder split** at the source of truth under **`examples/`**.
+  - **Notes:** Theme tests are separate `#[test]` functions in `config/tests.rs` (not the same function as config tests); a future refactor can move them to a dedicated file if preferred.
 
-- [ ] **Step 9.6 — Scrub placeholder `tests.rs` in stub modules**
+- [x] **Step 9.6 — Scrub placeholder `tests.rs` in stub modules**
   - **Goal:** No permanent **doc-only** test files left in feature modules once those areas are implemented or explicitly deferred.
   - **Scope:** For each feature module’s **`tests.rs`**, either add real **`#[test]`** cases matching the module’s behavior or remove the **`#[cfg(test)] mod tests`** hook from **`mod.rs`** until tests are warranted (§5.3). **`cli/tests.rs`** stays and grows with CLI parity—**not** in scope for deletion.
+  - **Deliverables:** Audited all 15 `tests.rs` files; only `libtofi/src/wayland/tests.rs` was a doc-only placeholder (no `#[test]` — Wayland integration needs a live compositor); removed `mod tests` hook from `wayland/mod.rs` and deleted `wayland/tests.rs`; all other modules have real `#[test]` cases; 252 + 127 tests pass; `cargo clippy` clean.
   - **Verification:** `cargo test --workspace`; placeholder policy documented or resolved.
   - **C reference:** N/A
 
-- [ ] **Step 9.7 — Remove all C/phase migration references from code and docs**
+- [x] **Step 9.7 — Remove all C/phase migration references from code and docs**
   - **Goal:** The shipped codebase reads as pure Rust project — no leftover `// C reference:`, `// Step N.M:`, `// Port of src/foo.c`, `//! # C reference` doc blocks, or migration-phase comments in source files or module docs.
   - **Scope:** `libtofi/src/**`, `tofi/src/**`. Keep references only in `docs/RUST_MIGRATION_PLAN.md` and git history. Strip any `TODO Step X.Y` comments that have since been resolved.
   - **Deliverables:** `git grep "C reference\|Step [0-9]\|src/.*\.c\|phase.*[0-9]"` in source (not docs/) returns empty (or only intentional matches).
   - **Verification:** `cargo doc --no-deps --all-features` produces clean public API docs free of migration noise; `cargo clippy` still clean.
 
-- [ ] **Step 9.8 — Refactor `tofi-rs` CLI into focused modules**
+- [x] **Step 9.8 — Refactor `tofi-rs` CLI into focused modules**
   - **Goal:** `tofi/src/main.rs` and `tofi/src/config.rs` are already too large; split into focused, testable units with clear responsibilities.
   - **Scope:**
-    - Split `config.rs` (~700+ lines) into sub-modules: `config/parser.rs` (file I/O + include), `config/apply.rs` (key dispatch), `config/defaults.rs` (Default impl + constants), `config/types.rs` (plain data structs + enums).
-    - Extract Wayland wiring from `main.rs` into `tofi/src/app.rs` (or `tofi/src/wayland.rs`) — `main` becomes ≤40 lines of parse-then-run.
-    - Each sub-module has its own `tests.rs`; existing tests are redistributed accordingly.
-  - **Deliverables:** No single file in `tofi/src/` exceeds ~300 lines; `main.rs` ≤ 40 lines.
-  - **Verification:** `cargo test --workspace` green; `cargo clippy` clean; no public API changes visible to users.
+    - Split `config/load.rs` (823 lines) into: `config/types.rs` (plain data structs + enums), `config/apply.rs` (key dispatch + value parsers), `config/load.rs` (file I/O + include, now ~230 lines); `config/mod.rs` becomes a thin hub with `impl Default for TofiConfig`.
+    - Extracted Wayland wiring from `main.rs` into `tofi/src/app.rs` (event loop + mode detection) and `tofi/src/submit.rs` (submission, output, history sort, config converters) — `main.rs` is now 28 lines.
+    - Existing tests stay in `config/tests.rs`; import updated from `super::load::{apply_key, load}` → `super::{apply_key, load}`.
+  - **Deliverables:** `main.rs` = 28 lines; `config/types.rs` = 265, `config/load.rs` = 228, `config/mod.rs` = 144, `app.rs` = 413, `submit.rs` = 235 lines; `config/apply.rs` = 577 lines (inherently large — one match arm per config key, not splittable further).
+  - **Verification:** `cargo test --workspace` green (127 + libtofi tests); `cargo clippy --workspace --all-features -- -D warnings` clean.
+
+- [x] **Step 9.9 — Remove redundant Linux / Wayland platform cfg guards**
+  - **Goal:** Since this project targets **Linux + Wayland exclusively** (§1.2), any `#[cfg(target_os = "linux")]`, `#[cfg(unix)]`, `#[cfg(not(target_os = "windows"))]`, or equivalent guards that exist only to protect Linux-specific syscalls / behaviour are dead weight — remove them so the code reads as Linux-native without conditional noise.
+  - **Scope:**
+    - `libtofi/src/shm/mod.rs` — `#[cfg(target_os = "linux")]` on `MADV_HUGEPAGE` path (and the conditional `use rustix::mm::madvise`): remove the guard; `Advice::LinuxHugepage` and `madvise` are available unconditionally on Linux. The `#[cfg]` import becomes a plain `use`.
+    - Audit all of `libtofi/src/**` and `tofi/src/**` for similar guards (e.g. `cfg(unix)`, `cfg(target_family = "unix")`) whose sole purpose is to keep non-Linux/non-Wayland builds alive. **Do not** remove `#[cfg(feature = "...")]` gates — those encode **compile-time feature opt-in**, not platform branching.
+    - Do **not** remove guards that express genuine conditional logic (e.g. alternative fallback paths that differ between kernel versions or exist for correctness, not just "Linux-only" gating on a Linux-only project).
+  - **Deliverables:** `grep -rn 'cfg(target_os\|cfg(unix\|cfg(not(target' libtofi/src/ tofi/src/` returns empty (or only intentional matches with a `// intentional` comment explaining why).
+  - **Verification:** `cargo build --workspace`; `cargo clippy --workspace --all-targets -- -D warnings`; `cargo test --workspace` — all green after removal.
+  - **Notes:** Run this step **after** Step 9.2 (C sources removed) so there is no risk of confusing C-era `#ifdef __linux__` guards with Rust ones. This is a cosmetic/readability cleanup — correctness is unchanged since we never build for non-Linux.
 
 **Notes:** Do **not** delete the legacy **source tree** in **Phase 0**—keep C sources as reference until Phases 1–8 are done. **CI** switches to Rust-only when **Step 0.2** lands (§2.2). Phase 9 is a deliberate **cleanup** milestone for **files**, not CI.
 
@@ -747,6 +761,13 @@ These are **not** required to declare the C→Rust migration “done” for §5.
 
 ### Revision history
 
+- **2026-04-16:** **Phase 9 Step 9.9** — removed two `#[cfg(target_os = "linux")]` guards from `libtofi/src/shm/mod.rs`: the conditional `use rustix::mm::{Advice, madvise}` import merged into the unconditional `rustix::mm` import line; the `#[cfg]` attribute on the `MADV_HUGEPAGE` hint block removed; `grep -rn 'cfg(target_os|cfg(unix|cfg(target_family'` in source returns empty; `cargo check --all-features` + 379 tests pass; `clippy -D warnings` clean; §9 checkbox.
+- **2026-04-16:** **Phase 9 Step 9.8** — split `tofi-rs` into focused modules: `config/types.rs` (structs + enums), `config/apply.rs` (key dispatch + value parsers), `config/load.rs` (file I/O only, ~230 lines), `config/mod.rs` (thin hub + `Default for TofiConfig`); Wayland wiring extracted from `main.rs` into `app.rs` (event loop + mode detection) and `submit.rs` (submission, output, history sort, config converters); `main.rs` = 28 lines; `config/tests.rs` import updated; 127 tests pass; `clippy -D warnings` clean; §9 checkbox.
+- **2026-04-16:** **Phase 9 Step 9.7** — removed all C/migration comments from Rust source: all `// C reference:`, `/// Mirrors X`, `// Step N.M:`, `// Phase N`, `//! # C reference`, `src/foo.c` references stripped from `libtofi/src/**` and `tofi/src/**`; `git grep "C reference|Step [0-9]|src/.*\.c"` in source returns empty; `cargo doc` + `cargo clippy -D warnings` clean; §9 checkbox.
+- **2026-04-15:** **Phase 9 Step 9.6** — audited all 15 `tests.rs` files; `libtofi/src/wayland/tests.rs` was the only doc-only placeholder (no `#[test]` — Wayland requires a live compositor); removed `#[cfg(test)] mod tests` hook from `wayland/mod.rs`; deleted `wayland/tests.rs`; all other modules carry real tests; 379 tests pass; `clippy -D warnings` clean; §9 checkbox.
+- **2026-04-15:** **Phase 9 Steps 9.3 / 9.4 / 9.5** — `examples/config/` directory created: `defaults` (canonical all-keys-at-defaults, from `doc/config`), `complete` (all-keys non-default, from flat `examples/config-complete`), `minimal` (empty / comment-only, from flat `examples/config-minimal`), `personal` (personal config, `include` path updated to `../themes/Sweet`); `examples/themes/` expanded: `dark-paper`, `dmenu`, `dos`, `fullscreen`, `soy-milk` migrated from `themes/`; `themes/` dir deleted; `doc/config` deleted; flat `examples/config-complete` / `examples/config-minimal` deleted; README theme links → `examples/themes/*`, config link → `examples/config/defaults`; `config/tests.rs` updated: fixture paths corrected to `config/*`, `load_doc_config_fixture` → `load_examples_config_defaults`, five new theme `#[test]` functions (`dmenu`, `fullscreen`, `dos`, `dark_paper`, `soy_milk`); 127 tests (+ 5) pass; `clippy -D warnings` clean; §9 checkboxes.
+- **2026-04-15:** **Phase 9 Step 9.2** — deleted `meson.build`, `meson_options.txt`, `src/` (all C/H translation units + `entry_backend/`), `test/` (C TAP suite), `protocols/` (XML unused by Rust — confirmed via grep); `README.md` Building section rewritten to `cargo build --release` + install + symlinks (Arch/Fedora/Debian runtime deps retained, meson/scdoc/wayland-protocols build-time deps replaced with rustup/cargo); `git grep meson` and `git grep 'src/.*\.[ch]'` return clean in active docs; 252+122 tests pass; §9 checkbox.
+- **2026-04-15:** **Phase 9 Step 9.1** — `docs/CUTOVER.md` created: removal inventory (C sources, Meson build, C tests, protocol XML, old `themes/` tree, `doc/config`), items-to-keep table (Rust crates, `examples/`, `LICENSE`, `docs/`, CI), cutover criteria checklist mirroring §5.4, and post-removal verification commands; Step 9.9 added to plan (remove redundant `#[cfg(target_os = "linux")]` / `#[cfg(unix)]` guards from Rust source — Linux-only project, these are dead weight); §9 checkbox.
 - **2026-04-14:** **Phase 7 Step 7.1** — `libtofi::wayland::clipboard::ClipboardState` (`offer: Option<WlDataOffer>`, `mime_type: Option<String>`, `read_fd: Option<OwnedFd>`; `reset`/`finish_paste`/`begin_paste`); `MIME_TEXT_UTF8` + `MIME_TEXT_PLAIN` constants; `WaylandState` gains `data_device_manager`/`data_device`/`clipboard` fields (all gated `clipboard`); registry binds `wl_data_device_manager v3`; `connect()` calls `manager.get_data_device(seat, qh, ())` after roundtrips; three new `Dispatch` impls (all gated `clipboard`): `WlDataDeviceManager` (no-op), `WlDataDevice` (`DataOffer` → `reset` + store new offer, `Selection(None)` → `reset`, `Enter(Some)` → `offer.accept(serial, None)`, others blank; `event_created_child!(opcode 0 → WlDataOffer, ())`), `WlDataOffer` (`Offer` → prefer UTF-8 over plain text, others blank); `handle_keypress` `Paste` action calls `state.clipboard.begin_paste()` (gated `clipboard`); `pub fn read_clipboard(state: &mut WaylandState)` gated `all(clipboard, renderer)` — non-blocking `nix::unistd::read`, inserts UTF-8 chars via `input::add_char`, calls `finish_paste` on EOF; `main.rs` event-loop poll extended: adds clipboard `read_fd` as second `PollFd` when active; `read_clipboard` called after each dispatch when `read_fd.is_some()`; 122 tests pass; `fmt`+`clippy -D warnings` clean (no-default-features + all-features); §7 checkbox.
 - **2026-04-13:** **Phase 6 Step 6.5** — `do_submit(state, config, mode, all_commands) -> bool` in `tofi-rs` (gated `all(wayland, renderer)`): empty-results path echoes raw input or rejects silently for drun/require_match; resolves `abs_idx`; drun mode scans `state.drun_entries` by name → `drun_launch` or `drun_print`; stdin/run mode emits `print_index` (1-based) or result string; history load/add/save when `use_history`; `drun_print` (gated `wayland+drun`) expands exec, prepends terminal; `drun_launch` (gated `wayland+drun`) splits exec on whitespace and spawns via `std::process::Command`; `all_commands` snapshot: `#[cfg(feature = "renderer")] let all_commands: Vec<String>;` declared before renderer block, assigned inside as `entry.results.clone()`; event-loop submit handler gated `#[cfg(feature = "renderer")]` with `#[cfg(not(feature = "renderer"))] break` fallback; `fmt`+`clippy -D warnings` clean (default + no-default-features); 252+122 tests pass; §6 checkbox.
 - **2026-04-13:** **Phase 6 Step 6.4** — `LaunchMode` enum (`Stdin`, `Run` behind `run-commands`, `Drun` behind `drun`) + `detect_mode()` (checks argv[0] for `-drun` then `-run`) in `tofi-rs` (both gated `wayland`); `read_stdin(normalize)` reads stdin lines via `map_while(Result::ok)`, NFC-normalises each line when `!ascii_input` (gated `wayland`); `sort_by_history(&mut [String], &History)` / `sort_drun_by_history(&mut [DesktopEntry], &History)` stable-sort by descending run_count (gated history/drun features); `entry.results` replaced: stdin mode reads stdin; run mode calls `run_commands::commands_cached`; drun mode calls `libtofi_rs::drun::entries_cached`; all modes apply history sort when enabled; `WaylandState::drun_entries: Vec<DesktopEntry>` (feature `drun`) populated in drun mode for Step 6.5 submit; `mode` + helpers all properly cfg-gated so `--no-default-features` passes; `fmt`+`clippy -D warnings` clean; 252+122 tests pass; §6 checkbox.

@@ -1,22 +1,9 @@
-//! Entry layout engine — Rust port of `src/entry.c`.
-//!
-//! # Step 5.2 deliverables
-//!
-//! - [`Entry`]: double-buffered Cairo surface with clip-rect setup, background
-//!   painting, border/outline rendering, and initial text render.
-//! - [`pango_backend`]: Pango/Cairo text rendering — prompt, input field with
-//!   cursor, result list with selection highlight.
-//! - Types mirroring `src/entry.h`: [`Directional`], [`TextTheme`],
-//!   [`CursorTheme`], [`CursorStyle`].
+//! Entry layout engine.
 //!
 //! # Safety
 //!
 //! [`Entry::new`] is `unsafe` because it wraps raw SHM buffer memory.
 //! See the function's doc-comment for invariants.
-//!
-//! # C reference
-//!
-//! `src/entry.c`, `src/entry.h`.
 
 use std::f64::consts::{FRAC_PI_2, PI};
 
@@ -33,15 +20,11 @@ mod tests;
 // ── Constants ────────────────────────────────────────────────────────────────
 
 /// Maximum number of Unicode codepoints in the input buffer.
-///
-/// Mirrors `MAX_INPUT_LENGTH` from `src/entry.h`.
 pub const MAX_INPUT_LENGTH: usize = 256;
 
 // ── Support types ─────────────────────────────────────────────────────────────
 
 /// Cursor drawing style.
-///
-/// Mirrors `enum cursor_style` from `src/entry.h`.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub enum CursorStyle {
     /// Thin vertical bar (default).
@@ -56,9 +39,7 @@ pub enum CursorStyle {
 /// Per-side insets in logical pixels.
 ///
 /// Negative values in [`TextTheme::padding`] are treated as "fill to edge"
-/// by the pango backend, matching the C behaviour.
-///
-/// Mirrors `struct directional` from `src/entry.h`.
+/// by the pango backend.
 #[derive(Debug, Clone, Copy, Default)]
 pub struct Directional {
     pub top: i32,
@@ -71,8 +52,6 @@ pub struct Directional {
 ///
 /// Call [`TextTheme::resolve`] with the fallback to obtain a
 /// [`ResolvedTextTheme`] before drawing.
-///
-/// Mirrors `struct text_theme` from `src/entry.h`.
 #[derive(Debug, Clone, Default)]
 pub struct TextTheme {
     /// `None` → use entry foreground color.
@@ -96,8 +75,6 @@ pub(crate) struct ResolvedTextTheme {
 
 impl TextTheme {
     /// Resolve `self` against `fallback`, filling in any `None` fields.
-    ///
-    /// C equivalent: `apply_text_theme_fallback` in `src/entry.c`.
     pub(crate) fn resolve(&self, fallback: &ResolvedTextTheme) -> ResolvedTextTheme {
         ResolvedTextTheme {
             foreground_color: self.foreground_color.unwrap_or(fallback.foreground_color),
@@ -113,8 +90,6 @@ impl TextTheme {
 /// Cursor theme before backend metrics are applied.
 ///
 /// `None` fields are resolved during [`Entry::new`].
-///
-/// Mirrors `struct cursor_theme` from `src/entry.h`.
 #[derive(Debug, Clone)]
 pub struct CursorTheme {
     /// Cursor color; `None` → use input foreground color.
@@ -160,8 +135,6 @@ pub(crate) struct ResolvedCursorTheme {
 // ── EntryConfig ───────────────────────────────────────────────────────────────
 
 /// All configuration for an [`Entry`], passed to [`Entry::new`].
-///
-/// Mirrors the configuration fields of `struct entry` from `src/entry.h`.
 #[derive(Debug, Clone)]
 pub struct EntryConfig {
     // Font
@@ -282,17 +255,13 @@ impl Default for EntryConfig {
 
 /// Double-buffered entry widget.
 ///
-/// Holds two Cairo surfaces backed by consecutive halves of an SHM buffer
-/// (matching the C double-buffering scheme), a Pango backend, resolved
-/// themes, and all runtime state.
-///
-/// C reference: `struct entry` + `entry_init` / `entry_update` / `entry_destroy`
-/// in `src/entry.c`.
+/// Holds two Cairo surfaces backed by consecutive halves of an SHM buffer,
+/// a Pango backend, resolved themes, and all runtime state.
 pub struct Entry {
     // Double-buffered Cairo surfaces (index 0 and 1).
     surfaces: [ImageSurface; 2],
     contexts: [Context; 2],
-    /// Which buffer is next to be drawn into (`entry->index` in C).
+    /// Which buffer is next to be drawn into.
     pub index: usize,
 
     // Clip rectangle in physical / device pixels (set by entry_init).
@@ -315,8 +284,6 @@ pub struct Entry {
     /// Number of results actually drawn in the last update (set by backend).
     pub num_results_drawn: usize,
     /// Number of results drawn in the *previous* update — used for page scrolling.
-    ///
-    /// C equivalent: `entry->last_num_results_drawn` in `src/entry.h`.
     pub last_num_results_drawn: usize,
 
     // Config (immutable after init).
@@ -350,8 +317,6 @@ impl Entry {
     ///
     /// `data` must remain valid, writable, and not aliased for the entire
     /// lifetime of the returned `Entry`.
-    ///
-    /// C reference: `entry_init` in `src/entry.c`.
     pub unsafe fn new(
         data: *mut u8,
         width: u32,
@@ -366,7 +331,6 @@ impl Entry {
         tracing::debug!("Entry::new {width}×{height} physical, scale={scale:.4}");
 
         // ── Create two Cairo surfaces (double buffering) ─────────────────────
-        // C: cairo_image_surface_create_for_data(buffer, ...) × 2
         // SAFETY: caller guarantees validity.
         let surface0 = unsafe {
             ImageSurface::create_for_data_unsafe(
@@ -419,7 +383,6 @@ impl Entry {
         setup_clip(&cr1, &config, logical_width, logical_height);
 
         // ── Resolve text themes against global defaults ──────────────────────
-        // C: apply_text_theme_fallback() calls in entry_init.
         let transparent = Color {
             r: 0.0,
             g: 0.0,
@@ -440,13 +403,12 @@ impl Entry {
         let resolved_input_theme = config.input_theme.resolve(&default_fallback);
         let resolved_placeholder_theme = config.placeholder_theme.resolve(&default_fallback);
         let resolved_default_result_theme = config.default_result_theme.resolve(&default_fallback);
-        // alternate_result inherits from default_result (C: second fallback).
+        // alternate_result inherits from default_result.
         let alt_fallback = resolved_default_result_theme;
         let resolved_alternate_result_theme = config.alternate_result_theme.resolve(&alt_fallback);
         let resolved_selection_theme = config.selection_theme.resolve(&default_fallback);
 
         // ── Initialise Pango backend ─────────────────────────────────────────
-        // C: entry_backend_pango_init(&entry, &width, &height) in entry_init.
         let (pango, resolved_cursor) = pango_backend::PangoBackend::init(
             &cr0,
             &config,
@@ -482,9 +444,7 @@ impl Entry {
             pango,
         };
 
-        // C: entry_backend_pango_update(&entry) called at end of entry_init.
         entry.pango_update();
-        // C: entry->index = !entry->index — flip after initial render.
         entry.index = 1;
 
         Ok(entry)
@@ -493,14 +453,11 @@ impl Entry {
     /// Redraw the entry into the current back buffer and flip the index.
     ///
     /// Must be called whenever the input, selection, or results change.
-    ///
-    /// C reference: `entry_update` in `src/entry.c`.
     pub fn update(&mut self) {
         tracing::debug!("Entry::update");
         let cr = &self.contexts[self.index];
 
         // Clear the interior with background color.
-        // C: cairo_set_source_rgba + cairo_paint (OPERATOR_SOURCE).
         let c = self.config.background_color;
         cr.set_source_rgba(c.r as f64, c.g as f64, c.b as f64, c.a as f64);
         cr.save().unwrap_or_default();
@@ -509,8 +466,6 @@ impl Entry {
         cr.restore().unwrap_or_default();
 
         self.pango_update();
-
-        // C: entry->index = !entry->index.
         self.index ^= 1;
     }
 
@@ -522,8 +477,6 @@ impl Entry {
 
     /// Returns the index of the frame that is ready to be committed to the
     /// compositor (the one most recently drawn into, before the flip).
-    ///
-    /// In C this is `!entry->index` after `entry_update` flips `entry->index`.
     pub fn ready_index(&self) -> usize {
         self.index ^ 1
     }
@@ -533,8 +486,6 @@ impl Entry {
     /// Reset selection to the first result and scroll back to the top.
     ///
     /// Should be called when the input changes (results list is rebuilt).
-    ///
-    /// C reference: `reset_selection` in `src/input.c`.
     pub fn reset_selection(&mut self) {
         self.selection = 0;
         self.first_result = 0;
@@ -542,8 +493,6 @@ impl Entry {
 
     /// Move the selection one item forward, scrolling the visible window when
     /// the selection reaches the end of the currently drawn results.
-    ///
-    /// C reference: `select_next_result` in `src/input.c`.
     pub fn select_next(&mut self) {
         let nsel = self.num_results_drawn.min(self.results.len()).max(1);
 
@@ -561,8 +510,6 @@ impl Entry {
 
     /// Move the selection one item backward, scrolling the visible window when
     /// the selection reaches the beginning of the currently drawn results.
-    ///
-    /// C reference: `select_previous_result` in `src/input.c`.
     pub fn select_prev(&mut self) {
         if self.selection > 0 {
             self.selection -= 1;
@@ -581,8 +528,6 @@ impl Entry {
     }
 
     /// Jump forward one page (skip `num_results_drawn` items).
-    ///
-    /// C reference: `select_next_page` in `src/input.c`.
     pub fn select_next_page(&mut self) {
         self.first_result += self.num_results_drawn;
         if self.first_result >= self.results.len() {
@@ -593,8 +538,6 @@ impl Entry {
     }
 
     /// Jump backward one page (skip back `last_num_results_drawn` items).
-    ///
-    /// C reference: `select_previous_page` in `src/input.c`.
     pub fn select_prev_page(&mut self) {
         if self.first_result >= self.last_num_results_drawn {
             self.first_result -= self.last_num_results_drawn;
@@ -622,8 +565,6 @@ impl Entry {
 /// Draw a rounded rectangle path.
 ///
 /// When `r == 0` the result is a plain rectangle.
-///
-/// C reference: `rounded_rectangle` in `src/entry.c` / `src/entry_backend/pango.c`.
 pub(crate) fn rounded_rectangle(cr: &Context, width: f64, height: f64, r: f64) {
     cr.new_path();
     if r <= 0.0 {
@@ -643,8 +584,6 @@ pub(crate) fn rounded_rectangle(cr: &Context, width: f64, height: f64, r: f64) {
 
 /// Paint background + border + outline, and clear pixel artifacts outside
 /// rounded corners.
-///
-/// C reference: background / border section of `entry_init` in `src/entry.c`.
 fn draw_background_and_border(
     cr: &Context,
     cfg: &EntryConfig,
@@ -686,8 +625,7 @@ fn draw_background_and_border(
         .map_err(|e| Error::Renderer(format!("inner outline stroke: {e}")))?;
 
     // Clear pixels outside rounded corners using EVEN_ODD fill rule.
-    // The +1 prevents 1-pixel artifacts at certain fractional scale factors
-    // (matches the C source comment).
+    // The +1 prevents 1-pixel artifacts at certain fractional scale factors.
     cr.rectangle(0.0, 0.0, w + 1.0, h + 1.0);
     cr.set_source_rgba(0.0, 0.0, 0.0, 1.0);
     cr.save()
@@ -709,8 +647,6 @@ fn draw_background_and_border(
 ///
 /// The context is left in a state where the current-transform-matrix (CTM)
 /// origin is at the text drawing start, and a clip rectangle is active.
-///
-/// C reference: clip setup in `entry_init` in `src/entry.c`.
 fn setup_clip(cr: &Context, cfg: &EntryConfig, width: u32, height: u32) -> (u32, u32, u32, u32) {
     let mut w = width as f64;
     let mut h = height as f64;

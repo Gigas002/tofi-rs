@@ -34,8 +34,8 @@ Install the necessary dependencies.
 # Runtime dependencies
 sudo pacman -S freetype2 harfbuzz cairo pango wayland libxkbcommon
 
-# Build-time dependencies
-sudo pacman -S meson scdoc wayland-protocols
+# Build-time dependency
+sudo pacman -S rust
 ```
 
 #### For Fedora
@@ -43,8 +43,8 @@ sudo pacman -S meson scdoc wayland-protocols
 # Runtime dependencies
 sudo dnf install freetype-devel cairo-devel pango-devel wayland-devel libxkbcommon-devel harfbuzz
 
-# Build-time dependencies
-sudo dnf install meson scdoc wayland-protocols-devel
+# Build-time dependency
+sudo dnf install rust cargo
 ```
 
 #### For Debian/Ubuntu
@@ -53,13 +53,17 @@ sudo dnf install meson scdoc wayland-protocols-devel
 # Runtime dependencies
 sudo apt install libfreetype-dev libcairo2-dev libpango1.0-dev libwayland-dev libxkbcommon-dev libharfbuzz-dev
 
-# Build-time dependencies
-sudo apt install meson scdoc wayland-protocols
+# Build-time dependency
+sudo apt install rustup
 ```
 
-Then build:
+Then build and install:
 ```sh
-meson build && ninja -C build install
+cargo build --release
+# Install binary and symlinks
+install -Dm755 target/release/tofi /usr/local/bin/tofi
+ln -sf tofi /usr/local/bin/tofi-run
+ln -sf tofi /usr/local/bin/tofi-drun
 ```
 
 ### Arch
@@ -102,8 +106,8 @@ See the main [manpage](doc/tofi.1.md) for more info.
 
 ### Theming
 
-Tofi supports a fair number of theming options - see the default [config
-file](doc/config) or the config file [manpage](doc/tofi.5.md) for a complete
+Tofi supports a fair number of theming options - see the canonical [config
+file](examples/config/defaults) or the config file [manpage](doc/tofi.5.md) for a complete
 description. Theming is based on the box model shown below:
 
 ![Default theme screenshot](screenshot_default.png)
@@ -130,19 +134,19 @@ with optionally rounded corners,
 A few example themes are included and shown below. Note that you may need to
 tweak them to look correct on your display.
 
-[`themes/fullscreen`](themes/fullscreen)
+[`examples/themes/fullscreen`](examples/themes/fullscreen)
 ![Fullscreen theme screenshot](screenshot_fullscreen.png)
 
-[`themes/dmenu`](themes/dmenu)
+[`examples/themes/dmenu`](examples/themes/dmenu)
 ![dmenu theme screenshot](screenshot_dmenu.png)
 
-[`themes/dos`](themes/dos)
+[`examples/themes/dos`](examples/themes/dos)
 ![DOS theme screenshot](screenshot_dos.png)
 
-[`themes/dark-paper`](themes/dark-paper)
+[`examples/themes/dark-paper`](examples/themes/dark-paper)
 ![Dark paper theme screenshot](screenshot_dark_paper.png)
 
-[`themes/soy-milk`](themes/soy-milk)
+[`examples/themes/soy-milk`](examples/themes/soy-milk)
 ![Soy milk theme screenshot](screenshot_soy_milk.png)
 
 ## Performance

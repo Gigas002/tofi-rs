@@ -1,9 +1,7 @@
 //! Layer surface creation and double-buffered SHM presentation.
 //!
-//! # Scale handling (Step 4.5)
-//!
 //! The layer surface size is always expressed in logical pixels.  The SHM
-//! buffer (and Cairo canvas from Step 5) uses **physical** pixels:
+//! buffer uses **physical** pixels:
 //!
 //! ```text
 //! physical = scale_apply(logical, effective_scale)
@@ -14,11 +12,6 @@
 //!
 //! A `wp_viewport` is set up when `wp_viewporter` is present so the compositor
 //! maps the physical buffer back to the logical size, enabling fractional HiDPI.
-//!
-//! # C reference
-//!
-//! `src/main.c` layer setup (~line 1524), `src/surface.c` `surface_init` /
-//! `surface_draw`, `src/shm.c` `shm_allocate_file`, `src/scale.c`.
 
 use wayland_client::{EventQueue, QueueHandle, protocol::wl_surface};
 use wayland_protocols::wp::{
@@ -40,9 +33,6 @@ use super::WaylandState;
 ///
 /// All dimensions are **logical pixels**; the scale-to-physical conversion
 /// happens inside [`create_surface`] using the compositor-reported scale factor.
-///
-/// C reference: the fields of `struct tofi` that feed `zwlr_layer_surface_v1`
-/// requests in `src/main.c`.
 pub struct SurfaceConfig {
     /// Logical width in pixels (0 = let compositor decide).
     pub width: u32,
@@ -63,9 +53,6 @@ pub struct SurfaceConfig {
 // ── SurfaceState ──────────────────────────────────────────────────────────────
 
 /// Live Wayland surface state for the launcher window.
-///
-/// C reference: `struct surface` in `src/surface.h` + layer surface fields of
-/// `struct tofi` in `src/tofi.h`.
 pub struct SurfaceState {
     pub wl_surface: wl_surface::WlSurface,
     pub layer_surface: zwlr_layer_surface_v1::ZwlrLayerSurfaceV1,
@@ -80,16 +67,10 @@ pub struct SurfaceState {
     /// `true` once `ack_configure` has been sent.
     pub configured: bool,
     /// Double-buffered SHM pool; `None` until after the configure roundtrip.
-    ///
-    /// C reference: `shm_pool_fd`, `shm_pool_data`, `buffers[2]` in `struct surface`.
     pub shm: Option<ShmPool<WaylandState>>,
     /// Index of the buffer currently being written (0 or 1).
-    ///
-    /// C reference: `surface->index` in `src/surface.c`.
     pub index: usize,
     /// Viewport for fractional-scale presentation; `None` if not supported.
-    ///
-    /// C reference: `tofi.window.wp_viewport` in `src/main.c`.
     pub(super) viewport: Option<wp_viewport::WpViewport>,
 }
 
@@ -115,7 +96,6 @@ fn fill_argb8888(buf: &mut [u8], color: Color) {
 /// Create the launcher layer surface, allocate a double-buffered SHM pool
 /// sized to **physical** pixels, and commit the first frame.
 ///
-/// Scale handling mirrors `src/main.c` (Steps 4.5 section):
 /// - If `wp_fractional_scale_v1` is supported, its `preferred_scale` event
 ///   fires during the configure roundtrip and is used for physical dimensions.
 /// - Otherwise, the integer scale from `wl_output` is used (`scale × 120`).
@@ -126,11 +106,6 @@ fn fill_argb8888(buf: &mut [u8], color: Color) {
 ///
 /// After this call [`WaylandState::surface`] is populated and the window is on
 /// screen.  Run [`EventQueue::blocking_dispatch`] until [`WaylandState::closed`].
-///
-/// # C reference
-///
-/// `src/main.c` lines ~1527–1701: surface creation, layer surface setup,
-/// third roundtrip, `surface_init`, `surface_draw`.
 pub fn create_surface(
     state: &mut WaylandState,
     event_queue: &mut EventQueue<WaylandState>,
@@ -183,7 +158,6 @@ pub fn create_surface(
     );
 
     // ── 2. Attach fractional scale listener (before commit) ───────────────────
-    // C: wp_fractional_scale_manager_v1_get_fractional_scale + listener setup
     // Reset any previously stored scale so we detect a fresh value.
     state.fractional_scale = 0;
     let _frac_scale: Option<wp_fractional_scale_v1::WpFractionalScaleV1> =
@@ -194,7 +168,6 @@ pub fn create_surface(
         });
 
     // ── 3. Create viewport if supported ───────────────────────────────────────
-    // C: wp_viewporter_get_viewport
     let viewport: Option<wp_viewport::WpViewport> =
         state
             .viewporter
@@ -245,8 +218,6 @@ pub fn create_surface(
     tracing::debug!("Configured at {logical_w}×{logical_h} (logical)");
 
     // ── 6. Determine effective scale ──────────────────────────────────────────
-    // C: tofi.window.fractional_scale / tofi.window.scale logic in src/main.c
-    //
     // If fractional scale arrived, use it. Otherwise fall back to integer scale
     // from the target output (or 1× if unknown).
     let int_scale = cfg
@@ -271,7 +242,6 @@ pub fn create_surface(
     };
 
     // ── 7. Handle legacy zero-size / no-viewporter cases ──────────────────────
-    // C: src/main.c ~1530–1565
     if logical_w == 0 || logical_h == 0 {
         tracing::warn!(
             "Width or height is 0 — fractional scaling disabled; \
@@ -287,7 +257,6 @@ pub fn create_surface(
     }
 
     // ── 8. Compute physical dimensions ───────────────────────────────────────
-    // C: scale_apply(width, fractional_scale) / width * scale
     let phys_w = scale_apply(logical_w, effective_scale);
     let phys_h = scale_apply(logical_h, effective_scale);
     tracing::debug!("Physical buffer: {phys_w}×{phys_h} px (scale={effective_scale}/120)");
@@ -299,7 +268,6 @@ pub fn create_surface(
     }
 
     // ── 9. Set viewport destination to logical size ───────────────────────────
-    // C: wp_viewport_set_destination(viewport, width, height)
     if let Some(vp) = state.surface.as_ref().and_then(|s| s.viewport.as_ref())
         && logical_w > 0
         && logical_h > 0
@@ -309,7 +277,6 @@ pub fn create_surface(
     }
 
     // ── 10. Allocate double-buffered SHM pool at physical dimensions ──────────
-    // C: surface_init in src/surface.c
     let wl_shm = state
         .shm
         .as_ref()
@@ -323,7 +290,6 @@ pub fn create_surface(
     state.surface.as_mut().unwrap().shm = Some(pool);
 
     // ── 11. First draw + flush ────────────────────────────────────────────────
-    // C: surface_draw in src/surface.c
     draw(state)?;
 
     event_queue
@@ -336,18 +302,11 @@ pub fn create_surface(
 
 /// Present the current buffer and flip to the next one.
 ///
-/// Ports `surface_draw` from `src/surface.c`:
-/// - attach the current buffer
-/// - damage the entire surface
-/// - commit
-/// - flip `index`
+/// Attaches the current buffer, damages the entire surface, commits, and
+/// flips `index`.
 ///
 /// The caller is responsible for filling [`SurfaceState::shm`]`::data_mut(index)`
 /// with rendered pixel data before calling `draw`.
-///
-/// # C reference
-///
-/// `surface_draw` in `src/surface.c`.
 pub fn draw(state: &mut WaylandState) -> Result<()> {
     let surface = state
         .surface
@@ -358,15 +317,11 @@ pub fn draw(state: &mut WaylandState) -> Result<()> {
         .as_ref()
         .ok_or_else(|| Error::Wayland("SHM pool not initialised".into()))?;
 
-    // C: wl_surface_attach(surface->wl_surface, surface->buffers[surface->index], 0, 0)
     surface
         .wl_surface
         .attach(Some(shm.buffer(surface.index)), 0, 0);
-    // C: wl_surface_damage_buffer(surface->wl_surface, 0, 0, INT32_MAX, INT32_MAX)
     surface.wl_surface.damage_buffer(0, 0, i32::MAX, i32::MAX);
-    // C: wl_surface_commit(surface->wl_surface)
     surface.wl_surface.commit();
-    // C: surface->index = !surface->index
     surface.index ^= 1;
 
     Ok(())

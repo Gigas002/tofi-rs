@@ -1,4 +1,4 @@
-//! History file — Rust port of `src/history.c` (feature **`history`**).
+//! History file (feature **`history`**).
 //!
 //! # File format
 //!
@@ -8,8 +8,7 @@
 //! {run_count} {name}\n
 //! ```
 //!
-//! Entries are stored in descending order by `run_count` (most-used first),
-//! matching the C implementation's in-memory representation.
+//! Entries are stored in descending order by `run_count` (most-used first).
 //!
 //! # Path resolution
 //!
@@ -22,15 +21,13 @@ use std::fs;
 use std::io::{self, Write as _};
 use std::path::{Path, PathBuf};
 
-/// Maximum accepted history file size (10 MiB), matching the C constant.
+/// Maximum accepted history file size (10 MiB).
 const MAX_HISTFILE_SIZE: u64 = 10 * 1024 * 1024;
 
 const HISTFILE_BASENAME: &str = "tofi-history";
 const DRUN_HISTFILE_BASENAME: &str = "tofi-drun-history";
 
 /// A single program entry in the history.
-///
-/// Mirrors `struct program` from `src/history.h`.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Program {
     /// Program name (or desktop entry id for drun mode).
@@ -40,8 +37,6 @@ pub struct Program {
 }
 
 /// In-memory history, sorted descending by [`Program::run_count`].
-///
-/// Mirrors `struct history` from `src/history.h`.
 #[derive(Debug, Default, Clone)]
 pub struct History {
     entries: Vec<Program>,
@@ -62,7 +57,7 @@ impl History {
     ///
     /// - If already present: increment `run_count`, then bubble the entry
     ///   upward as long as its count exceeds the preceding entry (stable with
-    ///   respect to equal counts). Mirrors `history_add` in `src/history.c`.
+    ///   respect to equal counts).
     /// - If not present: append with `run_count = 1`.
     pub fn add(&mut self, name: &str) {
         if let Some(i) = self.entries.iter().position(|p| p.name == name) {
@@ -86,8 +81,6 @@ impl History {
     }
 
     /// Remove the entry with the given name (if present).
-    ///
-    /// Mirrors `history_remove` in `src/history.c`.
     pub fn remove(&mut self, name: &str) {
         if let Some(i) = self.entries.iter().position(|p| p.name == name) {
             self.entries.remove(i);
@@ -99,8 +92,6 @@ impl History {
 ///
 /// Uses `$XDG_STATE_HOME` when set; otherwise falls back to
 /// `$HOME/.local/state/`. Returns `None` when neither variable is available.
-///
-/// Mirrors `get_histfile_path` in `src/history.c`.
 pub fn default_history_path(drun: bool) -> Option<PathBuf> {
     resolve_history_path(
         std::env::var_os("XDG_STATE_HOME"),
@@ -130,11 +121,8 @@ fn resolve_history_path(
 
 /// Load a [`History`] from `path`.
 ///
-/// Returns an empty history (not an error) when the file does not exist,
-/// matching the C behaviour. Returns an error for I/O failures other than
-/// `NotFound`.
-///
-/// Mirrors `history_load` in `src/history.c`.
+/// Returns an empty history (not an error) when the file does not exist.
+/// Returns an error for I/O failures other than `NotFound`.
 pub fn load(path: &Path) -> io::Result<History> {
     let bytes = match fs::read(path) {
         Ok(b) => b,
@@ -179,8 +167,7 @@ pub fn load(path: &Path) -> io::Result<History> {
 
 /// Save `history` to `path`, creating intermediate directories as needed.
 ///
-/// The file is written with mode `0600` (owner read/write only). Mirrors
-/// `history_save` in `src/history.c`.
+/// The file is written with mode `0600` (owner read/write only).
 pub fn save(history: &History, path: &Path) -> io::Result<()> {
     use std::os::unix::fs::OpenOptionsExt as _;
 
@@ -206,8 +193,6 @@ pub fn save(history: &History, path: &Path) -> io::Result<()> {
 }
 
 /// Load history from the platform-default path.
-///
-/// Mirrors `history_load_default_file` in `src/history.c`.
 pub fn load_default(drun: bool) -> io::Result<History> {
     match default_history_path(drun) {
         Some(path) => load(&path),
@@ -216,8 +201,6 @@ pub fn load_default(drun: bool) -> io::Result<History> {
 }
 
 /// Save history to the platform-default path.
-///
-/// Mirrors `history_save_default_file` in `src/history.c`.
 pub fn save_default(history: &History, drun: bool) -> io::Result<()> {
     match default_history_path(drun) {
         Some(path) => save(history, &path),

@@ -1,25 +1,22 @@
-//! Unicode helpers — Rust port of `src/unicode.c` (GLib wrappers).
+//! Unicode helpers.
 #![deny(unsafe_code)]
 //!
-//! # Design rationale
+//! # Design
 //!
-//! The C module is thin wrappers around GLib. In Rust:
 //! - `str` / `String` are always valid UTF-8 — no manual validation needed at the type level.
 //! - `char` is a Unicode scalar value (U+0000–U+D7FF, U+E000–U+10FFFF), directly usable
-//!   where the C code used `uint32_t` / UTF-32 codepoints.
+//!   as a UTF-32 codepoint.
 //! - Character classification (`isprint`, `isspace`, etc.) lives on `char` in the stdlib.
-//! - NFC normalization requires the `unicode-normalization` crate (replaces `g_utf8_normalize`).
+//! - NFC normalization uses the `unicode-normalization` crate.
 //!
-//! The public API mirrors the C surface so callers in `input`, `matching`, and `clipboard`
-//! modules translate naturally. The `utf32_*` helpers use `char` instead of `u32` — callers
-//! that receive raw `u32` keysyms must convert via [`char::from_u32`] first.
+//! The `utf32_*` helpers use `char` instead of `u32` — callers that receive raw `u32` keysyms
+//! must convert via [`char::from_u32`] first.
 
 use unicode_normalization::UnicodeNormalization as _;
 
 /// Maximum number of UTF-32 codepoints in the input buffer.
 ///
-/// Mirrors `MAX_INPUT_LENGTH` from `src/entry.h`. The UTF-8 representation of
-/// the same input can use up to `4 * MAX_INPUT_LENGTH` bytes.
+/// The UTF-8 representation of the same input can use up to `4 * MAX_INPUT_LENGTH` bytes.
 pub const MAX_INPUT_LENGTH: usize = 256;
 
 // ── UTF-8 validation ──────────────────────────────────────────────────────────

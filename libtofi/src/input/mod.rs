@@ -12,10 +12,6 @@
 //!   keymap parsing, modifier tracking, and key-repeat accounting.  Gated by
 //!   the **`wayland`** feature because keymaps are received from the compositor.
 //!
-//! # C reference
-//!
-//! `src/input.c`, `src/input.h`.
-
 #[cfg(feature = "wayland")]
 pub mod keyboard;
 #[cfg(test)]
@@ -60,8 +56,6 @@ pub const KEY_KPENTER: u32 = 96;
 /// Returned by [`classify_keypress`] and consumed by `handle_keypress` in the
 /// Wayland layer.  All variants are pure data — no Wayland or renderer
 /// dependency — making [`classify_keypress`] fully unit-testable.
-///
-/// C reference: the if-else chain in `input_handle_keypress` in `src/input.c`.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum KeyAction {
     /// Insert a printable character at the cursor.
@@ -72,7 +66,7 @@ pub enum KeyAction {
     DeleteWord,
     /// Clear the entire input field (Ctrl+U).
     ClearInput,
-    /// Paste from the clipboard (Ctrl+V; delegated to Step 7.1).
+    /// Paste from the clipboard (Ctrl+V).
     Paste,
     /// Move the cursor left, or select the previous result when at position 0.
     PrevCursorOrResult,
@@ -107,11 +101,8 @@ pub enum KeyAction {
 /// `physical_keybindings` — the caller resolves that before calling here).
 /// `ch` is the UTF-32 codepoint produced by the key in the current XKB state
 /// (`0` when no character is produced).
-///
-/// C reference: `input_handle_keypress` in `src/input.c`.
 pub fn classify_keypress(ctrl: bool, alt: bool, shift: bool, key: u32, ch: u32) -> KeyAction {
     // Printable character — insert at cursor.
-    // C: `if (utf32_isprint(ch) && !ctrl && !alt)`
     if let Some(c) = char::from_u32(ch)
         && crate::unicode::utf32_isprint(c)
         && !ctrl
@@ -206,8 +197,6 @@ pub fn classify_keypress(ctrl: bool, alt: bool, shift: bool, key: u32, ch: u32) 
 ///
 /// Does nothing if `input` already contains
 /// [`crate::entry::MAX_INPUT_LENGTH`] codepoints.
-///
-/// C reference: `add_character` in `src/input.c`.
 pub fn add_char(input: &mut String, cursor: &mut usize, ch: char, max_len: usize) {
     if input.chars().count() >= max_len {
         return;
@@ -224,8 +213,6 @@ pub fn add_char(input: &mut String, cursor: &mut usize, ch: char, max_len: usize
 /// Delete the character immediately before `cursor` (backspace behaviour).
 ///
 /// Does nothing when the cursor is at position 0.
-///
-/// C reference: `delete_character` in `src/input.c`.
 pub fn delete_char(input: &mut String, cursor: &mut usize) {
     if *cursor == 0 || input.is_empty() {
         return;
@@ -241,9 +228,7 @@ pub fn delete_char(input: &mut String, cursor: &mut usize) {
 
 /// Delete from the cursor back to the start of the previous word (Ctrl+W).
 ///
-/// Mirrors the C `delete_word`: skip trailing spaces, then skip non-spaces.
-///
-/// C reference: `delete_word` in `src/input.c`.
+/// Skips trailing spaces, then skips non-spaces.
 pub fn delete_word(input: &mut String, cursor: &mut usize) {
     if *cursor == 0 {
         return;
@@ -286,8 +271,6 @@ pub fn delete_word(input: &mut String, cursor: &mut usize) {
 }
 
 /// Clear the entire input and reset the cursor to 0 (Ctrl+U).
-///
-/// C reference: `clear_input` in `src/input.c`.
 pub fn clear_input(input: &mut String, cursor: &mut usize) {
     input.clear();
     *cursor = 0;

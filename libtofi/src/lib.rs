@@ -1,6 +1,6 @@
-//! Tofi engine library (Rust port).
+//! Tofi engine library.
 //!
-//! # Cargo features (§4.1)
+//! # Cargo features
 //!
 //! | Feature | Role |
 //! | --- | --- |

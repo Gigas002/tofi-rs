@@ -179,4 +179,4 @@
 #
 	# Configs can be split between multiple files, and then included
 	# within each other.
-	include = "themes/Sweet"
+	include = "../themes/Sweet"

@@ -4,8 +4,7 @@
 //! # Design
 //!
 //! - Uses `thiserror` for the library; no `anyhow` at the public API boundary.
-//! - Wayland-specific variants are added in Phase 4 behind `#[cfg(feature = "wayland")]`.
-//! - C reference: `src/log.c` — maps `log_error` / `log_warning` categories to enum variants.
+//! - Wayland-specific variants are added behind `#[cfg(feature = "wayland")]`.
 
 use thiserror::Error;
 
@@ -14,9 +13,6 @@ use thiserror::Error;
 #[non_exhaustive]
 pub enum Error {
     /// A Wayland protocol or connection error.
-    ///
-    /// Populated in Phase 4 when the `wayland` feature is enabled; kept as a
-    /// placeholder so callers can pattern-match without a future breaking change.
     #[cfg(feature = "wayland")]
     #[error("Wayland error: {0}")]
     Wayland(String),

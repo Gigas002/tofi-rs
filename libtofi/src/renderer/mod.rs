@@ -1,13 +1,7 @@
 //! Drawing / text layout — Cairo + Pango backend (feature **`renderer`**).
 //!
-//! Step 5.1 deliverable: [`Renderer`] wraps a Cairo [`ImageSurface`] backed by
-//! a raw SHM buffer slice and exposes a minimal Pango text-drawing API.  Future
-//! steps (5.2, 5.3) will extend this into the full `entry` / `entry_backend`
-//! port.
-//!
-//! # C reference
-//!
-//! `src/entry.c` `entry_init` / `entry_draw`; `src/entry_backend/pango.c`.
+//! [`Renderer`] wraps a Cairo [`ImageSurface`] backed by a raw SHM buffer
+//! slice and exposes a minimal Pango text-drawing API.
 //!
 //! # Safety note
 //!
@@ -34,8 +28,6 @@ mod tests;
 /// Create via [`Renderer::create_for_data`], draw into it, call [`flush`], then
 /// detach (drop) before handing the frame to the compositor via
 /// [`crate::wayland::surface::draw`].
-///
-/// C reference: `struct entry` (cairo / pango fields) in `src/entry.h`.
 #[cfg(feature = "renderer")]
 pub struct Renderer {
     surface: ImageSurface,
@@ -64,8 +56,6 @@ impl Renderer {
     ///
     /// `data` must point to valid, writable memory of at least `width * 4 *
     /// height` bytes that outlives the returned `Renderer`.
-    ///
-    /// C reference: `cairo_image_surface_create_for_data` in `entry_init`.
     pub unsafe fn create_for_data(
         data: *mut u8,
         width: u32,
@@ -75,7 +65,6 @@ impl Renderer {
         let scale = scale_numerator as f64 / 120.0;
         let stride = width as i32 * 4; // ARGB8888: 4 bytes per pixel
 
-        // C: cairo_image_surface_create_for_data(buffer, CAIRO_FORMAT_ARGB32, width, height, stride)
         // SAFETY: caller guarantees data is valid for stride * height bytes.
         let surface = unsafe {
             ImageSurface::create_for_data_unsafe(
@@ -88,7 +77,6 @@ impl Renderer {
         }
         .map_err(|e| Error::Renderer(format!("cairo ImageSurface::create_for_data: {e}")))?;
 
-        // C: cairo_surface_set_device_scale(surface, scale, scale)
         surface.set_device_scale(scale, scale);
 
         let cr = Context::new(&surface)
@@ -110,15 +98,12 @@ impl Renderer {
         })
     }
 
-    /// Draw the text `"hello"` centered on the surface — Step 5.1 smoke test.
+    /// Draw the text `"hello"` centered on the surface.
     ///
     /// Fills the surface with a solid black background then renders white
-    /// sans-serif text.  Future steps replace this with the full entry-layout
-    /// pipeline (§5.2).
-    ///
-    /// C reference: background paint + `entry_draw` text path in `src/entry.c`.
+    /// sans-serif text.
     pub fn draw_hello(&self) {
-        // Background: solid black (mirrors C's cairo_paint with background_color).
+        // Background: solid black.
         self.cr.set_source_rgb(0.0, 0.0, 0.0);
         self.cr.paint().unwrap_or_default();
 
@@ -140,7 +125,6 @@ impl Renderer {
 
         self.cr.move_to(x.max(0.0), y.max(0.0));
 
-        // C reference: pango_cairo_show_layout(cr, layout) in entry_backend/pango.c.
         pangocairo::functions::show_layout(&self.cr, &layout);
 
         tracing::debug!("Renderer::draw_hello: text {text_w}×{text_h} at ({x:.1},{y:.1})");
@@ -151,8 +135,6 @@ impl Renderer {
     /// Must be called before detaching the `Renderer` (dropping it) and
     /// attaching the underlying buffer to the compositor via
     /// [`crate::wayland::surface::draw`].
-    ///
-    /// C reference: `cairo_surface_flush` (implicit at destroy in C).
     pub fn flush(&self) {
         self.surface.flush();
     }

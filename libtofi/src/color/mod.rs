@@ -1,4 +1,4 @@
-//! Color type and hex-string parsing — Rust port of `src/color.c`.
+//! Color type and hex-string parsing.
 #![deny(unsafe_code)]
 //!
 //! # Format
@@ -19,8 +19,6 @@ use std::str::FromStr;
 use crate::error::{Error, Result};
 
 /// RGBA color with linear `f32` channels in `0.0..=1.0`.
-///
-/// Mirrors `struct color` from `src/color.h`.
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub struct Color {
     pub r: f32,

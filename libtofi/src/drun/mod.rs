@@ -1,6 +1,5 @@
-//! Desktop-entry / `tofi-drun` support — Rust port of `src/drun.c` + `src/desktop_vec.c`
+//! Desktop-entry / `tofi-drun` support (feature **`drun`**).
 #![deny(unsafe_code)]
-//! (feature **`drun`**).
 //!
 //! # Responsibilities
 //!
@@ -38,8 +37,6 @@ const DEFAULT_DATA_DIRS: &str = "/usr/local/share/:/usr/share/";
 // ---------------------------------------------------------------------------
 
 /// A parsed desktop application entry.
-///
-/// Mirrors `struct desktop_entry` from `src/desktop_vec.h`.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct DesktopEntry {
     /// Desktop file ID (relative path with `/` replaced by `-`).
@@ -104,8 +101,6 @@ fn best_locale<'a>(
 ///
 /// Returns `None` if the entry should be skipped (Hidden, NoDisplay, or
 /// filtered by OnlyShowIn/NotShowIn).
-///
-/// Mirrors `desktop_vec_add_file` in `src/desktop_vec.c`.
 pub fn parse_entry(id: &str, path: &Path) -> Option<DesktopEntry> {
     let content = fs::read_to_string(path).ok()?;
     let (lang, territory) = current_locale();
@@ -210,8 +205,6 @@ pub fn parse_entry(id: &str, path: &Path) -> Option<DesktopEntry> {
 }
 
 /// Check whether any of `desktops` matches `$XDG_CURRENT_DESKTOP`.
-///
-/// Mirrors `match_current_desktop` in `src/desktop_vec.c`.
 fn matches_current_desktop(desktops: &[String]) -> bool {
     let current = match std::env::var("XDG_CURRENT_DESKTOP") {
         Ok(v) => v,
@@ -227,8 +220,6 @@ fn matches_current_desktop(desktops: &[String]) -> bool {
 // ---------------------------------------------------------------------------
 
 /// Resolve the list of `…/applications/` directories to scan.
-///
-/// Mirrors `get_application_paths` in `src/drun.c`.
 pub fn application_dirs() -> Vec<PathBuf> {
     let data_home = std::env::var_os("XDG_DATA_HOME")
         .map(PathBuf::from)
@@ -253,8 +244,6 @@ pub fn application_dirs() -> Vec<PathBuf> {
 ///
 /// Enforces uniqueness: the first (highest-precedence) file with a given ID
 /// wins, matching the Desktop Entry Specification.
-///
-/// Mirrors `drun_generate` in `src/drun.c`.
 pub fn scan(dirs: &[PathBuf]) -> Vec<DesktopEntry> {
     // id → entry; insertion order maintained via a vec for sorting.
     let mut seen: HashMap<String, ()> = HashMap::new();
@@ -297,8 +286,6 @@ pub fn scan(dirs: &[PathBuf]) -> Vec<DesktopEntry> {
 /// Save `entries` to `path` in a null-byte–separated format.
 ///
 /// Record layout (one per line): `{id}\0{name}\0{path}\0{keywords}\0{exec}\0{icon}\0{terminal}\n`
-///
-/// Mirrors `desktop_vec_save` in `src/desktop_vec.c` (extended with exec/icon/terminal).
 pub fn save_cache(entries: &[DesktopEntry], path: &Path) -> io::Result<()> {
     if let Some(parent) = path.parent()
         && !parent.as_os_str().is_empty()
@@ -354,8 +341,6 @@ fn dirs_mtime(dirs: &[PathBuf]) -> Option<SystemTime> {
 }
 
 /// Return the desktop entry list, using a cache when valid.
-///
-/// Mirrors `drun_generate_cached` in `src/drun.c`.
 pub fn entries_cached(dirs: &[PathBuf], cache_path: &Path) -> io::Result<Vec<DesktopEntry>> {
     match fs::metadata(cache_path) {
         Err(e) if e.kind() == io::ErrorKind::NotFound => {
@@ -406,8 +391,6 @@ fn resolve_cache_path(
 ///
 /// Handles `%i`, `%c`, `%k`; drops `%f`/`%F`/`%u`/`%U` and deprecated codes;
 /// turns `%%` into a literal `%`.
-///
-/// Mirrors `drun_print` in `src/drun.c`.
 pub fn exec_command(entry: &DesktopEntry) -> String {
     let mut out = String::with_capacity(entry.exec.len());
     let mut chars = entry.exec.chars().peekable();

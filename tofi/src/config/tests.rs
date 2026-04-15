@@ -1,7 +1,9 @@
 use std::io::Write as _;
 
-use super::load::{apply_key, load};
+use libtofi_rs::matching::MatchingAlgorithm;
+
 use super::*;
+use super::{apply_key, load};
 
 // ---------------------------------------------------------------------------
 // UnitValue
@@ -703,15 +705,18 @@ fn load_examples_sweet_theme() {
 
 #[test]
 fn load_examples_config_with_include() {
-    let path = examples_dir().join("config");
+    let path = examples_dir().join("config/personal");
     if !path.exists() {
         return;
     }
     let mut c = TofiConfig::default();
     let errs = load(&path, &mut c).unwrap();
-    assert!(errs.is_empty(), "parse errors in examples/config: {errs:?}");
+    assert!(
+        errs.is_empty(),
+        "parse errors in examples/config/personal: {errs:?}"
+    );
 
-    // Values set in examples/config
+    // Values set in examples/config/personal
     assert_eq!(c.font, "CaskaydiaCove Nerd Font Mono");
     assert_eq!(c.font_size, 24);
     assert!(c.font_features.is_empty());
@@ -734,7 +739,7 @@ fn load_examples_config_with_include() {
     assert!(!c.multi_instance);
     assert!(!c.ascii_input);
 
-    // Values applied via include = "themes/Sweet"
+    // Values applied via include = "../themes/Sweet"
     assert_eq!(c.width, UnitValue::percent(45));
     assert_eq!(c.height, UnitValue::percent(60));
     assert_eq!(c.corner_radius, 50);
@@ -756,9 +761,9 @@ fn load_examples_config_with_include() {
 
 #[test]
 fn load_examples_config_minimal() {
-    // config-minimal is intentionally empty (comment-only): all keys have
+    // config/minimal is intentionally empty (comment-only): all keys have
     // defaults, so the result must be identical to TofiConfig::default().
-    let path = examples_dir().join("config-minimal");
+    let path = examples_dir().join("config/minimal");
     if !path.exists() {
         return;
     }
@@ -766,14 +771,14 @@ fn load_examples_config_minimal() {
     let errs = load(&path, &mut c).unwrap();
     assert!(
         errs.is_empty(),
-        "parse errors in examples/config-minimal: {errs:?}"
+        "parse errors in examples/config/minimal: {errs:?}"
     );
     assert_eq!(c, TofiConfig::default());
 }
 
 #[test]
 fn load_examples_config_complete() {
-    let path = examples_dir().join("config-complete");
+    let path = examples_dir().join("config/complete");
     if !path.exists() {
         return;
     }
@@ -781,7 +786,7 @@ fn load_examples_config_complete() {
     let errs = load(&path, &mut c).unwrap();
     assert!(
         errs.is_empty(),
-        "parse errors in examples/config-complete: {errs:?}"
+        "parse errors in examples/config/complete: {errs:?}"
     );
 
     // Window geometry
@@ -874,20 +879,18 @@ fn load_examples_config_complete() {
 }
 
 #[test]
-fn load_doc_config_fixture() {
-    // The repo's doc/config sets all options to their defaults.
-    // Verify a representative set of values.
-    let doc_config = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
-        .parent()
-        .unwrap()
-        .join("doc/config");
-    if !doc_config.exists() {
-        // Skip if running outside the repo.
+fn load_examples_config_defaults() {
+    // examples/config/defaults lists every key at its documented default value.
+    let path = examples_dir().join("config/defaults");
+    if !path.exists() {
         return;
     }
     let mut c = TofiConfig::default();
-    let errs = load(&doc_config, &mut c).unwrap();
-    assert!(errs.is_empty(), "parse errors in doc/config: {errs:?}");
+    let errs = load(&path, &mut c).unwrap();
+    assert!(
+        errs.is_empty(),
+        "parse errors in examples/config/defaults: {errs:?}"
+    );
 
     // Window geometry
     assert_eq!(c.width, UnitValue::pixels(1280));
@@ -909,4 +912,102 @@ fn load_doc_config_fixture() {
     assert!(c.require_match);
     assert!(c.physical_keybindings);
     assert!(!c.multi_instance);
+}
+
+// ---------------------------------------------------------------------------
+// Theme fixture tests (examples/themes/) — separate pattern from config tests
+// ---------------------------------------------------------------------------
+
+#[test]
+fn load_theme_dmenu() {
+    let path = examples_dir().join("themes/dmenu");
+    if !path.exists() {
+        return;
+    }
+    let mut c = TofiConfig::default();
+    let errs = load(&path, &mut c).unwrap();
+    assert!(
+        errs.is_empty(),
+        "parse errors in examples/themes/dmenu: {errs:?}"
+    );
+    assert_eq!(c.anchor, Anchor::Top);
+    assert_eq!(c.width, UnitValue::percent(100));
+    assert_eq!(c.height, UnitValue::pixels(30));
+    assert!(c.horizontal);
+    assert_eq!(c.font_size, 14);
+}
+
+#[test]
+fn load_theme_fullscreen() {
+    let path = examples_dir().join("themes/fullscreen");
+    if !path.exists() {
+        return;
+    }
+    let mut c = TofiConfig::default();
+    let errs = load(&path, &mut c).unwrap();
+    assert!(
+        errs.is_empty(),
+        "parse errors in examples/themes/fullscreen: {errs:?}"
+    );
+    assert_eq!(c.width, UnitValue::percent(100));
+    assert_eq!(c.height, UnitValue::percent(100));
+    assert_eq!(c.border_width, 0);
+    assert_eq!(c.outline_width, 0);
+}
+
+#[test]
+fn load_theme_dos() {
+    let path = examples_dir().join("themes/dos");
+    if !path.exists() {
+        return;
+    }
+    let mut c = TofiConfig::default();
+    let errs = load(&path, &mut c).unwrap();
+    assert!(
+        errs.is_empty(),
+        "parse errors in examples/themes/dos: {errs:?}"
+    );
+    assert_eq!(c.corner_radius, 60);
+    assert_eq!(c.width, UnitValue::pixels(640));
+    assert_eq!(c.height, UnitValue::pixels(480));
+    assert!(c.hide_cursor);
+}
+
+#[test]
+fn load_theme_dark_paper() {
+    let path = examples_dir().join("themes/dark-paper");
+    if !path.exists() {
+        return;
+    }
+    let mut c = TofiConfig::default();
+    let errs = load(&path, &mut c).unwrap();
+    assert!(
+        errs.is_empty(),
+        "parse errors in examples/themes/dark-paper: {errs:?}"
+    );
+    assert_eq!(c.border_width, 0);
+    assert_eq!(c.outline_width, 0);
+    assert_eq!(c.width, UnitValue::percent(100));
+    assert_eq!(c.height, UnitValue::percent(100));
+    assert!(c.hide_cursor);
+}
+
+#[test]
+fn load_theme_soy_milk() {
+    let path = examples_dir().join("themes/soy-milk");
+    if !path.exists() {
+        return;
+    }
+    let mut c = TofiConfig::default();
+    let errs = load(&path, &mut c).unwrap();
+    assert!(
+        errs.is_empty(),
+        "parse errors in examples/themes/soy-milk: {errs:?}"
+    );
+    assert_eq!(c.anchor, Anchor::Top);
+    assert_eq!(c.width, UnitValue::percent(100));
+    assert_eq!(c.height, UnitValue::pixels(48));
+    assert!(c.horizontal);
+    assert_eq!(c.border_width, 0);
+    assert_eq!(c.outline_width, 0);
 }

@@ -133,7 +133,7 @@ mod entry_tests {
         assert_eq!(entry.ready_index(), entry.index ^ 1);
     }
 
-    // ── Step 5.3: scrolling / selection navigation ───────────────────────────
+    // ── Scrolling / selection navigation ─────────────────────────────────────
 
     /// `reset_selection` zeroes `selection` and `first_result`.
     #[test]

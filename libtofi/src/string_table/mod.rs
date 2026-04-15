@@ -1,26 +1,21 @@
-//! Scored string collections — Rust port of `src/string_vec.c`.
+//! Scored string collections.
 #![deny(unsafe_code)]
 //!
 //! # Design
 //!
-//! The C code has two parallel structures:
-//! - `string_vec` — **owns** strings (copies + NFC-normalizes on insert).
-//! - `string_ref_vec` — **borrows** string pointers (no copy, no free).
-//!
-//! In Rust these map to:
-//! - [`StringVec`] — `Vec<ScoredString>` (owned `String`s).
-//! - [`StringRefVec`] — `Vec<ScoredStringRef<'a>>` (borrowed `&'a str`s).
+//! Two complementary collections:
+//! - [`StringVec`] — `Vec<ScoredString>` (owned `String`s, NFC-normalized on insert).
+//! - [`StringRefVec`] — `Vec<ScoredStringRef<'a>>` (borrowed `&'a str`s, no copy).
 //!
 //! Both carry per-entry `search_score` and `history_score` (`i32`) used for
 //! ranking results. Sorting is deterministic: alphabetical by default; by
 //! combined score after a filter pass; by history score after history is applied.
 //!
-//! ## Decoupling from later modules
+//! ## Decoupling
 //!
-//! - **Matching** (Step 1.5): [`StringRefVec::filter`] takes a `Fn(&str) -> Option<i32>`
-//!   predicate instead of a `MatchingAlgorithm` — the matching module will wrap this.
-//! - **History** (Step 3.1): [`StringRefVec::apply_history_scores`] takes a
-//!   `&HashMap<&str, i32>` so callers build the map from any source.
+//! - [`StringRefVec::filter`] takes a `Fn(&str) -> Option<i32>` predicate.
+//! - [`StringRefVec::apply_history_scores`] takes a `&HashMap<&str, i32>` so
+//!   callers build the map from any source.
 
 use std::collections::HashMap;
 
@@ -29,8 +24,6 @@ use crate::unicode::utf8_normalize;
 // ── Scored entry types ────────────────────────────────────────────────────────
 
 /// An owned, NFC-normalized string with search and history scores.
-///
-/// Mirrors `struct scored_string` from `src/string_vec.h`.
 #[derive(Debug, Clone, PartialEq)]
 pub struct ScoredString {
     pub string: String,
@@ -39,8 +32,6 @@ pub struct ScoredString {
 }
 
 /// A borrowed string reference with search and history scores.
-///
-/// Mirrors `struct scored_string_ref` from `src/string_vec.h`.
 #[derive(Debug, Clone, PartialEq)]
 pub struct ScoredStringRef<'a> {
     pub string: &'a str,
@@ -51,8 +42,6 @@ pub struct ScoredStringRef<'a> {
 // ── StringVec (owned) ─────────────────────────────────────────────────────────
 
 /// A growable list of owned, NFC-normalized strings with per-entry scores.
-///
-/// Mirrors `struct string_vec` from `src/string_vec.h`.
 #[derive(Debug, Default, Clone)]
 pub struct StringVec {
     entries: Vec<ScoredString>,
@@ -73,8 +62,6 @@ impl StringVec {
     /// Strings that fail UTF-8 validation are silently ignored — in Rust, `&str`
     /// is always valid UTF-8, so the guard is preserved for callers passing
     /// bytes-turned-string via FFI paths. No-ops on empty strings.
-    ///
-    /// Mirrors `string_vec_add`.
     pub fn add(&mut self, s: &str) {
         self.entries.push(ScoredString {
             string: utf8_normalize(s),
@@ -85,24 +72,20 @@ impl StringVec {
 
     /// Sort entries alphabetically by string value (ascending).
     ///
-    /// Mirrors `string_vec_sort` / `cmpstringp`. Stable so equal strings retain
-    /// insertion order.
+    /// Stable so equal strings retain insertion order.
     pub fn sort_alpha(&mut self) {
         self.entries.sort_by(|a, b| a.string.cmp(&b.string));
     }
 
     /// Remove consecutive duplicate strings, preserving the first occurrence.
     ///
-    /// Sorts alphabetically first (matching C's `string_vec_uniq` which calls
-    /// `string_vec_sort` internally after nulling duplicates).
+    /// Sorts alphabetically first.
     pub fn dedup(&mut self) {
         self.sort_alpha();
         self.entries.dedup_by(|a, b| a.string == b.string);
     }
 
     /// Binary-search for `s` in an **already sorted** vec, returning an index.
-    ///
-    /// Mirrors `string_vec_find_sorted` / `bsearch`.
     pub fn find_sorted(&self, s: &str) -> Option<usize> {
         self.entries
             .binary_search_by(|e| e.string.as_str().cmp(s))
@@ -127,8 +110,6 @@ impl StringVec {
 // ── StringRefVec (borrowed) ───────────────────────────────────────────────────
 
 /// A growable list of borrowed string references with per-entry scores.
-///
-/// Mirrors `struct string_ref_vec` from `src/string_vec.h`.
 #[derive(Debug, Default, Clone)]
 pub struct StringRefVec<'a> {
     entries: Vec<ScoredStringRef<'a>>,
@@ -143,8 +124,6 @@ impl<'a> StringRefVec<'a> {
     }
 
     /// Add a string reference without copying.
-    ///
-    /// Mirrors `string_ref_vec_add`.
     pub fn add(&mut self, s: &'a str) {
         self.entries.push(ScoredStringRef {
             string: s,
@@ -155,7 +134,6 @@ impl<'a> StringRefVec<'a> {
 
     /// Build a `StringRefVec` by splitting `buffer` on newline characters.
     ///
-    /// Mirrors `string_ref_vec_from_buffer` (C splits on `'\n'` via `strtok_r`).
     /// Empty lines are skipped.
     pub fn from_lines(buffer: &'a str) -> Self {
         let mut vec = Self::new();
@@ -168,8 +146,6 @@ impl<'a> StringRefVec<'a> {
     }
 
     /// Shallow-clone the vec (entries share the same string references).
-    ///
-    /// Mirrors `string_ref_vec_copy`.
     pub fn clone_shallow(&self) -> Self {
         self.clone()
     }
@@ -177,9 +153,8 @@ impl<'a> StringRefVec<'a> {
     /// Apply history scores from `scores` (name → run_count) and sort by
     /// history score descending.
     ///
-    /// Uses a `HashMap` for O(N+M) lookup, matching C's GHashTable approach in
-    /// `string_ref_vec_history_sort`. Entries not present in `scores` keep a
-    /// score of 0.
+    /// Uses a `HashMap` for O(N+M) lookup. Entries not present in `scores`
+    /// keep a score of 0.
     pub fn apply_history_scores(&mut self, scores: &HashMap<&str, i32>) {
         for entry in &mut self.entries {
             if let Some(&score) = scores.get(entry.string) {
@@ -194,12 +169,9 @@ impl<'a> StringRefVec<'a> {
     /// sorted by combined score (search + history) descending.
     ///
     /// `predicate(s)` should return `Some(search_score)` when `s` matches, or
-    /// `None` to exclude it. The matching module (Step 1.5) will wrap this.
+    /// `None` to exclude it.
     ///
-    /// When `query` is empty the full vec is returned unchanged (matching C's
-    /// early-return `string_ref_vec_copy`).
-    ///
-    /// Mirrors `string_ref_vec_filter`.
+    /// When `query` is empty the full vec is returned unchanged.
     pub fn filter(&self, query: &str, predicate: impl Fn(&str) -> Option<i32>) -> StringRefVec<'a> {
         if query.is_empty() {
             return self.clone_shallow();
@@ -224,8 +196,6 @@ impl<'a> StringRefVec<'a> {
     }
 
     /// Binary-search for `s` in an **already sorted** vec, returning an index.
-    ///
-    /// Mirrors `string_ref_vec_find_sorted`.
     pub fn find_sorted(&self, s: &str) -> Option<usize> {
         self.entries.binary_search_by(|e| e.string.cmp(s)).ok()
     }
