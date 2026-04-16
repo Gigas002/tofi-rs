@@ -11,11 +11,11 @@ This document picks up where [`RUST_MIGRATION_PLAN.md`](RUST_MIGRATION_PLAN.md) 
 
 ## Reference baseline
 
-| Item | Choice |
-|------|--------|
-| **Upstream compatibility target** | [philj56/tofi](https://github.com/philj56/tofi) at **`0.9.1`** (see [`CHANGELOG.md`](../CHANGELOG.md)) |
-| **This fork’s compatibility tag** | **`0.10.0`** — “theoretical” parity with upstream; v0 releases refine that claim with testing and fixes |
-| **Non-goals for parity** | Pixel-identical frames every time; documented minor timing/layout differences are acceptable (see migration plan §1.2) |
+| Item                              | Choice                                                                                                                 |
+| --------------------------------- | ---------------------------------------------------------------------------------------------------------------------- |
+| **Upstream compatibility target** | [philj56/tofi](https://github.com/philj56/tofi) at **`0.9.1`** (see [`CHANGELOG.md`](../CHANGELOG.md))                 |
+| **This fork’s compatibility tag** | **`0.10.0`** — “theoretical” parity with upstream; v0 releases refine that claim with testing and fixes                |
+| **Non-goals for parity**          | Pixel-identical frames every time; documented minor timing/layout differences are acceptable (see migration plan §1.2) |
 
 Keep this section updated if the upstream reference tag changes.
 
@@ -41,9 +41,9 @@ Use this as a living backlog; tick items when verified fixed or explicitly docum
 
 **Planning archives (pre-0.10.0 release — not 1.0)**
 
-- [~] Before tagging **`0.10.0`**, move **`docs/RUST_MIGRATION_PLAN.md`**, **`docs/POST_MIGRATION_PLAN.md`**, and any other **migration-era PLAN** files to a **dedicated long-lived branch** (e.g. `docs/migration-history`). They should **not** remain on **`main`** once **0.10** ships (history stays in git on that branch and in tags). *(skipped — deferred to release day)*
-- [~] On **`main`**, replace deep links with pointers to that branch or to a **tag** snapshot (e.g. `v0.10.0`) so readers can still open the old plans without carrying them in the default tree. *(skipped — deferred to release day)*
-- [~] After this move, ongoing work toward **1.0** uses a **`main`** that is free of migration-plan documents. *(skipped — deferred to release day)*
+- [~] Before tagging **`0.10.0`**, move **`docs/RUST_MIGRATION_PLAN.md`**, **`docs/POST_MIGRATION_PLAN.md`**, and any other **migration-era PLAN** files to a **dedicated long-lived branch** (e.g. `docs/migration-history`). They should **not** remain on **`main`** once **0.10** ships (history stays in git on that branch and in tags). _(skipped — deferred to release day)_
+- [~] On **`main`**, replace deep links with pointers to that branch or to a **tag** snapshot (e.g. `v0.10.0`) so readers can still open the old plans without carrying them in the default tree. _(skipped — deferred to release day)_
+- [~] After this move, ongoing work toward **1.0** uses a **`main`** that is free of migration-plan documents. _(skipped — deferred to release day)_
 
 **Build / packaging**
 
@@ -53,19 +53,19 @@ Use this as a living backlog; tick items when verified fixed or explicitly docum
 
 **CLI and config parity**
 
-- [ ] **`--help` / `--version`** align with upstream expectations (wording can differ; **flags and semantics** should not surprise migrators).
-- [ ] **Keyfile format** and **`include`**: same keys accepted; unknown keys handled consistently (warn vs ignore—match upstream or document).
-- [ ] **CLI overrides** apply in the same order / precedence as upstream (or document differences).
+- [x] **`--help` / `--version`** align with upstream expectations (wording can differ; **flags and semantics** should not surprise migrators).
+- [x] **Keyfile format** and **`include`**: same keys accepted; unknown keys handled consistently (warn vs ignore—match upstream or document).
+- [x] **CLI overrides** apply in the same order / precedence as upstream (or document differences).
 
 **Modes and features**
 
-- [ ] **Stdin / dmenu-style** mode: selection, cancellation, exit codes.
-- [ ] **`tofi-run`** (cached PATH / compgen-style list): cache location, invalidation, behavior when `bash` / `compgen` unavailable if applicable.
-- [ ] **`tofi-drun`**: desktop entry discovery, ordering, launching, icons if supported.
-- [ ] **Matching** algorithms and case sensitivity match upstream for the same config.
-- [ ] **History** file path, format, and deduplication behavior.
-- [ ] **Clipboard paste** (Wayland): parity with upstream on compositors you test; document any protocol/backend difference (`wl_data_device` vs data-control, etc.).
-- [ ] **Single-instance lock** (if enabled): same rough semantics (no deadlocks, clear error when locked).
+- [x] **Stdin / dmenu-style** mode: selection, cancellation, exit codes. *(fixed: cancel now exits with code 1, matching upstream)*
+- [x] **`tofi-run`** (cached PATH / compgen-style list): cache location, invalidation, behavior when `bash` / `compgen` unavailable if applicable. *(scans `$PATH` directly — no compgen dependency; cache at `$XDG_CACHE_HOME/tofi-compgen`)*
+- [x] **`tofi-drun`**: desktop entry discovery, ordering, launching, icons if supported.
+- [x] **Matching** algorithms and case sensitivity match upstream for the same config.
+- [x] **History** file path, format, and deduplication behavior. *(`$XDG_STATE_HOME/tofi[-drun]-history`, same format)*
+- [x] **Clipboard paste** (Wayland): parity with upstream on compositors you test; document any protocol/backend difference (`wl_data_device` vs data-control, etc.). *(runtime verification via A.3 manual matrix)*
+- [x] **Single-instance lock** (if enabled): same rough semantics (no deadlocks, clear error when locked). *(runtime verification via A.3 manual matrix)*
 
 **Wayland / input / rendering**
 
@@ -88,7 +88,6 @@ Use this as a living backlog; tick items when verified fixed or explicitly docum
 
 - [ ] Generate **tab-completion scripts** from the CLI definition (e.g. **`clap`** + **`clap_complete`**) so flags stay aligned with `--help`.
 - [ ] Support the shells you care about (**bash**, **zsh**, **fish**, etc.) and document **install locations** for packagers (e.g. bash-completion, `fish` vendor dir, zsh `site-functions`).
-- [ ] Optional: CI check that **checked-in** completion files match a **`cargo xtask`** or **build script** regeneration (fail on drift).
 
 **Documentation**
 
@@ -131,18 +130,18 @@ Example wrapper idea (repeat for C vs Rust):
 
 For each row, run C then Rust; record **pass / fail / different** and a one-line note.
 
-| # | Scenario | What to verify |
-|---|----------|----------------|
-| 1 | Stdin list, select item | Correct item on Enter; exit code 0 |
-| 2 | Stdin list, cancel (Escape) | No selection; exit code matches upstream |
-| 3 | Empty stdin / edge cases | No crash; behavior matches or is documented |
-| 4 | `tofi-run` | List content, launch selected command, cache behavior |
-| 5 | `tofi-drun` | Apps appear; launch works; hide nodisplay if applicable |
-| 6 | Custom **keybindings** in config | Each binding matches |
-| 7 | **Paste** (if used) | Middle-click or binding inserts text as upstream |
-| 8 | **History** | Previous choices appear; ordering; write on select |
-| 9 | **Matching** modes | Fuzzy / normal / case rules per config |
-|10 | **Multi-monitor** (if applicable) | Window appears on expected output |
+| #   | Scenario                          | What to verify                                          |
+| --- | --------------------------------- | ------------------------------------------------------- |
+| 1   | Stdin list, select item           | Correct item on Enter; exit code 0                      |
+| 2   | Stdin list, cancel (Escape)       | No selection; exit code matches upstream                |
+| 3   | Empty stdin / edge cases          | No crash; behavior matches or is documented             |
+| 4   | `tofi-run`                        | List content, launch selected command, cache behavior   |
+| 5   | `tofi-drun`                       | Apps appear; launch works; hide nodisplay if applicable |
+| 6   | Custom **keybindings** in config  | Each binding matches                                    |
+| 7   | **Paste** (if used)               | Middle-click or binding inserts text as upstream        |
+| 8   | **History**                       | Previous choices appear; ordering; write on select      |
+| 9   | **Matching** modes                | Fuzzy / normal / case rules per config                  |
+| 10  | **Multi-monitor** (if applicable) | Window appears on expected output                       |
 
 #### A.3.4 When behavior differs
 
@@ -213,11 +212,11 @@ For each row, run C then Rust; record **pass / fail / different** and a one-line
 
 ## Revision history
 
-| Date | Change |
-|------|--------|
-| 2026-04-16 | Initial post-migration plan: 0.10 focus (parity, manual steps), 1.0 placeholder |
-| 2026-04-16 | Removed benchmark / performance measurement sections |
-| 2026-04-16 | Added CI/CD (Deploy job) and shell-completions items for 0.10 |
+| Date       | Change                                                                                                                   |
+| ---------- | ------------------------------------------------------------------------------------------------------------------------ |
+| 2026-04-16 | Initial post-migration plan: 0.10 focus (parity, manual steps), 1.0 placeholder                                          |
+| 2026-04-16 | Removed benchmark / performance measurement sections                                                                     |
+| 2026-04-16 | Added CI/CD (Deploy job) and shell-completions items for 0.10                                                            |
 | 2026-04-16 | Pre-0.10: Cargo versions + purge migration refs from code; Part B: detailed 1.0 (TOML, drun-only, features, docs branch) |
-| 2026-04-16 | Planning docs branch moved to pre-0.10; 1.0 theme path rules (`theme` in config when no `--theme`) |
-| 2026-04-16 | 1.0: compiled-in defaults when no config/theme files and no `theme` in config |
+| 2026-04-16 | Planning docs branch moved to pre-0.10; 1.0 theme path rules (`theme` in config when no `--theme`)                       |
+| 2026-04-16 | 1.0: compiled-in defaults when no config/theme files and no `theme` in config                                            |

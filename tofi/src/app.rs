@@ -88,6 +88,10 @@ pub fn read_stdin(normalize: bool) -> Vec<String> {
 /// Wire configuration into the Wayland event loop and run until the user
 /// accepts a result or closes the window.
 ///
+/// Returns `true` when the user accepted a selection, `false` when they
+/// cancelled (Escape / close).  The caller should exit with code 1 on `false`
+/// to match upstream tofi behaviour.
+///
 /// `Entry::new` wraps a raw SHM pointer; the `allow(unsafe_code)` below is
 /// the only unsafe site in this crate.
 #[allow(unsafe_code)]
@@ -95,7 +99,10 @@ pub fn run(
     config: TofiConfig,
     #[cfg(feature = "drun")] flag_drun: bool,
     #[cfg(feature = "run-commands")] flag_run: bool,
-) {
+) -> bool {
+    #[allow(unused_mut)]
+    let mut submitted = false;
+
     #[cfg(feature = "wayland")]
     {
         use libtofi_rs::wayland::{Anchor, surface::SurfaceConfig};
@@ -441,15 +448,19 @@ pub fn run(
                 state.submit = false;
                 #[cfg(feature = "renderer")]
                 {
-                    let submitted = crate::submit::do_submit(&state, &config, mode, &all_commands);
-                    tracing::debug!("Event loop: do_submit returned {submitted}");
-                    if submitted {
+                    let accepted = crate::submit::do_submit(&state, &config, mode, &all_commands);
+                    tracing::debug!("Event loop: do_submit returned {accepted}");
+                    if accepted {
+                        submitted = true;
                         tracing::debug!("Submit accepted — breaking event loop");
                         break 'event_loop;
                     }
                 }
                 #[cfg(not(feature = "renderer"))]
-                break 'event_loop;
+                {
+                    submitted = true;
+                    break 'event_loop;
+                }
             }
 
             // ── Redraw ────────────────────────────────────────────────────────
@@ -498,4 +509,5 @@ pub fn run(
     #[cfg(not(feature = "wayland"))]
     let _ = config;
     libtofi_rs::noop();
+    submitted
 }

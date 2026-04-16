@@ -30,11 +30,17 @@ fn main() {
     #[allow(unused_variables)]
     let (config, _errors) = cli.into_config().expect("Failed to load config");
 
-    app::run(
+    let submitted = app::run(
         config,
         #[cfg(feature = "drun")]
         flag_drun,
         #[cfg(feature = "run-commands")]
         flag_run,
     );
+
+    // Exit code 1 on cancel (Escape / close without selection), matching
+    // upstream tofi behaviour.
+    if !submitted {
+        std::process::exit(1);
+    }
 }
