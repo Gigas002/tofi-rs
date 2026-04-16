@@ -48,8 +48,8 @@ Use this as a living backlog; tick items when verified fixed or explicitly docum
 **Build / packaging**
 
 - [x] Release **`tofi-rs`** builds cleanly on **default features** and documented **feature matrices** (match `Cargo.toml` / CI).
-- [ ] Document **system dependencies** for packagers (Wayland, Cairo, Pango, HarfBuzz, xkbcommon, etc.) and any divergence from upstream’s Meson story.
-- [ ] **Binary name** remains **`tofi`** when installed (per migration plan); document conflicts if both C and Rust packages install the same path.
+- [x] Document **system dependencies** for packagers (Wayland, Cairo, Pango, HarfBuzz, xkbcommon, etc.) and any divergence from upstream’s Meson story.
+- [x] **Binary name** remains **`tofi`** when installed (per migration plan); document conflicts if both C and Rust packages install the same path.
 
 **CLI and config parity**
 
