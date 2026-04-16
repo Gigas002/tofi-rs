@@ -679,7 +679,7 @@ fn size_overflows(
 ///
 /// Returns `Some((pre_end_byte, match_end_byte))` when `needle` is found in
 /// `haystack`, where both values are byte offsets.
-fn find_match_position(haystack: &str, needle: &str) -> Option<(usize, usize)> {
+pub(super) fn find_match_position(haystack: &str, needle: &str) -> Option<(usize, usize)> {
     if needle.is_empty() {
         return None;
     }

@@ -1011,3 +1011,94 @@ fn load_theme_soy_milk() {
     assert_eq!(c.border_width, 0);
     assert_eq!(c.outline_width, 0);
 }
+
+// ---------------------------------------------------------------------------
+// Additional coverage tests
+// ---------------------------------------------------------------------------
+
+#[test]
+fn default_config_path_exercises_current_env() {
+    // Exercises whichever branch (XDG_CONFIG_HOME / HOME / neither) is active
+    // in the current environment -- we only need the code path executed.
+    use crate::config::load::default_config_path;
+    let _ = default_config_path();
+}
+
+#[test]
+fn load_semicolon_comment_is_ignored() {
+    // Lines starting with ";" are comments -- no error, no key applied.
+    let (_f, path) = tmp_config(
+        "; this is a comment
+font-size = 20
+",
+    );
+    let mut c = cfg();
+    let errors = load(&path, &mut c).unwrap();
+    assert!(errors.is_empty());
+    assert_eq!(c.font_size, 20);
+}
+
+#[test]
+fn load_section_header_is_ignored() {
+    // Lines starting with "[" are section headers -- ignored.
+    let (_f, path) = tmp_config(
+        "[Section]
+font-size = 20
+",
+    );
+    let mut c = cfg();
+    let errors = load(&path, &mut c).unwrap();
+    assert!(errors.is_empty());
+    assert_eq!(c.font_size, 20);
+}
+
+#[test]
+fn load_line_starting_with_equals_produces_error() {
+    // A line where "=" is the first character hits the eq==0 branch.
+    let (_f, path) = tmp_config(
+        "= some_value
+",
+    );
+    let mut c = cfg();
+    let errors = load(&path, &mut c).unwrap();
+    assert!(!errors.is_empty());
+    assert!(errors[0].message.contains("Missing option"));
+}
+
+#[test]
+fn load_whitespace_only_value_produces_error() {
+    // "key =   " -- value is all whitespace; after trim() the value portion
+    // is empty, so strip() returns None, triggering "Missing key or value".
+    let (_f, path) = tmp_config(
+        "font-size =   
+",
+    );
+    let mut c = cfg();
+    let errors = load(&path, &mut c).unwrap();
+    assert!(!errors.is_empty());
+}
+
+#[test]
+fn load_include_absolute_path() {
+    // Tests the val.starts_with("/") branch in include handling.
+    use std::fs;
+    let dir = tempfile::tempdir().unwrap();
+    let included = dir.path().join("included.conf");
+    fs::write(
+        &included,
+        "font-size = 42
+",
+    )
+    .unwrap();
+    let main_content = format!(
+        "include = {}
+",
+        included.display()
+    );
+    let main_path = dir.path().join("main.conf");
+    fs::write(&main_path, &main_content).unwrap();
+    let mut c = cfg();
+    let errors = load(&main_path, &mut c).unwrap();
+    assert!(errors.is_empty(), "unexpected errors: {errors:?}");
+    assert_eq!(c.font_size, 42);
+}

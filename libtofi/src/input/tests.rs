@@ -433,3 +433,305 @@ mod input_tests {
         assert_eq!(cur, 0);
     }
 }
+
+// ── keyboard tests ────────────────────────────────────────────────────────────
+
+#[cfg(feature = "wayland")]
+mod keyboard_tests {
+    use std::time::{Duration, Instant};
+
+    use xkbcommon::xkb::{Keysym, keysyms};
+
+    use super::super::keyboard::{KeyboardState, RepeatInfo, keysym_to_linux_key};
+    use super::super::{
+        KEY_B, KEY_BACKSPACE, KEY_C, KEY_DOWN, KEY_ENTER, KEY_ESC, KEY_F, KEY_G, KEY_H, KEY_HOME,
+        KEY_J, KEY_K, KEY_KPENTER, KEY_L, KEY_LEFT, KEY_LEFTBRACE, KEY_M, KEY_N, KEY_P,
+        KEY_PAGEDOWN, KEY_PAGEUP, KEY_RIGHT, KEY_TAB, KEY_U, KEY_UP, KEY_V, KEY_W,
+    };
+
+    fn sym(raw: u32) -> Keysym {
+        Keysym::new(raw)
+    }
+
+    // ── RepeatInfo ────────────────────────────────────────────────────────────
+
+    #[test]
+    fn repeat_info_default_fields() {
+        let r = RepeatInfo::default();
+        assert_eq!(r.rate, 0);
+        assert_eq!(r.delay_ms, 200);
+        assert!(!r.active);
+        assert_eq!(r.keycode, 0);
+    }
+
+    #[test]
+    fn timeout_inactive_is_none() {
+        let r = RepeatInfo::default();
+        assert!(r.timeout().is_none());
+    }
+
+    #[test]
+    fn timeout_active_rate_zero_is_none() {
+        let mut r = RepeatInfo::default();
+        r.active = true;
+        r.rate = 0;
+        assert!(r.timeout().is_none());
+    }
+
+    #[test]
+    fn timeout_future_deadline_some_nonzero() {
+        let mut r = RepeatInfo::default();
+        r.active = true;
+        r.rate = 30;
+        r.next = Instant::now() + Duration::from_secs(10);
+        let t = r.timeout();
+        assert!(t.is_some());
+        assert!(t.unwrap() > Duration::ZERO);
+    }
+
+    #[test]
+    fn timeout_past_deadline_some_zero() {
+        let mut r = RepeatInfo::default();
+        r.active = true;
+        r.rate = 30;
+        r.next = Instant::now() - Duration::from_secs(1);
+        assert_eq!(r.timeout(), Some(Duration::ZERO));
+    }
+
+    // ── KeyboardState ─────────────────────────────────────────────────────────
+
+    #[test]
+    fn new_physical_does_not_panic() {
+        let _ = KeyboardState::new(true);
+    }
+
+    #[test]
+    fn new_logical_does_not_panic() {
+        let _ = KeyboardState::new(false);
+    }
+
+    #[test]
+    fn is_ready_false_before_keymap() {
+        assert!(!KeyboardState::new(true).is_ready());
+    }
+
+    #[test]
+    fn key_get_utf32_zero_before_keymap() {
+        assert_eq!(KeyboardState::new(true).key_get_utf32(42), 0);
+    }
+
+    #[test]
+    fn mod_ctrl_false_before_keymap() {
+        assert!(!KeyboardState::new(true).mod_ctrl());
+    }
+
+    #[test]
+    fn mod_alt_false_before_keymap() {
+        assert!(!KeyboardState::new(true).mod_alt());
+    }
+
+    #[test]
+    fn mod_shift_false_before_keymap() {
+        assert!(!KeyboardState::new(true).mod_shift());
+    }
+
+    #[test]
+    fn key_repeats_false_before_keymap() {
+        assert!(!KeyboardState::new(true).key_repeats(42));
+    }
+
+    #[test]
+    fn set_repeat_info_updates_fields() {
+        let mut ks = KeyboardState::new(true);
+        ks.set_repeat_info(30, 300);
+        assert_eq!(ks.repeat.rate, 30);
+        assert_eq!(ks.repeat.delay_ms, 300);
+    }
+
+    #[test]
+    fn arm_repeat_sets_active_and_keycode() {
+        let mut ks = KeyboardState::new(true);
+        ks.set_repeat_info(30, 200);
+        let before = Instant::now();
+        ks.arm_repeat(42);
+        assert!(ks.repeat.active);
+        assert_eq!(ks.repeat.keycode, 42);
+        assert!(ks.repeat.next >= before + Duration::from_millis(200));
+    }
+
+    #[test]
+    fn disarm_repeat_matching_keycode_clears_active() {
+        let mut ks = KeyboardState::new(true);
+        ks.arm_repeat(42);
+        ks.disarm_repeat(42);
+        assert!(!ks.repeat.active);
+    }
+
+    #[test]
+    fn disarm_repeat_nonmatching_keycode_stays_active() {
+        let mut ks = KeyboardState::new(true);
+        ks.arm_repeat(42);
+        ks.disarm_repeat(99);
+        assert!(ks.repeat.active);
+    }
+
+    #[test]
+    fn advance_repeat_moves_next_forward() {
+        let mut ks = KeyboardState::new(true);
+        ks.set_repeat_info(10, 200);
+        ks.arm_repeat(42);
+        let before = ks.repeat.next;
+        ks.advance_repeat();
+        assert!(ks.repeat.next > before);
+    }
+
+    #[test]
+    fn advance_repeat_noop_when_rate_zero() {
+        let mut ks = KeyboardState::new(true);
+        ks.set_repeat_info(0, 200);
+        ks.arm_repeat(42);
+        let before = ks.repeat.next;
+        ks.advance_repeat();
+        assert_eq!(ks.repeat.next, before);
+    }
+
+    #[test]
+    fn keycode_to_linux_key_physical() {
+        let ks = KeyboardState::new(true);
+        assert_eq!(ks.keycode_to_linux_key(36), 28);
+    }
+
+    #[test]
+    fn keycode_to_linux_key_logical_no_state_fallback() {
+        let ks = KeyboardState::new(false);
+        assert_eq!(ks.keycode_to_linux_key(36), 28);
+    }
+
+    // ── keysym_to_linux_key — every arm ──────────────────────────────────────
+
+    #[test]
+    fn keysym_backspace() {
+        assert_eq!(
+            keysym_to_linux_key(sym(keysyms::KEY_BackSpace)),
+            KEY_BACKSPACE
+        );
+    }
+    #[test]
+    fn keysym_w() {
+        assert_eq!(keysym_to_linux_key(sym(keysyms::KEY_w)), KEY_W);
+    }
+    #[test]
+    fn keysym_u() {
+        assert_eq!(keysym_to_linux_key(sym(keysyms::KEY_u)), KEY_U);
+    }
+    #[test]
+    fn keysym_v() {
+        assert_eq!(keysym_to_linux_key(sym(keysyms::KEY_v)), KEY_V);
+    }
+    #[test]
+    fn keysym_left() {
+        assert_eq!(keysym_to_linux_key(sym(keysyms::KEY_Left)), KEY_LEFT);
+    }
+    #[test]
+    fn keysym_right() {
+        assert_eq!(keysym_to_linux_key(sym(keysyms::KEY_Right)), KEY_RIGHT);
+    }
+    #[test]
+    fn keysym_up() {
+        assert_eq!(keysym_to_linux_key(sym(keysyms::KEY_Up)), KEY_UP);
+    }
+    #[test]
+    fn keysym_iso_left_tab() {
+        assert_eq!(keysym_to_linux_key(sym(keysyms::KEY_ISO_Left_Tab)), KEY_TAB);
+    }
+    #[test]
+    fn keysym_h() {
+        assert_eq!(keysym_to_linux_key(sym(keysyms::KEY_h)), KEY_H);
+    }
+    #[test]
+    fn keysym_k() {
+        assert_eq!(keysym_to_linux_key(sym(keysyms::KEY_k)), KEY_K);
+    }
+    #[test]
+    fn keysym_p() {
+        assert_eq!(keysym_to_linux_key(sym(keysyms::KEY_p)), KEY_P);
+    }
+    #[test]
+    fn keysym_down() {
+        assert_eq!(keysym_to_linux_key(sym(keysyms::KEY_Down)), KEY_DOWN);
+    }
+    #[test]
+    fn keysym_tab() {
+        assert_eq!(keysym_to_linux_key(sym(keysyms::KEY_Tab)), KEY_TAB);
+    }
+    #[test]
+    fn keysym_l() {
+        assert_eq!(keysym_to_linux_key(sym(keysyms::KEY_l)), KEY_L);
+    }
+    #[test]
+    fn keysym_j() {
+        assert_eq!(keysym_to_linux_key(sym(keysyms::KEY_j)), KEY_J);
+    }
+    #[test]
+    fn keysym_n() {
+        assert_eq!(keysym_to_linux_key(sym(keysyms::KEY_n)), KEY_N);
+    }
+    #[test]
+    fn keysym_b() {
+        assert_eq!(keysym_to_linux_key(sym(keysyms::KEY_b)), KEY_B);
+    }
+    #[test]
+    fn keysym_f() {
+        assert_eq!(keysym_to_linux_key(sym(keysyms::KEY_f)), KEY_F);
+    }
+    #[test]
+    fn keysym_home() {
+        assert_eq!(keysym_to_linux_key(sym(keysyms::KEY_Home)), KEY_HOME);
+    }
+    #[test]
+    fn keysym_page_up() {
+        assert_eq!(keysym_to_linux_key(sym(keysyms::KEY_Page_Up)), KEY_PAGEUP);
+    }
+    #[test]
+    fn keysym_page_down() {
+        assert_eq!(
+            keysym_to_linux_key(sym(keysyms::KEY_Page_Down)),
+            KEY_PAGEDOWN
+        );
+    }
+    #[test]
+    fn keysym_escape() {
+        assert_eq!(keysym_to_linux_key(sym(keysyms::KEY_Escape)), KEY_ESC);
+    }
+    #[test]
+    fn keysym_c() {
+        assert_eq!(keysym_to_linux_key(sym(keysyms::KEY_c)), KEY_C);
+    }
+    #[test]
+    fn keysym_bracketleft() {
+        assert_eq!(
+            keysym_to_linux_key(sym(keysyms::KEY_bracketleft)),
+            KEY_LEFTBRACE
+        );
+    }
+    #[test]
+    fn keysym_g() {
+        assert_eq!(keysym_to_linux_key(sym(keysyms::KEY_g)), KEY_G);
+    }
+    #[test]
+    fn keysym_return() {
+        assert_eq!(keysym_to_linux_key(sym(keysyms::KEY_Return)), KEY_ENTER);
+    }
+    #[test]
+    fn keysym_kp_enter() {
+        assert_eq!(keysym_to_linux_key(sym(keysyms::KEY_KP_Enter)), KEY_KPENTER);
+    }
+    #[test]
+    fn keysym_m() {
+        assert_eq!(keysym_to_linux_key(sym(keysyms::KEY_m)), KEY_M);
+    }
+    #[test]
+    fn keysym_unmapped_returns_max() {
+        assert_eq!(keysym_to_linux_key(sym(0x1008_FF14)), u32::MAX);
+    }
+}

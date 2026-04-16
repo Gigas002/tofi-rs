@@ -233,3 +233,6 @@ pub fn config_anchor_to_layer(anchor: config::Anchor) -> libtofi_rs::wayland::An
         A::Center => Anchor::empty(),
     }
 }
+
+#[cfg(test)]
+mod tests;

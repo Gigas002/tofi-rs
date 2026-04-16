@@ -47,3 +47,6 @@ pub fn generate_completions(shell: CompletionShell) {
         }
     }
 }
+
+#[cfg(test)]
+mod tests;
