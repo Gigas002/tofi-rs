@@ -686,11 +686,9 @@ impl Dispatch<wl_data_device::WlDataDevice, ()> for WaylandState {
             }
 
             // The compositor announces the current clipboard selection.
-            wl_data_device::Event::Selection { id } => {
-                if id.is_none() {
-                    state.clipboard.reset();
-                    tracing::debug!("wl_data_device: selection cleared");
-                }
+            wl_data_device::Event::Selection { id } if id.is_none() => {
+                state.clipboard.reset();
+                tracing::debug!("wl_data_device: selection cleared");
                 // If Some: the offer was already stored by DataOffer; no action.
             }
 
