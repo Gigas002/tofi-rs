@@ -3,6 +3,7 @@
 //! Wraps `libxkbcommon` via the [`xkbcommon`] crate.  The keymap string is
 //! received from the compositor via the `wl_keyboard::keymap` event.
 
+use std::os::unix::io::OwnedFd;
 use std::time::{Duration, Instant};
 
 use xkbcommon::xkb::keysyms;
@@ -84,23 +85,44 @@ impl KeyboardState {
         }
     }
 
-    /// Parse and install a keymap from its XKB text representation.
+    /// Load and install a keymap directly from the compositor-provided fd.
     ///
-    /// Called from the `wl_keyboard::keymap` event handler.
-    pub fn load_keymap(&mut self, keymap_str: &str) {
-        let Some(km) = xkb::Keymap::new_from_string(
-            &self.context,
-            keymap_str.to_owned(),
-            xkb::KEYMAP_FORMAT_TEXT_V1,
-            xkb::KEYMAP_COMPILE_NO_FLAGS,
-        ) else {
-            tracing::error!("KeyboardState: failed to compile keymap");
+    /// Uses `mmap` internally (via `xkb::Keymap::new_from_fd`) so the fd
+    /// position does not matter — this avoids the 0-byte read bug that
+    /// occurred when reading the fd to a `String` first.
+    ///
+    /// `size` is the byte length reported in the `wl_keyboard::keymap` event;
+    /// a size of 0 means the compositor sent a null/reset keymap and is ignored.
+    #[allow(unsafe_code)]
+    pub fn load_keymap_from_fd(&mut self, fd: OwnedFd, size: u32) {
+        tracing::debug!("KeyboardState: loading keymap via mmap (size={size} bytes)");
+        if size == 0 {
+            tracing::warn!("KeyboardState: compositor sent keymap with size=0; ignoring");
             return;
+        }
+        let result = unsafe {
+            xkb::Keymap::new_from_fd(
+                &self.context,
+                fd,
+                size as usize,
+                xkb::KEYMAP_FORMAT_TEXT_V1,
+                xkb::KEYMAP_COMPILE_NO_FLAGS,
+            )
         };
-        let st = xkb::State::new(&km);
-        self.keymap = Some(km);
-        self.state = Some(st);
-        tracing::debug!("KeyboardState: keymap loaded");
+        match result {
+            Ok(Some(km)) => {
+                let st = xkb::State::new(&km);
+                self.keymap = Some(km);
+                self.state = Some(st);
+                tracing::debug!("KeyboardState: keymap loaded successfully");
+            }
+            Ok(None) => {
+                tracing::error!("KeyboardState: xkbcommon rejected keymap (returned null)");
+            }
+            Err(e) => {
+                tracing::error!("KeyboardState: failed to mmap keymap fd: {e}");
+            }
+        }
     }
 
     /// Update the modifier state from a `wl_keyboard::modifiers` event.

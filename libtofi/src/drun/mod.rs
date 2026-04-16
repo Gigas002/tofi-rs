@@ -31,6 +31,11 @@ use crate::unicode::utf8_normalize;
 
 const CACHE_BASENAME: &str = "tofi-drun";
 const DEFAULT_DATA_DIRS: &str = "/usr/local/share/:/usr/share/";
+/// Magic header written as the first line of every cache file.
+///
+/// If the file starts with a different line (e.g. a stale C-tofi cache), we
+/// treat it as invalid and trigger a fresh scan.
+const CACHE_HEADER: &str = "#tofi-rs-drun-v1";
 
 // ---------------------------------------------------------------------------
 // Data types
@@ -285,7 +290,11 @@ pub fn scan(dirs: &[PathBuf]) -> Vec<DesktopEntry> {
 
 /// Save `entries` to `path` in a null-byte–separated format.
 ///
-/// Record layout (one per line): `{id}\0{name}\0{path}\0{keywords}\0{exec}\0{icon}\0{terminal}\n`
+/// The first line is always [`CACHE_HEADER`] so that stale C-tofi caches can
+/// be detected and discarded.
+///
+/// Record layout (after header, one per line):
+/// `{id}\0{name}\0{path}\0{keywords}\0{exec}\0{icon}\0{terminal}\n`
 pub fn save_cache(entries: &[DesktopEntry], path: &Path) -> io::Result<()> {
     if let Some(parent) = path.parent()
         && !parent.as_os_str().is_empty()
@@ -294,6 +303,7 @@ pub fn save_cache(entries: &[DesktopEntry], path: &Path) -> io::Result<()> {
     }
     let file = fs::File::create(path)?;
     let mut w = io::BufWriter::new(file);
+    writeln!(w, "{CACHE_HEADER}")?;
     for e in entries {
         writeln!(
             w,
@@ -311,10 +321,23 @@ pub fn save_cache(entries: &[DesktopEntry], path: &Path) -> io::Result<()> {
 }
 
 /// Load entries from a cache file produced by [`save_cache`].
+///
+/// Returns `Err(InvalidData)` when the file does not start with the expected
+/// [`CACHE_HEADER`], allowing callers to detect a stale C-tofi cache and
+/// trigger a fresh scan.
 pub fn load_cache(path: &Path) -> io::Result<Vec<DesktopEntry>> {
     let file = fs::File::open(path)?;
+    let mut reader = io::BufReader::new(file);
+    let mut header = String::new();
+    reader.read_line(&mut header)?;
+    if header.trim_end() != CACHE_HEADER {
+        return Err(io::Error::new(
+            io::ErrorKind::InvalidData,
+            "cache header mismatch — stale or foreign cache format",
+        ));
+    }
     let mut entries = Vec::new();
-    for line in io::BufReader::new(file).lines() {
+    for line in reader.lines() {
         let line = line?;
         let fields: Vec<&str> = line.splitn(7, '\0').collect();
         if fields.len() < 7 {
@@ -341,9 +364,14 @@ fn dirs_mtime(dirs: &[PathBuf]) -> Option<SystemTime> {
 }
 
 /// Return the desktop entry list, using a cache when valid.
+///
+/// A missing cache, a stale cache (application dirs newer), or a cache with
+/// the wrong header (e.g. a stale C-tofi cache) all trigger a fresh scan and
+/// re-write of the cache file.
 pub fn entries_cached(dirs: &[PathBuf], cache_path: &Path) -> io::Result<Vec<DesktopEntry>> {
     match fs::metadata(cache_path) {
         Err(e) if e.kind() == io::ErrorKind::NotFound => {
+            tracing::debug!("drun: no cache found, scanning");
             let entries = scan(dirs);
             let _ = save_cache(&entries, cache_path);
             Ok(entries)
@@ -353,11 +381,25 @@ pub fn entries_cached(dirs: &[PathBuf], cache_path: &Path) -> io::Result<Vec<Des
             let cache_mtime = cache_meta.modified()?;
             let stale = dirs_mtime(dirs).map(|m| m > cache_mtime).unwrap_or(false);
             if stale {
+                tracing::debug!("drun: cache is stale, rescanning");
                 let entries = scan(dirs);
                 let _ = save_cache(&entries, cache_path);
                 Ok(entries)
             } else {
-                load_cache(cache_path)
+                match load_cache(cache_path) {
+                    Ok(entries) => Ok(entries),
+                    Err(e) if e.kind() == io::ErrorKind::InvalidData => {
+                        tracing::warn!(
+                            "drun: cache at {} has wrong format ({}), rescanning",
+                            cache_path.display(),
+                            e
+                        );
+                        let entries = scan(dirs);
+                        let _ = save_cache(&entries, cache_path);
+                        Ok(entries)
+                    }
+                    Err(e) => Err(e),
+                }
             }
         }
     }

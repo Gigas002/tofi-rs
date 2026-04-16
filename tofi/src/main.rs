@@ -21,8 +21,20 @@ fn main() {
         .init();
 
     let cli = cli::Cli::parse();
+
+    #[cfg(feature = "drun")]
+    let flag_drun = cli.drun;
+    #[cfg(feature = "run-commands")]
+    let flag_run = cli.run;
+
     #[allow(unused_variables)]
     let (config, _errors) = cli.into_config().expect("Failed to load config");
 
-    app::run(config);
+    app::run(
+        config,
+        #[cfg(feature = "drun")]
+        flag_drun,
+        #[cfg(feature = "run-commands")]
+        flag_run,
+    );
 }

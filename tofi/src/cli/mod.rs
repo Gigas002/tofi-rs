@@ -41,6 +41,18 @@ pub struct Cli {
     #[arg(long, value_name = "FILE")]
     pub include: Option<PathBuf>,
 
+    /// Run in drun mode: list desktop applications from XDG data dirs.
+    /// Equivalent to invoking the binary as `tofi-drun`.
+    #[cfg(feature = "drun")]
+    #[arg(long, conflicts_with = "run")]
+    pub drun: bool,
+
+    /// Run in run mode: list executables from $PATH.
+    /// Equivalent to invoking the binary as `tofi-run`.
+    #[cfg(feature = "run-commands")]
+    #[arg(long, conflicts_with = "drun")]
+    pub run: bool,
+
     // -----------------------------------------------------------------------
     // Window positioning
     // -----------------------------------------------------------------------

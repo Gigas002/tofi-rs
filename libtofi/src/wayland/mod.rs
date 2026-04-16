@@ -8,8 +8,6 @@
 
 pub mod surface;
 
-use std::io::Read as _;
-
 use wayland_client::{
     Connection, Dispatch, EventQueue, QueueHandle,
     protocol::{
@@ -345,11 +343,8 @@ impl Dispatch<wl_keyboard::WlKeyboard, ()> for WaylandState {
     ) {
         match event {
             // ── Keymap ────────────────────────────────────────────────────────
-            wl_keyboard::Event::Keymap {
-                format,
-                fd,
-                size: _,
-            } => {
+            wl_keyboard::Event::Keymap { format, fd, size } => {
+                tracing::debug!("wl_keyboard: keymap event size={size} bytes");
                 if !matches!(
                     format,
                     wayland_client::WEnum::Value(wl_keyboard::KeymapFormat::XkbV1)
@@ -357,18 +352,20 @@ impl Dispatch<wl_keyboard::WlKeyboard, ()> for WaylandState {
                     tracing::warn!("Unsupported keymap format; ignoring");
                     return;
                 }
-                // Read the keymap string from the fd (file ends at EOF).
-                let mut file = std::fs::File::from(fd);
-                let mut keymap_str = String::new();
-                if file.read_to_string(&mut keymap_str).is_err() {
-                    tracing::error!("Failed to read keymap from fd");
-                    return;
-                }
-                state.keyboard_state.load_keymap(&keymap_str);
+                state.keyboard_state.load_keymap_from_fd(fd, size);
+                tracing::debug!(
+                    "wl_keyboard: keymap processed, is_ready={}",
+                    state.keyboard_state.is_ready()
+                );
             }
 
             // ── Enter / Leave ─────────────────────────────────────────────────
-            wl_keyboard::Event::Enter { .. } | wl_keyboard::Event::Leave { .. } => {}
+            wl_keyboard::Event::Enter { .. } => {
+                tracing::debug!("wl_keyboard: Enter (surface gained keyboard focus)");
+            }
+            wl_keyboard::Event::Leave { .. } => {
+                tracing::debug!("wl_keyboard: Leave (surface lost keyboard focus)");
+            }
 
             // ── Key ───────────────────────────────────────────────────────────
             wl_keyboard::Event::Key {
@@ -378,6 +375,11 @@ impl Dispatch<wl_keyboard::WlKeyboard, ()> for WaylandState {
             } => {
                 // XKB keycode = evdev key + 8.
                 let keycode = key + 8;
+                tracing::debug!(
+                    "wl_keyboard: Key event — evdev={key} xkb_keycode={keycode} state={key_state:?} \
+                     keyboard_ready={}",
+                    state.keyboard_state.is_ready()
+                );
 
                 match key_state {
                     wl_keyboard::KeyState::Released => {
@@ -760,6 +762,9 @@ impl Dispatch<wl_data_offer::WlDataOffer, ()> for WaylandState {
 /// `submit = true`.
 pub fn handle_keypress(state: &mut WaylandState, keycode: u32) {
     if !state.keyboard_state.is_ready() {
+        tracing::warn!(
+            "handle_keypress: keyboard not ready (keymap not loaded yet), dropping keycode={keycode}"
+        );
         return;
     }
 
@@ -769,20 +774,29 @@ pub fn handle_keypress(state: &mut WaylandState, keycode: u32) {
     let ch = state.keyboard_state.key_get_utf32(keycode);
     let key = state.keyboard_state.keycode_to_linux_key(keycode);
 
+    tracing::debug!(
+        "handle_keypress: xkb_keycode={keycode} linux_key={key} ch=U+{ch:04X} \
+         ctrl={ctrl} alt={alt} shift={shift}"
+    );
+
     let action = crate::input::classify_keypress(ctrl, alt, shift, key, ch);
+    tracing::debug!("handle_keypress: action={action:?}");
 
     match action {
         // ── Terminal actions (return immediately, no redraw) ───────────────────
         crate::input::KeyAction::Close => {
+            tracing::debug!("handle_keypress: Close → setting state.closed = true");
             state.closed = true;
             return;
         }
         crate::input::KeyAction::Submit => {
+            tracing::debug!("handle_keypress: Submit → setting state.submit = true");
             state.submit = true;
             return;
         }
         // ── Unbound key ───────────────────────────────────────────────────────
         crate::input::KeyAction::Unknown => {
+            tracing::debug!("handle_keypress: Unknown key — no action");
             return;
         }
 

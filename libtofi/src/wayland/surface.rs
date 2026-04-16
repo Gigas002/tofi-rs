@@ -139,23 +139,79 @@ pub fn create_surface(
 
     layer_surface
         .set_keyboard_interactivity(zwlr_layer_surface_v1::KeyboardInteractivity::Exclusive);
+    tracing::debug!("Layer surface: keyboard_interactivity=Exclusive");
+
+    tracing::debug!(
+        "Layer surface: requesting anchor bits={:#010b} ({:?})",
+        cfg.anchor.bits(),
+        cfg.anchor,
+    );
+    tracing::debug!(
+        "Layer surface: anchor breakdown — top={} bottom={} left={} right={}",
+        cfg.anchor.contains(zwlr_layer_surface_v1::Anchor::Top),
+        cfg.anchor.contains(zwlr_layer_surface_v1::Anchor::Bottom),
+        cfg.anchor.contains(zwlr_layer_surface_v1::Anchor::Left),
+        cfg.anchor.contains(zwlr_layer_surface_v1::Anchor::Right),
+    );
+    if cfg.anchor.contains(zwlr_layer_surface_v1::Anchor::Top)
+        && cfg.anchor.contains(zwlr_layer_surface_v1::Anchor::Bottom)
+    {
+        tracing::warn!(
+            "Layer surface: top+bottom anchored simultaneously — compositor will STRETCH \
+             surface to fill output height, ignoring set_size height={}",
+            cfg.height
+        );
+    }
+    if cfg.anchor.contains(zwlr_layer_surface_v1::Anchor::Left)
+        && cfg.anchor.contains(zwlr_layer_surface_v1::Anchor::Right)
+    {
+        tracing::warn!(
+            "Layer surface: left+right anchored simultaneously — compositor will STRETCH \
+             surface to fill output width, ignoring set_size width={}",
+            cfg.width
+        );
+    }
+
     layer_surface.set_anchor(cfg.anchor);
     layer_surface.set_exclusive_zone(cfg.exclusive_zone);
+    tracing::debug!("Layer surface: exclusive_zone={}", cfg.exclusive_zone);
     layer_surface.set_margin(
         cfg.margin_top,
         cfg.margin_right,
         cfg.margin_bottom,
         cfg.margin_left,
     );
+    tracing::debug!(
+        "Layer surface: margins top={} right={} bottom={} left={}",
+        cfg.margin_top,
+        cfg.margin_right,
+        cfg.margin_bottom,
+        cfg.margin_left,
+    );
+
     // Layer surface size is always in logical pixels.
     layer_surface.set_size(cfg.width, cfg.height);
     tracing::debug!(
-        "Layer surface: {}×{} logical  anchor={:?}  exclusive_zone={}",
+        "Layer surface: set_size requested={}×{} logical (compositor may override if \
+         opposite edges are both anchored)",
         cfg.width,
         cfg.height,
-        cfg.anchor,
-        cfg.exclusive_zone,
     );
+
+    // ── Log available outputs ─────────────────────────────────────────────────
+    for (i, out) in state.outputs.iter().enumerate() {
+        tracing::debug!(
+            "Output[{i}]: name={:?} {}×{} scale={} transform={:?}",
+            out.name,
+            out.width,
+            out.height,
+            out.scale,
+            out.transform,
+        );
+    }
+    if state.outputs.is_empty() {
+        tracing::warn!("No outputs found — size/scale detection will use fallback values");
+    }
 
     // ── 2. Attach fractional scale listener (before commit) ───────────────────
     // Reset any previously stored scale so we detect a fresh value.
@@ -215,7 +271,23 @@ pub fn create_surface(
     }
 
     let (logical_w, logical_h) = state.surface.as_ref().map(|s| (s.width, s.height)).unwrap();
-    tracing::debug!("Configured at {logical_w}×{logical_h} (logical)");
+    tracing::debug!(
+        "Layer surface: compositor configure → {}×{} logical  (requested {}×{})",
+        logical_w,
+        logical_h,
+        cfg.width,
+        cfg.height,
+    );
+    if logical_w != cfg.width || logical_h != cfg.height {
+        tracing::warn!(
+            "Layer surface: compositor OVERRODE requested size {}×{} → actual {}×{} \
+             (likely because opposite anchor edges are both set)",
+            cfg.width,
+            cfg.height,
+            logical_w,
+            logical_h,
+        );
+    }
 
     // ── 6. Determine effective scale ──────────────────────────────────────────
     // If fractional scale arrived, use it. Otherwise fall back to integer scale
@@ -290,6 +362,31 @@ pub fn create_surface(
     state.surface.as_mut().unwrap().shm = Some(pool);
 
     // ── 11. First draw + flush ────────────────────────────────────────────────
+    tracing::debug!(
+        "Surface summary: logical={}×{}  physical={}×{}  scale={}/120 ({:.4}×)  \
+         anchor={:?}  exclusive_zone={}  keyboard=Exclusive  input_region=<none — \
+         full surface captures all pointer events>",
+        logical_w,
+        logical_h,
+        phys_w,
+        phys_h,
+        effective_scale,
+        effective_scale as f64 / 120.0,
+        cfg.anchor,
+        cfg.exclusive_zone,
+    );
+    if logical_w > cfg.width || logical_h > cfg.height {
+        tracing::warn!(
+            "Surface is larger than requested ({}×{} > {}×{}) — areas outside the \
+             launcher widget will still intercept pointer/touch events because no \
+             input region has been set",
+            logical_w,
+            logical_h,
+            cfg.width,
+            cfg.height,
+        );
+    }
+
     draw(state)?;
 
     event_queue

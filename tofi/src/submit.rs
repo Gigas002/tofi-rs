@@ -230,6 +230,6 @@ pub fn config_anchor_to_layer(anchor: config::Anchor) -> libtofi_rs::wayland::An
         A::Bottom => Anchor::Bottom | Anchor::Left | Anchor::Right,
         A::BottomLeft => Anchor::Bottom | Anchor::Left,
         A::Left => Anchor::Left | Anchor::Top | Anchor::Bottom,
-        A::Center => Anchor::Top | Anchor::Bottom | Anchor::Left | Anchor::Right,
+        A::Center => Anchor::empty(),
     }
 }
