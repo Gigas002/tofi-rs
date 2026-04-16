@@ -41,13 +41,13 @@ Use this as a living backlog; tick items when verified fixed or explicitly docum
 
 **Planning archives (pre-0.10.0 release — not 1.0)**
 
-- [ ] Before tagging **`0.10.0`**, move **`docs/RUST_MIGRATION_PLAN.md`**, **`docs/POST_MIGRATION_PLAN.md`**, and any other **migration-era PLAN** files to a **dedicated long-lived branch** (e.g. `docs/migration-history`). They should **not** remain on **`main`** once **0.10** ships (history stays in git on that branch and in tags).
-- [ ] On **`main`**, replace deep links with pointers to that branch or to a **tag** snapshot (e.g. `v0.10.0`) so readers can still open the old plans without carrying them in the default tree.
-- [ ] After this move, ongoing work toward **1.0** uses a **`main`** that is free of migration-plan documents.
+- [~] Before tagging **`0.10.0`**, move **`docs/RUST_MIGRATION_PLAN.md`**, **`docs/POST_MIGRATION_PLAN.md`**, and any other **migration-era PLAN** files to a **dedicated long-lived branch** (e.g. `docs/migration-history`). They should **not** remain on **`main`** once **0.10** ships (history stays in git on that branch and in tags). *(skipped — deferred to release day)*
+- [~] On **`main`**, replace deep links with pointers to that branch or to a **tag** snapshot (e.g. `v0.10.0`) so readers can still open the old plans without carrying them in the default tree. *(skipped — deferred to release day)*
+- [~] After this move, ongoing work toward **1.0** uses a **`main`** that is free of migration-plan documents. *(skipped — deferred to release day)*
 
 **Build / packaging**
 
-- [ ] Release **`tofi-rs`** builds cleanly on **default features** and documented **feature matrices** (match `Cargo.toml` / CI).
+- [x] Release **`tofi-rs`** builds cleanly on **default features** and documented **feature matrices** (match `Cargo.toml` / CI).
 - [ ] Document **system dependencies** for packagers (Wayland, Cairo, Pango, HarfBuzz, xkbcommon, etc.) and any divergence from upstream’s Meson story.
 - [ ] **Binary name** remains **`tofi`** when installed (per migration plan); document conflicts if both C and Rust packages install the same path.
 
@@ -76,7 +76,7 @@ Use this as a living backlog; tick items when verified fixed or explicitly docum
 
 **Tests and automation**
 
-- [ ] **`cargo test`** (and CI) green on **fmt, clippy, test** matrices you use in production.
+- [x] **`cargo test`** (and CI) green on **fmt, clippy, test** matrices you use in production.
 - [ ] Expand **CLI/unit tests** for any bugfix that can be locked in without a Wayland harness.
 
 **CI/CD**

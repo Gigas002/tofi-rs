@@ -1,4 +1,3 @@
-# Present for layout parity with wayshot; publishing disabled until migration §9 Deploy.
 name: Deploy
 
 on:
