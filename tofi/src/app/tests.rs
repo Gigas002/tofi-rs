@@ -1,8 +1,9 @@
+#[cfg(all(feature = "wayland", feature = "drun", feature = "run-commands"))]
 use super::*;
 
 // detect_mode: explicit CLI flags take priority over argv[0].
 // These tests cover the flag paths; the argv[0] symlink path is exercised
-// at runtime (covered in A.3 manual matrix).
+// at runtime.
 
 #[test]
 #[cfg(all(feature = "wayland", feature = "drun", feature = "run-commands"))]
