@@ -472,18 +472,22 @@ mod keyboard_tests {
 
     #[test]
     fn timeout_active_rate_zero_is_none() {
-        let mut r = RepeatInfo::default();
-        r.active = true;
-        r.rate = 0;
+        let r = RepeatInfo {
+            active: true,
+            rate: 0,
+            ..Default::default()
+        };
         assert!(r.timeout().is_none());
     }
 
     #[test]
     fn timeout_future_deadline_some_nonzero() {
-        let mut r = RepeatInfo::default();
-        r.active = true;
-        r.rate = 30;
-        r.next = Instant::now() + Duration::from_secs(10);
+        let r = RepeatInfo {
+            active: true,
+            rate: 30,
+            next: Instant::now() + Duration::from_secs(10),
+            ..Default::default()
+        };
         let t = r.timeout();
         assert!(t.is_some());
         assert!(t.unwrap() > Duration::ZERO);
@@ -491,10 +495,12 @@ mod keyboard_tests {
 
     #[test]
     fn timeout_past_deadline_some_zero() {
-        let mut r = RepeatInfo::default();
-        r.active = true;
-        r.rate = 30;
-        r.next = Instant::now() - Duration::from_secs(1);
+        let r = RepeatInfo {
+            active: true,
+            rate: 30,
+            next: Instant::now() - Duration::from_secs(1),
+            ..Default::default()
+        };
         assert_eq!(r.timeout(), Some(Duration::ZERO));
     }
 

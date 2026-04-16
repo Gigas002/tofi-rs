@@ -519,9 +519,8 @@ fn application_dirs_includes_xdg_data_dirs_entries() {
     }
     let dirs = application_dirs();
     unsafe {
-        match saved_data_home {
-            Some(v) => std::env::set_var("XDG_DATA_HOME", v),
-            None => {}
+        if let Some(v) = saved_data_home {
+            std::env::set_var("XDG_DATA_HOME", v)
         }
         match saved_data_dirs {
             Some(v) => std::env::set_var("XDG_DATA_DIRS", v),
