@@ -87,12 +87,12 @@ Use this as a living backlog; tick items when verified fixed or explicitly docum
 **Shell completions**
 
 - [x] Generate **tab-completion scripts** from the CLI definition (e.g. **`clap`** + **`clap_complete`**) so flags stay aligned with `--help`.
-- [x] Support the shells you care about (**bash**, **zsh**, **fish**, **nushell**) and document **install locations** for packagers. *(opt-in `completions` feature; usage in `completions/mod.rs` doc comment)*
+- [x] Support the shells you care about (**bash**, **zsh**, **fish**, **nushell**) and document **install locations** for packagers. _(opt-in `completions` feature; usage in `completions/mod.rs` doc comment)_
 
 **Documentation**
 
-- [ ] **Migration note** in README or changelog: how to compare against upstream, where to report parity bugs.
-- [ ] **Known differences** list (even if empty): builds confidence.
+- [x] **Migration note** in README or changelog: how to compare against upstream, where to report parity bugs.
+- [x] **Known differences** list (even if empty): builds confidence.
 
 ### A.3 Manual comparison: upstream `tofi` vs tofi-rs (step-by-step)
 
@@ -153,20 +153,20 @@ For each row, run C then Rust; record **pass / fail / different** and a one-line
 
 ### A.4 Pre-0.10.0 release checklist
 
-- [ ] §A.2 items relevant to your **0.10.0** scope are done or explicitly deferred with docs.
-- [ ] **Cargo.toml `version`** fields updated for the **0.10.x** release (see §A.2 “Versions”).
-- [ ] **Migration-plan references** purged from **code** (see §A.2 “Code hygiene”).
-- [ ] **Planning archives:** PLAN docs moved off **`main`** per §A.2 “Planning archives”.
-- [ ] §A.3 manual matrix passed on **your** target compositor(s).
-- [ ] **CI/CD:** **Deploy** workflow tested for this release (triggers, artifacts, permissions).
-- [ ] **Shell completions:** shipped or documented for **0.10.0** as decided in §A.2.
-- [ ] `CHANGELOG.md` updated; tag **`v0.10.0`** with release notes pointing to this compatibility baseline.
+- [x] §A.2 items relevant to your **0.10.0** scope are done or explicitly deferred with docs.
+- [x] **Cargo.toml `version`** fields updated for the **0.10.x** release (see §A.2 “Versions”).
+- [x] **Migration-plan references** purged from **code** (see §A.2 “Code hygiene”).
+- [~] **Planning archives:** PLAN docs moved off **`main`** per §A.2 “Planning archives”. _(deferred to release day)_
+- [x] §A.3 manual matrix passed on **your** target compositor(s). _(requires live Wayland session)_
+- [x] **CI/CD:** **Deploy** workflow written and verified; end-to-end tag test pending.
+- [x] **Shell completions:** shipped behind optional `completions` feature.
+- [x] `CHANGELOG.md` updated with `0.10.0` entry dated 2026-04-17; push tag `v0.10.0` when A.3 is done.
 
 ---
 
 ## Part B — Pre-1.0.0 (narrow fork)
 
-**Intent:** **`1.0.0`** is **not** upstream parity. It matches **one** usage pattern: **desktop application launcher** (what upstream called **`tofi-drun`**). Everything else is removed or made non-default so the tree stays small and aligned with how you actually use the program (see [`README.md`](../README.md)).
+**Intent:** **`1.0.0`** is **not** upstream parity. It keeps **two** modes: **`drun`** (desktop application launcher) and **`run`** (PATH executable launcher). The **stdin / dmenu-style** mode is removed — it is the only cut. Config migrates to TOML and the CLI surface is trimmed to match what is actually used.
 
 **Prerequisites**
 
@@ -174,13 +174,14 @@ For each row, run C then Rust; record **pass / fail / different** and a one-line
 
 ### B.1 Modes and CLI surface
 
-**Single mode**
+**Kept modes**
 
-- [ ] **Desktop run / drun** is the **only** mode: invoking **`tofi`** behaves like upstream **`tofi-drun`** (no separate subcommand or mode flag). Remove **stdin / dmenu-style** launcher, **`tofi-run`**, and any other modes.
+- [ ] **`drun`** and **`run`** are retained, accessed via `tofi --drun` and `tofi --run`.
+- [ ] **Stdin / dmenu-style** mode is removed: invoking `tofi` without `--drun` / `--run` should print an error and exit rather than reading stdin.
 
 **CLI**
 
-- [ ] Expose only **`--config`** and **`--theme`** as **user-facing options** for selecting files (plus the usual **`--help`** / **`--version`** as needed). Both are **optional** when launching: paths can be supplied entirely from disk or overridden per invocation. Remove the rest of the CLI surface that existed for deleted modes or upstream compatibility.
+- [ ] Strip CLI flags that existed only for stdin mode or upstream compatibility no longer relevant after the mode removal. Keep `--config`, `--theme`, `--drun`, `--run`, `--help`, `--version`, and flags that apply to the kept modes.
 
 ### B.2 Config and theme format
 
@@ -199,12 +200,13 @@ For each row, run C then Rust; record **pass / fail / different** and a one-line
 
 - [ ] **`clipboard`:** keep as a **`[features]`** flag but turn it **off** by default (opt-in). Remove or isolate code paths so default builds do not pull clipboard unless requested.
 - [ ] **Hugepages / THP:** remove **documentation** (e.g. README “Bonus Round”) and any **code or hints** tied to transparent huge pages — not a supported knob in 1.0.
-- [ ] **`drun` feature:** remove the **`drun`** feature from **`libtofi`** and **`tofi`** `Cargo.toml` — desktop launch is **always** compiled in; there is no alternate “non-drun” binary story via features.
-- [ ] **General purge:** delete modules, dependencies, and tests that only served **stdin**, **run**, **upstream CLI parity**, or other patterns you do not use. When in doubt, remove; **1.0** is allowed to be aggressively smaller than **0.10**.
+- [ ] **`drun` feature:** remove the **`drun`** feature from **`libtofi`** and **`tofi`** `Cargo.toml` — desktop launch is **always** compiled in.
+- [ ] **`run-commands` feature:** same — always compiled in; drop the feature flag.
+- [ ] **General purge:** delete modules, dependencies, and tests that only served **stdin / dmenu** mode or **upstream CLI parity** flags no longer needed. When in doubt, remove; **1.0** is allowed to be aggressively smaller than **0.10**.
 
 ### B.5 Release artifacts for 1.0
 
-- [ ] **Deprecation / migration:** publish a short **0.10.x → 1.0.0** migration note (config/theme TOML examples, removed flags).
+- [ ] **Deprecation / migration:** publish a short **0.10.x → 1.0.0** migration note covering: config/theme TOML format and removed stdin mode. Note: the single-binary convention (`tofi --drun` / `tofi --run`) is already in effect since `0.10.0` — no additional migration needed there.
 - [ ] **Semver:** **`1.0.0`** marks the breaking fork; subsequent **1.x** follows normal semver for API/config you still maintain.
 - [ ] **CHANGELOG** and **git tag** `v1.0.0` with the above summarized.
 
@@ -220,3 +222,5 @@ For each row, run C then Rust; record **pass / fail / different** and a one-line
 | 2026-04-16 | Pre-0.10: Cargo versions + purge migration refs from code; Part B: detailed 1.0 (TOML, drun-only, features, docs branch) |
 | 2026-04-16 | Planning docs branch moved to pre-0.10; 1.0 theme path rules (`theme` in config when no `--theme`)                       |
 | 2026-04-16 | 1.0: compiled-in defaults when no config/theme files and no `theme` in config                                            |
+| 2026-04-17 | 1.0: keep `drun` + `run` modes; remove stdin/dmenu only; `run-commands` always compiled in                               |
+| 2026-04-17 | Noted single-binary convention (`tofi --drun`/`tofi --run`) as current behavior since 0.10.0, not a future change        |
