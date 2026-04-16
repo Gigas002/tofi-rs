@@ -343,4 +343,271 @@ mod entry_tests {
         assert_eq!(entry.first_result, 0);
         assert_eq!(entry.selection, 0);
     }
+
+    // ── Additional rendering paths ────────────────────────────────────────────
+
+    /// hide_input = true replaces text with hidden character.
+    #[test]
+    fn entry_update_hide_input() {
+        let (w, h) = (400u32, 200u32);
+        let mut buf = make_buf(w, h);
+        let config = EntryConfig {
+            font_name: "Sans".into(),
+            font_size: 18,
+            border_width: 2,
+            outline_width: 1,
+            padding_top: 4,
+            padding_bottom: 4,
+            padding_left: 4,
+            padding_right: 4,
+            clip_to_padding: true,
+            prompt_text: "> ".into(),
+            hide_input: true,
+            hidden_character: "*".into(),
+            ..EntryConfig::default()
+        };
+        let mut entry =
+            unsafe { Entry::new(buf.as_mut_ptr(), w, h, 120, config).expect("Entry::new") };
+        entry.input = "secret".into();
+        entry.cursor_position = entry.input.chars().count();
+        entry.update();
+        entry.flush();
+        let all_zero = buf.iter().all(|&b| b == 0);
+        assert!(!all_zero, "hide_input should still paint pixels");
+    }
+
+    /// Selection highlight with non-transparent color triggers render_selected_result.
+    #[test]
+    fn entry_update_with_selection_highlight() {
+        use crate::color::Color;
+        let (w, h) = (600u32, 400u32);
+        let mut buf = make_buf(w, h);
+        let config = EntryConfig {
+            font_name: "Sans".into(),
+            font_size: 18,
+            border_width: 2,
+            outline_width: 1,
+            padding_top: 4,
+            padding_bottom: 4,
+            padding_left: 4,
+            padding_right: 4,
+            clip_to_padding: true,
+            num_results: 5,
+            selection_highlight_color: Color {
+                r: 1.0,
+                g: 0.0,
+                b: 0.0,
+                a: 1.0,
+            },
+            ..EntryConfig::default()
+        };
+        let mut entry =
+            unsafe { Entry::new(buf.as_mut_ptr(), w, h, 120, config).expect("Entry::new") };
+        entry.results = vec!["hello".into()];
+        entry.selection = 0;
+        entry.num_results_drawn = 1;
+        entry.update();
+        entry.flush();
+        let all_zero = buf.iter().all(|&b| b == 0);
+        assert!(!all_zero, "selection highlight should paint pixels");
+    }
+
+    /// Horizontal layout renders without panic.
+    #[test]
+    fn entry_update_horizontal() {
+        let (w, h) = (800u32, 100u32);
+        let mut buf = make_buf(w, h);
+        let config = EntryConfig {
+            font_name: "Sans".into(),
+            font_size: 16,
+            border_width: 2,
+            outline_width: 1,
+            padding_top: 4,
+            padding_bottom: 4,
+            padding_left: 4,
+            padding_right: 4,
+            clip_to_padding: true,
+            horizontal: true,
+            num_results: 5,
+            ..EntryConfig::default()
+        };
+        let mut entry =
+            unsafe { Entry::new(buf.as_mut_ptr(), w, h, 120, config).expect("Entry::new") };
+        entry.results = vec!["alpha".into(), "beta".into(), "gamma".into()];
+        entry.selection = 0;
+        entry.update();
+        entry.flush();
+        let all_zero = buf.iter().all(|&b| b == 0);
+        assert!(!all_zero, "horizontal layout should paint pixels");
+    }
+
+    /// Non-zero cursor position renders correctly.
+    #[test]
+    fn entry_update_cursor_middle() {
+        let (w, h) = (400u32, 200u32);
+        let mut buf = make_buf(w, h);
+        let mut entry = make_entry(&mut buf, w, h);
+        entry.input = "hello".into();
+        entry.cursor_position = 2;
+        entry.update();
+        entry.flush();
+        let all_zero = buf.iter().all(|&b| b == 0);
+        assert!(!all_zero, "cursor in middle should paint pixels");
+    }
+
+    /// Block cursor style renders without panic.
+    #[test]
+    fn entry_update_block_cursor() {
+        use crate::entry::{CursorStyle, CursorTheme};
+        let (w, h) = (400u32, 200u32);
+        let mut buf = make_buf(w, h);
+        let config = EntryConfig {
+            font_name: "Sans".into(),
+            font_size: 18,
+            border_width: 2,
+            outline_width: 1,
+            padding_top: 4,
+            padding_bottom: 4,
+            padding_left: 4,
+            padding_right: 4,
+            clip_to_padding: true,
+            cursor_theme: CursorTheme {
+                style: CursorStyle::Block,
+                show: true,
+                ..CursorTheme::default()
+            },
+            ..EntryConfig::default()
+        };
+        let mut entry =
+            unsafe { Entry::new(buf.as_mut_ptr(), w, h, 120, config).expect("Entry::new") };
+        entry.input = "abc".into();
+        entry.cursor_position = 1;
+        entry.update();
+        entry.flush();
+        let all_zero = buf.iter().all(|&b| b == 0);
+        assert!(!all_zero, "block cursor should paint pixels");
+    }
+
+    /// Underscore cursor style renders without panic.
+    #[test]
+    fn entry_update_underscore_cursor() {
+        use crate::entry::{CursorStyle, CursorTheme};
+        let (w, h) = (400u32, 200u32);
+        let mut buf = make_buf(w, h);
+        let config = EntryConfig {
+            font_name: "Sans".into(),
+            font_size: 18,
+            border_width: 2,
+            outline_width: 1,
+            padding_top: 4,
+            padding_bottom: 4,
+            padding_left: 4,
+            padding_right: 4,
+            clip_to_padding: true,
+            cursor_theme: CursorTheme {
+                style: CursorStyle::Underscore,
+                show: true,
+                ..CursorTheme::default()
+            },
+            ..EntryConfig::default()
+        };
+        let mut entry =
+            unsafe { Entry::new(buf.as_mut_ptr(), w, h, 120, config).expect("Entry::new") };
+        entry.input = "abc".into();
+        entry.cursor_position = 3;
+        entry.update();
+        entry.flush();
+        let all_zero = buf.iter().all(|&b| b == 0);
+        assert!(!all_zero, "underscore cursor should paint pixels");
+    }
+
+    /// Selection theme with a non-transparent background exercises the themed background path.
+    #[test]
+    fn entry_update_selection_theme_with_background() {
+        use crate::color::Color;
+        use crate::entry::TextTheme;
+        let (w, h) = (600u32, 400u32);
+        let mut buf = make_buf(w, h);
+        let config = EntryConfig {
+            font_name: "Sans".into(),
+            font_size: 18,
+            border_width: 2,
+            outline_width: 1,
+            padding_top: 4,
+            padding_bottom: 4,
+            padding_left: 4,
+            padding_right: 4,
+            clip_to_padding: true,
+            num_results: 5,
+            selection_theme: TextTheme {
+                background_color: Some(Color {
+                    r: 0.2,
+                    g: 0.4,
+                    b: 0.8,
+                    a: 1.0,
+                }),
+                ..TextTheme::default()
+            },
+            ..EntryConfig::default()
+        };
+        let mut entry =
+            unsafe { Entry::new(buf.as_mut_ptr(), w, h, 120, config).expect("Entry::new") };
+        entry.results = vec!["one".into(), "two".into(), "three".into()];
+        entry.selection = 1;
+        entry.num_results_drawn = 3;
+        entry.update();
+        entry.flush();
+        let all_zero = buf.iter().all(|&b| b == 0);
+        assert!(
+            !all_zero,
+            "selection theme with background should paint pixels"
+        );
+    }
+}
+
+// ── pango_backend tests ───────────────────────────────────────────────────────
+
+#[cfg(feature = "renderer")]
+mod pango_backend_tests {
+    use super::super::pango_backend::find_match_position;
+
+    #[test]
+    fn empty_needle_returns_none() {
+        assert_eq!(find_match_position("hello", ""), None);
+    }
+
+    #[test]
+    fn needle_not_in_haystack_returns_none() {
+        assert_eq!(find_match_position("hello", "xyz"), None);
+    }
+
+    #[test]
+    fn exact_ascii_match() {
+        assert_eq!(find_match_position("foo", "foo"), Some((0, 3)));
+    }
+
+    #[test]
+    fn case_insensitive_world() {
+        assert_eq!(find_match_position("Hello World", "world"), Some((6, 11)));
+    }
+
+    #[test]
+    fn case_insensitive_fire() {
+        assert_eq!(find_match_position("Firefox", "fire"), Some((0, 4)));
+    }
+
+    #[test]
+    fn match_in_middle() {
+        assert_eq!(find_match_position("abcdef", "cd"), Some((2, 4)));
+    }
+
+    #[test]
+    fn needle_longer_than_haystack_returns_none() {
+        assert_eq!(find_match_position("hi", "hello world"), None);
+    }
+
+    #[test]
+    fn unicode_haystack_match_is_some() {
+        assert!(find_match_position("café", "afé").is_some());
+    }
 }

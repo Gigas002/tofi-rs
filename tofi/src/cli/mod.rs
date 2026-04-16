@@ -33,6 +33,14 @@ pub struct Cli {
     // -----------------------------------------------------------------------
     // Meta / special
     // -----------------------------------------------------------------------
+    /// Print a shell completion script to stdout and exit.
+    ///
+    /// Supported shells: bash, zsh, fish, nushell.
+    /// Redirect the output to the appropriate location for your shell.
+    #[cfg(feature = "completions")]
+    #[arg(long, value_name = "SHELL")]
+    pub completions: Option<crate::completions::CompletionShell>,
+
     /// Path to config file (overrides the default XDG path).
     #[arg(short = 'c', long, value_name = "FILE")]
     pub config: Option<PathBuf>,
@@ -40,6 +48,18 @@ pub struct Cli {
     /// Load an additional config file on top of the main one.
     #[arg(long, value_name = "FILE")]
     pub include: Option<PathBuf>,
+
+    /// Run in drun mode: list desktop applications from XDG data dirs.
+    /// Equivalent to invoking the binary as `tofi-drun`.
+    #[cfg(feature = "drun")]
+    #[arg(long, conflicts_with = "run")]
+    pub drun: bool,
+
+    /// Run in run mode: list executables from $PATH.
+    /// Equivalent to invoking the binary as `tofi-run`.
+    #[cfg(feature = "run-commands")]
+    #[arg(long, conflicts_with = "drun")]
+    pub run: bool,
 
     // -----------------------------------------------------------------------
     // Window positioning
@@ -319,7 +339,7 @@ pub struct Cli {
     #[arg(long, value_name = "PX")]
     pub selection_background_corner_radius: Option<String>,
 
-    /// [Deprecated] Use --selection-background-padding instead.
+    /// \[Deprecated\] Use --selection-background-padding instead.
     #[arg(long, value_name = "PX", hide = true)]
     pub selection_padding: Option<String>,
 
@@ -346,7 +366,7 @@ pub struct Cli {
     #[arg(long, value_name = "ALGO")]
     pub matching_algorithm: Option<String>,
 
-    /// [Deprecated] Use --matching-algorithm=fuzzy instead.
+    /// \[Deprecated\] Use --matching-algorithm=fuzzy instead.
     #[arg(long, value_name = "BOOL", hide = true)]
     pub fuzzy_match: Option<String>,
 
@@ -379,7 +399,7 @@ pub struct Cli {
     #[arg(long, value_name = "BOOL")]
     pub drun_launch: Option<String>,
 
-    /// [Deprecated] drun always prints exec now; option is ignored.
+    /// \[Deprecated\] drun always prints exec now; option is ignored.
     #[arg(long, value_name = "BOOL", hide = true)]
     pub drun_print_exec: Option<String>,
 

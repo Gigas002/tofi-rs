@@ -25,7 +25,7 @@ mod tests;
 
 /// Cairo + Pango renderer backed by a single SHM frame.
 ///
-/// Create via [`Renderer::create_for_data`], draw into it, call [`flush`], then
+/// Create via [`Renderer::create_for_data`], draw into it, call [`Renderer::flush`], then
 /// detach (drop) before handing the frame to the compositor via
 /// [`crate::wayland::surface::draw`].
 #[cfg(feature = "renderer")]

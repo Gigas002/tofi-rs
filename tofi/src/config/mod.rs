@@ -2,7 +2,7 @@
 //!
 //! This module defines [`TofiConfig`] (and its supporting value types) as **plain data**.
 //! There is **no** file I/O or argument parsing here — the file loader lives in
-//! [`crate::config::load`] and CLI parsing in [`crate::cli`].
+//! [`crate::config::load()`] and CLI parsing in [`crate::cli`].
 //!
 //! # Defaults
 //!

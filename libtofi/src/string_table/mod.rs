@@ -162,7 +162,7 @@ impl<'a> StringRefVec<'a> {
             }
         }
         self.entries
-            .sort_by(|a, b| b.history_score.cmp(&a.history_score));
+            .sort_by_key(|e| std::cmp::Reverse(e.history_score));
     }
 
     /// Filter entries using a scoring predicate and return a new `StringRefVec`

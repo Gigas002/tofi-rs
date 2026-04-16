@@ -1,4 +1,3 @@
-# Ubuntu + apt: same idea as wayshot’s Arch container, easier to maintain (see docs/RUST_MIGRATION_PLAN.md §2.2).
 name: Build
 
 on:
@@ -7,6 +6,9 @@ on:
 
 env:
   CARGO_TERM_COLOR: always
+
+permissions:
+  contents: read
 
 jobs:
   build:
@@ -35,7 +37,6 @@ jobs:
         with:
           key: ${{ matrix.name }}
 
-      # For upcoming libtofi-rs: Wayland, Cairo, Pango, HarfBuzz, xkbcommon.
       - name: Install system dependencies
         run: |
           sudo apt-get update

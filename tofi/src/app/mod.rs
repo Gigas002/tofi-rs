@@ -19,21 +19,43 @@ pub enum LaunchMode {
     Drun,
 }
 
-/// Detect launch mode from `argv[0]`.
+/// Detect launch mode.
 ///
-/// Checks for `-drun` before `-run` so that `tofi-drun` is not misdetected.
+/// `flag_drun` / `flag_run` are set when `--drun` / `--run` was passed on the
+/// command line.  If neither flag is set, `argv[0]` is checked for `-drun` /
+/// `-run` (symlink convention).  Falls back to `Stdin`.
 #[cfg(feature = "wayland")]
-pub fn detect_mode() -> LaunchMode {
+pub fn detect_mode(
+    #[cfg(feature = "drun")] flag_drun: bool,
+    #[cfg(feature = "run-commands")] flag_run: bool,
+) -> LaunchMode {
+    // Explicit CLI flags take priority over the argv[0] symlink convention.
+    #[cfg(feature = "drun")]
+    if flag_drun {
+        tracing::debug!("detect_mode: --drun flag → Drun");
+        return LaunchMode::Drun;
+    }
+    #[cfg(feature = "run-commands")]
+    if flag_run {
+        tracing::debug!("detect_mode: --run flag → Run");
+        return LaunchMode::Run;
+    }
+
+    // Fall back to argv[0] symlink convention.
     let argv0 = std::env::args().next().unwrap_or_default();
+    tracing::debug!("detect_mode: argv[0]={argv0:?}");
     #[cfg(feature = "drun")]
     if argv0.contains("-drun") {
+        tracing::debug!("detect_mode: argv[0] contains '-drun' → Drun");
         return LaunchMode::Drun;
     }
     #[cfg(feature = "run-commands")]
     if argv0.contains("-run") {
+        tracing::debug!("detect_mode: argv[0] contains '-run' → Run");
         return LaunchMode::Run;
     }
     let _ = argv0;
+    tracing::debug!("detect_mode: no match → Stdin");
     LaunchMode::Stdin
 }
 
@@ -66,10 +88,21 @@ pub fn read_stdin(normalize: bool) -> Vec<String> {
 /// Wire configuration into the Wayland event loop and run until the user
 /// accepts a result or closes the window.
 ///
+/// Returns `true` when the user accepted a selection, `false` when they
+/// cancelled (Escape / close).  The caller should exit with code 1 on `false`
+/// to match upstream tofi behaviour.
+///
 /// `Entry::new` wraps a raw SHM pointer; the `allow(unsafe_code)` below is
 /// the only unsafe site in this crate.
 #[allow(unsafe_code)]
-pub fn run(config: TofiConfig) {
+pub fn run(
+    config: TofiConfig,
+    #[cfg(feature = "drun")] flag_drun: bool,
+    #[cfg(feature = "run-commands")] flag_run: bool,
+) -> bool {
+    #[allow(unused_mut)]
+    let mut submitted = false;
+
     #[cfg(feature = "wayland")]
     {
         use libtofi_rs::wayland::{Anchor, surface::SurfaceConfig};
@@ -77,7 +110,12 @@ pub fn run(config: TofiConfig) {
         let (mut state, mut event_queue) =
             libtofi_rs::wayland::connect().expect("Failed to initialize Wayland");
 
-        let mode = detect_mode();
+        let mode = detect_mode(
+            #[cfg(feature = "drun")]
+            flag_drun,
+            #[cfg(feature = "run-commands")]
+            flag_run,
+        );
 
         // Wire config options that the keyboard / pointer handlers need.
         state.physical_keybindings = config.physical_keybindings;
@@ -261,10 +299,19 @@ pub fn run(config: TofiConfig) {
                 LaunchMode::Drun => {
                     tracing::debug!("Mode: drun");
                     let dirs = libtofi_rs::drun::application_dirs();
+                    tracing::debug!("drun: searching {} XDG dirs: {dirs:?}", dirs.len());
                     let cache_path = libtofi_rs::drun::default_cache_path()
                         .unwrap_or_else(|| std::path::PathBuf::from("/tmp/tofi-drun"));
+                    tracing::debug!("drun: cache path = {cache_path:?}");
                     let mut entries =
                         libtofi_rs::drun::entries_cached(&dirs, &cache_path).unwrap_or_default();
+                    tracing::debug!("drun: loaded {} desktop entries", entries.len());
+                    if entries.is_empty() {
+                        tracing::warn!(
+                            "drun: no desktop entries found — check XDG_DATA_DIRS and \
+                             that .desktop files exist in <dir>/applications/"
+                        );
+                    }
                     #[cfg(feature = "history")]
                     if config.use_history {
                         let hist_path = config
@@ -279,6 +326,7 @@ pub fn run(config: TofiConfig) {
                         }
                     }
                     let names: Vec<String> = entries.iter().map(|e| e.name.clone()).collect();
+                    tracing::debug!("drun: entry.results will have {} names", names.len());
                     state.drun_entries = entries;
                     names
                 }
@@ -287,7 +335,24 @@ pub fn run(config: TofiConfig) {
             // Snapshot the full unfiltered list for `print_index`.
             all_commands = entry.results.clone();
 
+            // Re-render with the populated result list.  Entry::new calls
+            // pango_update() while results is still empty; calling update()
+            // here redraws into the next back-buffer with the full list so
+            // the very first committed frame is not blank.
+            entry.update();
+
             entry.flush();
+
+            // Sync the surface flip-buffer index to Entry's ready buffer.
+            //
+            // `create_surface` commits buffer[0] (blank) internally and leaves
+            // `surface.index = 1`.  `Entry::new` renders into buffer[0] and
+            // sets `entry.index = 1`, so `entry.ready_index() = 0`.  Without
+            // this sync the next `draw()` would commit buffer[1] (still blank)
+            // and every subsequent keypress would show the previous frame.
+            if let Some(surf) = state.surface.as_mut() {
+                surf.index = entry.ready_index();
+            }
 
             libtofi_rs::wayland::surface::draw(&mut state).expect("Failed to commit entry frame");
             event_queue.flush().expect("Wayland flush failed");
@@ -299,7 +364,10 @@ pub fn run(config: TofiConfig) {
         // ── Event loop ────────────────────────────────────────────────────────
         // Non-blocking dispatch with key-repeat timeout so held keys fire
         // repeated input events between Wayland events.
-        tracing::debug!("Entering event loop");
+        tracing::debug!(
+            "Entering event loop — keyboard_ready={}",
+            state.keyboard_state.is_ready()
+        );
 
         'event_loop: loop {
             event_queue.flush().expect("Wayland flush failed");
@@ -371,22 +439,28 @@ pub fn run(config: TofiConfig) {
 
             // ── Exit conditions ───────────────────────────────────────────────
             if state.closed {
-                tracing::debug!("Surface closed — exiting");
+                tracing::debug!("Event loop: state.closed=true → breaking");
                 break 'event_loop;
             }
 
             if state.submit {
+                tracing::debug!("Event loop: state.submit=true → handling submission");
                 state.submit = false;
                 #[cfg(feature = "renderer")]
                 {
-                    let submitted = crate::submit::do_submit(&state, &config, mode, &all_commands);
-                    if submitted {
-                        tracing::debug!("Submit — exiting");
+                    let accepted = crate::submit::do_submit(&state, &config, mode, &all_commands);
+                    tracing::debug!("Event loop: do_submit returned {accepted}");
+                    if accepted {
+                        submitted = true;
+                        tracing::debug!("Submit accepted — breaking event loop");
                         break 'event_loop;
                     }
                 }
                 #[cfg(not(feature = "renderer"))]
-                break 'event_loop;
+                {
+                    submitted = true;
+                    break 'event_loop;
+                }
             }
 
             // ── Redraw ────────────────────────────────────────────────────────
@@ -395,6 +469,30 @@ pub fn run(config: TofiConfig) {
 
                 #[cfg(feature = "renderer")]
                 if let Some(entry) = state.entry.as_mut() {
+                    // Re-filter the result list whenever the input changes.
+                    // When input is empty, show the full unfiltered list; otherwise
+                    // run each candidate through match_words and keep matches sorted
+                    // by descending score.
+                    let algorithm = config.matching_algorithm;
+                    if entry.input.is_empty() {
+                        entry.results = all_commands.clone();
+                    } else {
+                        let query = entry.input.clone();
+                        let mut scored: Vec<(i32, &String)> = all_commands
+                            .iter()
+                            .filter_map(|s| {
+                                let score = libtofi_rs::matching::match_words(algorithm, &query, s);
+                                if score > i32::MIN {
+                                    Some((score, s))
+                                } else {
+                                    None
+                                }
+                            })
+                            .collect();
+                        scored.sort_by_key(|b| std::cmp::Reverse(b.0));
+                        entry.results = scored.into_iter().map(|(_, s)| s.clone()).collect();
+                    }
+
                     entry.update();
                     entry.flush();
                     libtofi_rs::wayland::surface::draw(&mut state).expect("Failed to redraw entry");
@@ -411,4 +509,8 @@ pub fn run(config: TofiConfig) {
     #[cfg(not(feature = "wayland"))]
     let _ = config;
     libtofi_rs::noop();
+    submitted
 }
+
+#[cfg(test)]
+mod tests;

@@ -50,8 +50,8 @@ pub struct Directional {
 
 /// Text element theme — `None` fields inherit from the global defaults.
 ///
-/// Call [`TextTheme::resolve`] with the fallback to obtain a
-/// [`ResolvedTextTheme`] before drawing.
+/// Call `TextTheme::resolve` with the fallback to obtain a
+/// `ResolvedTextTheme` before drawing.
 #[derive(Debug, Clone, Default)]
 pub struct TextTheme {
     /// `None` → use entry foreground color.
