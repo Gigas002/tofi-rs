@@ -328,6 +328,12 @@ pub fn run(
             // Snapshot the full unfiltered list for `print_index`.
             all_commands = entry.results.clone();
 
+            // Re-render with the populated result list.  Entry::new calls
+            // pango_update() while results is still empty; calling update()
+            // here redraws into the next back-buffer with the full list so
+            // the very first committed frame is not blank.
+            entry.update();
+
             entry.flush();
 
             // Sync the surface flip-buffer index to Entry's ready buffer.
