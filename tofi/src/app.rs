@@ -330,6 +330,17 @@ pub fn run(
 
             entry.flush();
 
+            // Sync the surface flip-buffer index to Entry's ready buffer.
+            //
+            // `create_surface` commits buffer[0] (blank) internally and leaves
+            // `surface.index = 1`.  `Entry::new` renders into buffer[0] and
+            // sets `entry.index = 1`, so `entry.ready_index() = 0`.  Without
+            // this sync the next `draw()` would commit buffer[1] (still blank)
+            // and every subsequent keypress would show the previous frame.
+            if let Some(surf) = state.surface.as_mut() {
+                surf.index = entry.ready_index();
+            }
+
             libtofi_rs::wayland::surface::draw(&mut state).expect("Failed to commit entry frame");
             event_queue.flush().expect("Wayland flush failed");
             tracing::debug!("Entry initial frame committed");
