@@ -160,8 +160,8 @@ pub(crate) fn update(cr: &Context, entry: &mut Entry) {
     );
 
     // Advance past prompt.
-    let prompt_adv =
-        logical.width() as f64 / pango::SCALE as f64 + logical.x() as f64 / pango::SCALE as f64;
+    // logical comes from pixel_extents() — already in device pixels, no SCALE division.
+    let prompt_adv = (logical.width() + logical.x()) as f64;
     cr.translate(prompt_adv + entry.config.prompt_padding as f64, 0.0);
 
     // ── Input field ──────────────────────────────────────────────────────────
@@ -220,9 +220,10 @@ pub(crate) fn update(cr: &Context, entry: &mut Entry) {
     }
 
     // Enforce minimum input width (horizontal mode).
-    let min_w = entry.config.input_width as f64 * pango::SCALE as f64;
-    if (logical.width() as f64) < min_w {
-        logical.set_width(min_w as i32);
+    // input_width is in logical pixels; logical.width() from pixel_extents() is also pixels.
+    let min_w = entry.config.input_width as i32;
+    if logical.width() < min_w {
+        logical.set_width(min_w);
     }
 
     // ── Result list ──────────────────────────────────────────────────────────
@@ -259,12 +260,10 @@ pub(crate) fn update(cr: &Context, entry: &mut Entry) {
     while i < num_results_cap {
         // Translate to the next result position.
         if horizontal {
-            let adv = logical.x() as f64 / pango::SCALE as f64
-                + logical.width() as f64 / pango::SCALE as f64
-                + result_spacing;
+            let adv = (logical.x() + logical.width()) as f64 + result_spacing;
             cr.translate(adv, 0.0);
         } else {
-            let adv = logical.height() as f64 / pango::SCALE as f64 + result_spacing;
+            let adv = logical.height() as f64 + result_spacing;
             cr.translate(0.0, adv);
         }
 
@@ -293,7 +292,7 @@ pub(crate) fn update(cr: &Context, entry: &mut Entry) {
             if num_results_fixed > 0 {
                 render_text_themed(cr, &layout, str, theme, clip, &mut ink, &mut logical);
             } else if !horizontal {
-                let h_px = logical.height() as f64 / pango::SCALE as f64;
+                let h_px = logical.height() as f64;
                 if size_overflows(cr, clip, false, 0.0, h_px) {
                     entry.num_results_drawn = i;
                     cr.restore().unwrap_or_default();
@@ -305,7 +304,7 @@ pub(crate) fn update(cr: &Context, entry: &mut Entry) {
                 cr.push_group();
                 render_text_themed(cr, &layout, str, theme, clip, &mut ink, &mut logical);
                 let group = cr.pop_group().unwrap();
-                let w_px = logical.width() as f64 / pango::SCALE as f64;
+                let w_px = logical.width() as f64;
                 if size_overflows(cr, clip, true, w_px, 0.0) {
                     entry.num_results_drawn = i;
                     // Discard the group — do not paint.
@@ -680,7 +679,7 @@ fn size_overflows(
 ///
 /// Returns `Some((pre_end_byte, match_end_byte))` when `needle` is found in
 /// `haystack`, where both values are byte offsets.
-fn find_match_position(haystack: &str, needle: &str) -> Option<(usize, usize)> {
+pub(super) fn find_match_position(haystack: &str, needle: &str) -> Option<(usize, usize)> {
     if needle.is_empty() {
         return None;
     }

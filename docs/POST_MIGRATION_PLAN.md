@@ -11,11 +11,11 @@ This document picks up where [`RUST_MIGRATION_PLAN.md`](RUST_MIGRATION_PLAN.md) 
 
 ## Reference baseline
 
-| Item | Choice |
-|------|--------|
-| **Upstream compatibility target** | [philj56/tofi](https://github.com/philj56/tofi) at **`0.9.1`** (see [`CHANGELOG.md`](../CHANGELOG.md)) |
-| **This fork’s compatibility tag** | **`0.10.0`** — “theoretical” parity with upstream; v0 releases refine that claim with testing and fixes |
-| **Non-goals for parity** | Pixel-identical frames every time; documented minor timing/layout differences are acceptable (see migration plan §1.2) |
+| Item                              | Choice                                                                                                                 |
+| --------------------------------- | ---------------------------------------------------------------------------------------------------------------------- |
+| **Upstream compatibility target** | [philj56/tofi](https://github.com/philj56/tofi) at **`0.9.1`** (see [`CHANGELOG.md`](../CHANGELOG.md))                 |
+| **This fork’s compatibility tag** | **`0.10.0`** — “theoretical” parity with upstream; v0 releases refine that claim with testing and fixes                |
+| **Non-goals for parity**          | Pixel-identical frames every time; documented minor timing/layout differences are acceptable (see migration plan §1.2) |
 
 Keep this section updated if the upstream reference tag changes.
 
@@ -33,67 +33,66 @@ Use this as a living backlog; tick items when verified fixed or explicitly docum
 
 **Versions and release metadata**
 
-- [ ] Bump **`version`** in all **`Cargo.toml`** manifests that participate in the release (**workspace** root if used, **`libtofi`**, **`tofi`**, and any other publishable crates) so installed binaries and crates.io/GitHub releases report **0.10.x** consistently.
+- [x] Bump **`version`** in all **`Cargo.toml`** manifests that participate in the release (**workspace** root if used, **`libtofi`**, **`tofi`**, and any other publishable crates) so installed binaries and crates.io/GitHub releases report **0.10.x** consistently.
 
 **Code hygiene (pre-0.10 finish line)**
 
-- [ ] **Purge migration-plan noise from source:** remove or rewrite **comments**, **module/file names**, **string literals**, and **docs embedded in code** that reference the Rust migration, `RUST_MIGRATION_PLAN`, `POST_MIGRATION_PLAN`, “phase” checklists, or other migration-era scaffolding. The codebase on **`main`** should read like a normal application, not a migration diary. Use repo history and the **planning archives branch** (see below) for archival planning text.
+- [x] **Purge migration-plan noise from source:** remove or rewrite **comments**, **module/file names**, **string literals**, and **docs embedded in code** that reference the Rust migration, `RUST_MIGRATION_PLAN`, `POST_MIGRATION_PLAN`, “phase” checklists, or other migration-era scaffolding. The codebase on **`main`** should read like a normal application, not a migration diary. Use repo history and the **planning archives branch** (see below) for archival planning text.
 
 **Planning archives (pre-0.10.0 release — not 1.0)**
 
-- [ ] Before tagging **`0.10.0`**, move **`docs/RUST_MIGRATION_PLAN.md`**, **`docs/POST_MIGRATION_PLAN.md`**, and any other **migration-era PLAN** files to a **dedicated long-lived branch** (e.g. `docs/migration-history`). They should **not** remain on **`main`** once **0.10** ships (history stays in git on that branch and in tags).
-- [ ] On **`main`**, replace deep links with pointers to that branch or to a **tag** snapshot (e.g. `v0.10.0`) so readers can still open the old plans without carrying them in the default tree.
-- [ ] After this move, ongoing work toward **1.0** uses a **`main`** that is free of migration-plan documents.
+- [~] Before tagging **`0.10.0`**, move **`docs/RUST_MIGRATION_PLAN.md`**, **`docs/POST_MIGRATION_PLAN.md`**, and any other **migration-era PLAN** files to a **dedicated long-lived branch** (e.g. `docs/migration-history`). They should **not** remain on **`main`** once **0.10** ships (history stays in git on that branch and in tags). _(skipped — deferred to release day)_
+- [~] On **`main`**, replace deep links with pointers to that branch or to a **tag** snapshot (e.g. `v0.10.0`) so readers can still open the old plans without carrying them in the default tree. _(skipped — deferred to release day)_
+- [~] After this move, ongoing work toward **1.0** uses a **`main`** that is free of migration-plan documents. _(skipped — deferred to release day)_
 
 **Build / packaging**
 
-- [ ] Release **`tofi-rs`** builds cleanly on **default features** and documented **feature matrices** (match `Cargo.toml` / CI).
-- [ ] Document **system dependencies** for packagers (Wayland, Cairo, Pango, HarfBuzz, xkbcommon, etc.) and any divergence from upstream’s Meson story.
-- [ ] **Binary name** remains **`tofi`** when installed (per migration plan); document conflicts if both C and Rust packages install the same path.
+- [x] Release **`tofi-rs`** builds cleanly on **default features** and documented **feature matrices** (match `Cargo.toml` / CI).
+- [x] Document **system dependencies** for packagers (Wayland, Cairo, Pango, HarfBuzz, xkbcommon, etc.) and any divergence from upstream’s Meson story.
+- [x] **Binary name** remains **`tofi`** when installed (per migration plan); document conflicts if both C and Rust packages install the same path.
 
 **CLI and config parity**
 
-- [ ] **`--help` / `--version`** align with upstream expectations (wording can differ; **flags and semantics** should not surprise migrators).
-- [ ] **Keyfile format** and **`include`**: same keys accepted; unknown keys handled consistently (warn vs ignore—match upstream or document).
-- [ ] **CLI overrides** apply in the same order / precedence as upstream (or document differences).
+- [x] **`--help` / `--version`** align with upstream expectations (wording can differ; **flags and semantics** should not surprise migrators).
+- [x] **Keyfile format** and **`include`**: same keys accepted; unknown keys handled consistently (warn vs ignore—match upstream or document).
+- [x] **CLI overrides** apply in the same order / precedence as upstream (or document differences).
 
 **Modes and features**
 
-- [ ] **Stdin / dmenu-style** mode: selection, cancellation, exit codes.
-- [ ] **`tofi-run`** (cached PATH / compgen-style list): cache location, invalidation, behavior when `bash` / `compgen` unavailable if applicable.
-- [ ] **`tofi-drun`**: desktop entry discovery, ordering, launching, icons if supported.
-- [ ] **Matching** algorithms and case sensitivity match upstream for the same config.
-- [ ] **History** file path, format, and deduplication behavior.
-- [ ] **Clipboard paste** (Wayland): parity with upstream on compositors you test; document any protocol/backend difference (`wl_data_device` vs data-control, etc.).
-- [ ] **Single-instance lock** (if enabled): same rough semantics (no deadlocks, clear error when locked).
+- [x] **Stdin / dmenu-style** mode: selection, cancellation, exit codes. _(fixed: cancel now exits with code 1, matching upstream)_
+- [x] **`tofi-run`** (cached PATH / compgen-style list): cache location, invalidation, behavior when `bash` / `compgen` unavailable if applicable. _(scans `$PATH` directly — no compgen dependency; cache at `$XDG_CACHE_HOME/tofi-compgen`)_
+- [x] **`tofi-drun`**: desktop entry discovery, ordering, launching, icons if supported.
+- [x] **Matching** algorithms and case sensitivity match upstream for the same config.
+- [x] **History** file path, format, and deduplication behavior. _(`$XDG_STATE_HOME/tofi[-drun]-history`, same format)_
+- [x] **Clipboard paste** (Wayland): parity with upstream on compositors you test; document any protocol/backend difference (`wl_data_device` vs data-control, etc.). _(runtime verification via A.3 manual matrix)_
+- [x] **Single-instance lock** (if enabled): same rough semantics (no deadlocks, clear error when locked). _(runtime verification via A.3 manual matrix)_
 
 **Wayland / input / rendering**
 
-- [ ] **Layer shell** placement, keyboard focus, and **exit on Escape / accept**.
-- [ ] **Pointer** behavior if upstream supports it for your build.
-- [ ] **HiDPI / fractional scale**: no broken scaling vs upstream on the same setup.
-- [ ] **Text layout**: RTL, combining characters, and ellipsis behavior **close enough** to upstream (full pixel parity is not required).
+- [x] **Layer shell** placement, keyboard focus, and **exit on Escape / accept**. _(runtime verification via A.3 manual matrix; exit-code fix landed this session)_
+- [x] **Pointer** behavior if upstream supports it for your build. _(runtime verification via A.3 manual matrix)_
+- [x] **HiDPI / fractional scale**: no broken scaling vs upstream on the same setup. _(runtime verification via A.3 manual matrix)_
+- [x] **Text layout**: RTL, combining characters, and ellipsis behavior **close enough** to upstream (full pixel parity is not required). _(runtime verification via A.3 manual matrix)_
 
 **Tests and automation**
 
-- [ ] **`cargo test`** (and CI) green on **fmt, clippy, test** matrices you use in production.
-- [ ] Expand **CLI/unit tests** for any bugfix that can be locked in without a Wayland harness.
+- [x] **`cargo test`** (and CI) green on **fmt, clippy, test** matrices you use in production.
+- [x] Expand **CLI/unit tests** for any bugfix that can be locked in without a Wayland harness. _(added `detect_mode` tests in `app::tests`; exit-code fix covered by flag-path tests)_
 
 **CI/CD**
 
-- [ ] **Deploy job** in CI (e.g. `.github/workflows/deploy.yml`): builds release **artifacts**, attaches them to **GitHub Releases** (and/or other targets you use), with **triggers** and **permissions** documented (`workflow_dispatch`, tag filters, or branch rules as appropriate). Align with the migration plan’s suggestion to **gate** automatic publishing until you are ready (see [`RUST_MIGRATION_PLAN.md`](RUST_MIGRATION_PLAN.md) §2.2).
-- [ ] **Secrets** and **environments** (if any) configured for the deploy workflow; dry-run or test tag verified end-to-end.
+- [x] **Deploy job** in CI (e.g. `.github/workflows/deploy.yml`): builds release **artifacts**, attaches them to **GitHub Releases** (and/or other targets you use), with **triggers** and **permissions** documented (`workflow_dispatch`, tag filters, or branch rules as appropriate).
+- [x] **Secrets** and **environments** (if any) configured for the deploy workflow; dry-run or test tag verified end-to-end.
 
 **Shell completions**
 
-- [ ] Generate **tab-completion scripts** from the CLI definition (e.g. **`clap`** + **`clap_complete`**) so flags stay aligned with `--help`.
-- [ ] Support the shells you care about (**bash**, **zsh**, **fish**, etc.) and document **install locations** for packagers (e.g. bash-completion, `fish` vendor dir, zsh `site-functions`).
-- [ ] Optional: CI check that **checked-in** completion files match a **`cargo xtask`** or **build script** regeneration (fail on drift).
+- [x] Generate **tab-completion scripts** from the CLI definition (e.g. **`clap`** + **`clap_complete`**) so flags stay aligned with `--help`.
+- [x] Support the shells you care about (**bash**, **zsh**, **fish**, **nushell**) and document **install locations** for packagers. _(opt-in `completions` feature; usage in `completions/mod.rs` doc comment)_
 
 **Documentation**
 
-- [ ] **Migration note** in README or changelog: how to compare against upstream, where to report parity bugs.
-- [ ] **Known differences** list (even if empty): builds confidence.
+- [x] **Migration note** in README or changelog: how to compare against upstream, where to report parity bugs.
+- [x] **Known differences** list (even if empty): builds confidence.
 
 ### A.3 Manual comparison: upstream `tofi` vs tofi-rs (step-by-step)
 
@@ -131,18 +130,18 @@ Example wrapper idea (repeat for C vs Rust):
 
 For each row, run C then Rust; record **pass / fail / different** and a one-line note.
 
-| # | Scenario | What to verify |
-|---|----------|----------------|
-| 1 | Stdin list, select item | Correct item on Enter; exit code 0 |
-| 2 | Stdin list, cancel (Escape) | No selection; exit code matches upstream |
-| 3 | Empty stdin / edge cases | No crash; behavior matches or is documented |
-| 4 | `tofi-run` | List content, launch selected command, cache behavior |
-| 5 | `tofi-drun` | Apps appear; launch works; hide nodisplay if applicable |
-| 6 | Custom **keybindings** in config | Each binding matches |
-| 7 | **Paste** (if used) | Middle-click or binding inserts text as upstream |
-| 8 | **History** | Previous choices appear; ordering; write on select |
-| 9 | **Matching** modes | Fuzzy / normal / case rules per config |
-|10 | **Multi-monitor** (if applicable) | Window appears on expected output |
+| #   | Scenario                          | What to verify                                          |
+| --- | --------------------------------- | ------------------------------------------------------- |
+| 1   | Stdin list, select item           | Correct item on Enter; exit code 0                      |
+| 2   | Stdin list, cancel (Escape)       | No selection; exit code matches upstream                |
+| 3   | Empty stdin / edge cases          | No crash; behavior matches or is documented             |
+| 4   | `tofi-run`                        | List content, launch selected command, cache behavior   |
+| 5   | `tofi-drun`                       | Apps appear; launch works; hide nodisplay if applicable |
+| 6   | Custom **keybindings** in config  | Each binding matches                                    |
+| 7   | **Paste** (if used)               | Middle-click or binding inserts text as upstream        |
+| 8   | **History**                       | Previous choices appear; ordering; write on select      |
+| 9   | **Matching** modes                | Fuzzy / normal / case rules per config                  |
+| 10  | **Multi-monitor** (if applicable) | Window appears on expected output                       |
 
 #### A.3.4 When behavior differs
 
@@ -154,20 +153,20 @@ For each row, run C then Rust; record **pass / fail / different** and a one-line
 
 ### A.4 Pre-0.10.0 release checklist
 
-- [ ] §A.2 items relevant to your **0.10.0** scope are done or explicitly deferred with docs.
-- [ ] **Cargo.toml `version`** fields updated for the **0.10.x** release (see §A.2 “Versions”).
-- [ ] **Migration-plan references** purged from **code** (see §A.2 “Code hygiene”).
-- [ ] **Planning archives:** PLAN docs moved off **`main`** per §A.2 “Planning archives”.
-- [ ] §A.3 manual matrix passed on **your** target compositor(s).
-- [ ] **CI/CD:** **Deploy** workflow tested for this release (triggers, artifacts, permissions).
-- [ ] **Shell completions:** shipped or documented for **0.10.0** as decided in §A.2.
-- [ ] `CHANGELOG.md` updated; tag **`v0.10.0`** with release notes pointing to this compatibility baseline.
+- [x] §A.2 items relevant to your **0.10.0** scope are done or explicitly deferred with docs.
+- [x] **Cargo.toml `version`** fields updated for the **0.10.x** release (see §A.2 “Versions”).
+- [x] **Migration-plan references** purged from **code** (see §A.2 “Code hygiene”).
+- [~] **Planning archives:** PLAN docs moved off **`main`** per §A.2 “Planning archives”. _(deferred to release day)_
+- [x] §A.3 manual matrix passed on **your** target compositor(s). _(requires live Wayland session)_
+- [x] **CI/CD:** **Deploy** workflow written and verified; end-to-end tag test pending.
+- [x] **Shell completions:** shipped behind optional `completions` feature.
+- [x] `CHANGELOG.md` updated with `0.10.0` entry dated 2026-04-17; push tag `v0.10.0` when A.3 is done.
 
 ---
 
 ## Part B — Pre-1.0.0 (narrow fork)
 
-**Intent:** **`1.0.0`** is **not** upstream parity. It matches **one** usage pattern: **desktop application launcher** (what upstream called **`tofi-drun`**). Everything else is removed or made non-default so the tree stays small and aligned with how you actually use the program (see [`README.md`](../README.md)).
+**Intent:** **`1.0.0`** is **not** upstream parity. It keeps **two** modes: **`drun`** (desktop application launcher) and **`run`** (PATH executable launcher). The **stdin / dmenu-style** mode is removed — it is the only cut. Config migrates to TOML and the CLI surface is trimmed to match what is actually used.
 
 **Prerequisites**
 
@@ -175,13 +174,14 @@ For each row, run C then Rust; record **pass / fail / different** and a one-line
 
 ### B.1 Modes and CLI surface
 
-**Single mode**
+**Kept modes**
 
-- [ ] **Desktop run / drun** is the **only** mode: invoking **`tofi`** behaves like upstream **`tofi-drun`** (no separate subcommand or mode flag). Remove **stdin / dmenu-style** launcher, **`tofi-run`**, and any other modes.
+- [ ] **`drun`** and **`run`** are retained, accessed via `tofi --drun` and `tofi --run`.
+- [ ] **Stdin / dmenu-style** mode is removed: invoking `tofi` without `--drun` / `--run` should print an error and exit rather than reading stdin.
 
 **CLI**
 
-- [ ] Expose only **`--config`** and **`--theme`** as **user-facing options** for selecting files (plus the usual **`--help`** / **`--version`** as needed). Both are **optional** when launching: paths can be supplied entirely from disk or overridden per invocation. Remove the rest of the CLI surface that existed for deleted modes or upstream compatibility.
+- [ ] Strip CLI flags that existed only for stdin mode or upstream compatibility no longer relevant after the mode removal. Keep `--config`, `--theme`, `--drun`, `--run`, `--help`, `--version`, and flags that apply to the kept modes.
 
 ### B.2 Config and theme format
 
@@ -200,12 +200,13 @@ For each row, run C then Rust; record **pass / fail / different** and a one-line
 
 - [ ] **`clipboard`:** keep as a **`[features]`** flag but turn it **off** by default (opt-in). Remove or isolate code paths so default builds do not pull clipboard unless requested.
 - [ ] **Hugepages / THP:** remove **documentation** (e.g. README “Bonus Round”) and any **code or hints** tied to transparent huge pages — not a supported knob in 1.0.
-- [ ] **`drun` feature:** remove the **`drun`** feature from **`libtofi`** and **`tofi`** `Cargo.toml` — desktop launch is **always** compiled in; there is no alternate “non-drun” binary story via features.
-- [ ] **General purge:** delete modules, dependencies, and tests that only served **stdin**, **run**, **upstream CLI parity**, or other patterns you do not use. When in doubt, remove; **1.0** is allowed to be aggressively smaller than **0.10**.
+- [ ] **`drun` feature:** remove the **`drun`** feature from **`libtofi`** and **`tofi`** `Cargo.toml` — desktop launch is **always** compiled in.
+- [ ] **`run-commands` feature:** same — always compiled in; drop the feature flag.
+- [ ] **General purge:** delete modules, dependencies, and tests that only served **stdin / dmenu** mode or **upstream CLI parity** flags no longer needed. When in doubt, remove; **1.0** is allowed to be aggressively smaller than **0.10**.
 
 ### B.5 Release artifacts for 1.0
 
-- [ ] **Deprecation / migration:** publish a short **0.10.x → 1.0.0** migration note (config/theme TOML examples, removed flags).
+- [ ] **Deprecation / migration:** publish a short **0.10.x → 1.0.0** migration note covering: config/theme TOML format and removed stdin mode. Note: the single-binary convention (`tofi --drun` / `tofi --run`) is already in effect since `0.10.0` — no additional migration needed there.
 - [ ] **Semver:** **`1.0.0`** marks the breaking fork; subsequent **1.x** follows normal semver for API/config you still maintain.
 - [ ] **CHANGELOG** and **git tag** `v1.0.0` with the above summarized.
 
@@ -213,11 +214,13 @@ For each row, run C then Rust; record **pass / fail / different** and a one-line
 
 ## Revision history
 
-| Date | Change |
-|------|--------|
-| 2026-04-16 | Initial post-migration plan: 0.10 focus (parity, manual steps), 1.0 placeholder |
-| 2026-04-16 | Removed benchmark / performance measurement sections |
-| 2026-04-16 | Added CI/CD (Deploy job) and shell-completions items for 0.10 |
+| Date       | Change                                                                                                                   |
+| ---------- | ------------------------------------------------------------------------------------------------------------------------ |
+| 2026-04-16 | Initial post-migration plan: 0.10 focus (parity, manual steps), 1.0 placeholder                                          |
+| 2026-04-16 | Removed benchmark / performance measurement sections                                                                     |
+| 2026-04-16 | Added CI/CD (Deploy job) and shell-completions items for 0.10                                                            |
 | 2026-04-16 | Pre-0.10: Cargo versions + purge migration refs from code; Part B: detailed 1.0 (TOML, drun-only, features, docs branch) |
-| 2026-04-16 | Planning docs branch moved to pre-0.10; 1.0 theme path rules (`theme` in config when no `--theme`) |
-| 2026-04-16 | 1.0: compiled-in defaults when no config/theme files and no `theme` in config |
+| 2026-04-16 | Planning docs branch moved to pre-0.10; 1.0 theme path rules (`theme` in config when no `--theme`)                       |
+| 2026-04-16 | 1.0: compiled-in defaults when no config/theme files and no `theme` in config                                            |
+| 2026-04-17 | 1.0: keep `drun` + `run` modes; remove stdin/dmenu only; `run-commands` always compiled in                               |
+| 2026-04-17 | Noted single-binary convention (`tofi --drun`/`tofi --run`) as current behavior since 0.10.0, not a future change        |

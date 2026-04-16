@@ -3,6 +3,8 @@
 
 mod app;
 mod cli;
+#[cfg(feature = "completions")]
+mod completions;
 #[allow(dead_code)]
 mod config;
 #[cfg(feature = "history")]
@@ -21,8 +23,33 @@ fn main() {
         .init();
 
     let cli = cli::Cli::parse();
+
+    // Handle --completions before anything else: print script and exit.
+    #[cfg(feature = "completions")]
+    if let Some(shell) = cli.completions {
+        completions::generate_completions(shell);
+        return;
+    }
+
+    #[cfg(feature = "drun")]
+    let flag_drun = cli.drun;
+    #[cfg(feature = "run-commands")]
+    let flag_run = cli.run;
+
     #[allow(unused_variables)]
     let (config, _errors) = cli.into_config().expect("Failed to load config");
 
-    app::run(config);
+    let submitted = app::run(
+        config,
+        #[cfg(feature = "drun")]
+        flag_drun,
+        #[cfg(feature = "run-commands")]
+        flag_run,
+    );
+
+    // Exit code 1 on cancel (Escape / close without selection), matching
+    // upstream tofi behaviour.
+    if !submitted {
+        std::process::exit(1);
+    }
 }
