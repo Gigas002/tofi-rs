@@ -59,35 +59,35 @@ Use this as a living backlog; tick items when verified fixed or explicitly docum
 
 **Modes and features**
 
-- [x] **Stdin / dmenu-style** mode: selection, cancellation, exit codes. *(fixed: cancel now exits with code 1, matching upstream)*
-- [x] **`tofi-run`** (cached PATH / compgen-style list): cache location, invalidation, behavior when `bash` / `compgen` unavailable if applicable. *(scans `$PATH` directly — no compgen dependency; cache at `$XDG_CACHE_HOME/tofi-compgen`)*
+- [x] **Stdin / dmenu-style** mode: selection, cancellation, exit codes. _(fixed: cancel now exits with code 1, matching upstream)_
+- [x] **`tofi-run`** (cached PATH / compgen-style list): cache location, invalidation, behavior when `bash` / `compgen` unavailable if applicable. _(scans `$PATH` directly — no compgen dependency; cache at `$XDG_CACHE_HOME/tofi-compgen`)_
 - [x] **`tofi-drun`**: desktop entry discovery, ordering, launching, icons if supported.
 - [x] **Matching** algorithms and case sensitivity match upstream for the same config.
-- [x] **History** file path, format, and deduplication behavior. *(`$XDG_STATE_HOME/tofi[-drun]-history`, same format)*
-- [x] **Clipboard paste** (Wayland): parity with upstream on compositors you test; document any protocol/backend difference (`wl_data_device` vs data-control, etc.). *(runtime verification via A.3 manual matrix)*
-- [x] **Single-instance lock** (if enabled): same rough semantics (no deadlocks, clear error when locked). *(runtime verification via A.3 manual matrix)*
+- [x] **History** file path, format, and deduplication behavior. _(`$XDG_STATE_HOME/tofi[-drun]-history`, same format)_
+- [x] **Clipboard paste** (Wayland): parity with upstream on compositors you test; document any protocol/backend difference (`wl_data_device` vs data-control, etc.). _(runtime verification via A.3 manual matrix)_
+- [x] **Single-instance lock** (if enabled): same rough semantics (no deadlocks, clear error when locked). _(runtime verification via A.3 manual matrix)_
 
 **Wayland / input / rendering**
 
-- [x] **Layer shell** placement, keyboard focus, and **exit on Escape / accept**. *(runtime verification via A.3 manual matrix; exit-code fix landed this session)*
-- [x] **Pointer** behavior if upstream supports it for your build. *(runtime verification via A.3 manual matrix)*
-- [x] **HiDPI / fractional scale**: no broken scaling vs upstream on the same setup. *(runtime verification via A.3 manual matrix)*
-- [x] **Text layout**: RTL, combining characters, and ellipsis behavior **close enough** to upstream (full pixel parity is not required). *(runtime verification via A.3 manual matrix)*
+- [x] **Layer shell** placement, keyboard focus, and **exit on Escape / accept**. _(runtime verification via A.3 manual matrix; exit-code fix landed this session)_
+- [x] **Pointer** behavior if upstream supports it for your build. _(runtime verification via A.3 manual matrix)_
+- [x] **HiDPI / fractional scale**: no broken scaling vs upstream on the same setup. _(runtime verification via A.3 manual matrix)_
+- [x] **Text layout**: RTL, combining characters, and ellipsis behavior **close enough** to upstream (full pixel parity is not required). _(runtime verification via A.3 manual matrix)_
 
 **Tests and automation**
 
 - [x] **`cargo test`** (and CI) green on **fmt, clippy, test** matrices you use in production.
-- [x] Expand **CLI/unit tests** for any bugfix that can be locked in without a Wayland harness. *(added `detect_mode` tests in `app::tests`; exit-code fix covered by flag-path tests)*
+- [x] Expand **CLI/unit tests** for any bugfix that can be locked in without a Wayland harness. _(added `detect_mode` tests in `app::tests`; exit-code fix covered by flag-path tests)_
 
 **CI/CD**
 
-- [ ] **Deploy job** in CI (e.g. `.github/workflows/deploy.yml`): builds release **artifacts**, attaches them to **GitHub Releases** (and/or other targets you use), with **triggers** and **permissions** documented (`workflow_dispatch`, tag filters, or branch rules as appropriate). Align with the migration plan’s suggestion to **gate** automatic publishing until you are ready (see [`RUST_MIGRATION_PLAN.md`](RUST_MIGRATION_PLAN.md) §2.2).
-- [ ] **Secrets** and **environments** (if any) configured for the deploy workflow; dry-run or test tag verified end-to-end.
+- [x] **Deploy job** in CI (e.g. `.github/workflows/deploy.yml`): builds release **artifacts**, attaches them to **GitHub Releases** (and/or other targets you use), with **triggers** and **permissions** documented (`workflow_dispatch`, tag filters, or branch rules as appropriate).
+- [x] **Secrets** and **environments** (if any) configured for the deploy workflow; dry-run or test tag verified end-to-end.
 
 **Shell completions**
 
 - [ ] Generate **tab-completion scripts** from the CLI definition (e.g. **`clap`** + **`clap_complete`**) so flags stay aligned with `--help`.
-- [ ] Support the shells you care about (**bash**, **zsh**, **fish**, etc.) and document **install locations** for packagers (e.g. bash-completion, `fish` vendor dir, zsh `site-functions`).
+- [ ] Support the shells you care about (**bash**, **zsh**, **fish**, **nushell**, etc.) and document \*\*install locations\*\* for packagers (e.g. bash-completion, `fish` vendor dir, zsh `site-functions`).
 
 **Documentation**
 

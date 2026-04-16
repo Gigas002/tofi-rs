@@ -1,19 +1,33 @@
 name: Deploy
 
+# Fires automatically on every v* tag push.
+# Can also be triggered manually via Actions → "Run workflow" for a smoke build
+# (the GitHub Release and crates.io steps are skipped on manual runs).
 on:
+  push:
+    tags:
+      - 'v[0-9]*'
   workflow_dispatch:
+
+permissions:
+  contents: write # required to create GitHub Releases
 
 env:
   CARGO_TERM_COLOR: always
 
 jobs:
-  smoke:
+  # ── Build tofi binary and publish a GitHub Release ─────────────────────────
+  github-release:
+    name: GitHub Release
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v6
+
       - uses: dtolnay/rust-toolchain@stable
+
       - name: Build cache
         uses: Swatinem/rust-cache@v2
+
       - name: Install system dependencies
         run: |
           sudo apt-get update
@@ -24,5 +38,52 @@ jobs:
             libpango1.0-dev \
             libharfbuzz-dev \
             libxkbcommon-dev
-      - name: Build release (manual smoke)
-        run: cargo build --workspace --release
+
+      - name: Build release binary
+        run: cargo build -p tofi-rs --release
+
+      - name: Strip binary
+        run: strip target/release/tofi
+
+      - name: Package archive
+        run: |
+          VERSION="${GITHUB_REF_NAME:-dev}"
+          ARCHIVE="tofi-${VERSION}-x86_64-linux.tar.gz"
+          tar -czf "$ARCHIVE" -C target/release tofi
+          echo "ARCHIVE=$ARCHIVE" >> "$GITHUB_ENV"
+
+      # Only runs on real tag pushes; skipped for workflow_dispatch.
+      - name: Create GitHub Release
+        if: github.event_name == 'push'
+        uses: softprops/action-gh-release@v2
+        with:
+          files: ${{ env.ARCHIVE }}
+          generate_release_notes: true
+
+  # ── Publish libtofi-rs to crates.io ────────────────────────────────────────
+  # Requires the CARGO_REGISTRY_TOKEN secret — see README for setup.
+  publish-crates-io:
+    name: Publish libtofi-rs to crates.io
+    runs-on: ubuntu-latest
+    needs: github-release
+    if: github.event_name == 'push'
+    steps:
+      - uses: actions/checkout@v6
+
+      - uses: dtolnay/rust-toolchain@stable
+
+      - name: Install system dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            pkg-config \
+            libwayland-dev \
+            libcairo2-dev \
+            libpango1.0-dev \
+            libharfbuzz-dev \
+            libxkbcommon-dev
+
+      - name: Publish libtofi-rs
+        run: cargo publish -p libtofi-rs
+        env:
+          CARGO_REGISTRY_TOKEN: ${{ secrets.CARGO_REGISTRY_TOKEN }}
