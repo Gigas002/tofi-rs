@@ -458,6 +458,30 @@ pub fn run(
 
                 #[cfg(feature = "renderer")]
                 if let Some(entry) = state.entry.as_mut() {
+                    // Re-filter the result list whenever the input changes.
+                    // When input is empty, show the full unfiltered list; otherwise
+                    // run each candidate through match_words and keep matches sorted
+                    // by descending score.
+                    let algorithm = config.matching_algorithm;
+                    if entry.input.is_empty() {
+                        entry.results = all_commands.clone();
+                    } else {
+                        let query = entry.input.clone();
+                        let mut scored: Vec<(i32, &String)> = all_commands
+                            .iter()
+                            .filter_map(|s| {
+                                let score = libtofi_rs::matching::match_words(algorithm, &query, s);
+                                if score > i32::MIN {
+                                    Some((score, s))
+                                } else {
+                                    None
+                                }
+                            })
+                            .collect();
+                        scored.sort_by(|a, b| b.0.cmp(&a.0));
+                        entry.results = scored.into_iter().map(|(_, s)| s.clone()).collect();
+                    }
+
                     entry.update();
                     entry.flush();
                     libtofi_rs::wayland::surface::draw(&mut state).expect("Failed to redraw entry");
