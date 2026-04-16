@@ -21,6 +21,8 @@ libtofi-rs = { path = "../libtofi", default-features = false }
 rustix = { version = "1", features = ["event"] }
 tracing = "0.1"
 tracing-subscriber = { version = "0.3", features = ["env-filter"] }
+clap_complete = { version = "4", optional = true }
+clap_complete_nushell = { version = "4", optional = true }
 
 [dev-dependencies]
 tempfile = "3"
@@ -43,3 +45,4 @@ run-commands = []
 clipboard = ["libtofi-rs/clipboard"]
 history = []
 single-instance-lock = ["libtofi-rs/single-instance-lock"]
+completions = ["dep:clap_complete", "dep:clap_complete_nushell"]

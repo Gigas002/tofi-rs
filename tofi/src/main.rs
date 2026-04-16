@@ -3,6 +3,8 @@
 
 mod app;
 mod cli;
+#[cfg(feature = "completions")]
+mod completions;
 #[allow(dead_code)]
 mod config;
 #[cfg(feature = "history")]
@@ -21,6 +23,13 @@ fn main() {
         .init();
 
     let cli = cli::Cli::parse();
+
+    // Handle --completions before anything else: print script and exit.
+    #[cfg(feature = "completions")]
+    if let Some(shell) = cli.completions {
+        completions::generate_completions(shell);
+        return;
+    }
 
     #[cfg(feature = "drun")]
     let flag_drun = cli.drun;

@@ -86,8 +86,8 @@ Use this as a living backlog; tick items when verified fixed or explicitly docum
 
 **Shell completions**
 
-- [ ] Generate **tab-completion scripts** from the CLI definition (e.g. **`clap`** + **`clap_complete`**) so flags stay aligned with `--help`.
-- [ ] Support the shells you care about (**bash**, **zsh**, **fish**, **nushell**, etc.) and document \*\*install locations\*\* for packagers (e.g. bash-completion, `fish` vendor dir, zsh `site-functions`).
+- [x] Generate **tab-completion scripts** from the CLI definition (e.g. **`clap`** + **`clap_complete`**) so flags stay aligned with `--help`.
+- [x] Support the shells you care about (**bash**, **zsh**, **fish**, **nushell**) and document **install locations** for packagers. *(opt-in `completions` feature; usage in `completions/mod.rs` doc comment)*
 
 **Documentation**
 
