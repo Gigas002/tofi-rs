@@ -1,8 +1,14 @@
 [package]
 name = "libtofi-rs"
 version = "0.10.0"
+description = "Core library for the tofi Wayland application launcher"
 edition.workspace = true
 license.workspace = true
+authors.workspace = true
+repository.workspace = true
+homepage.workspace = true
+keywords = ["wayland", "launcher", "tofi", "layer-shell"]
+categories = ["gui"]
 
 [dependencies]
 thiserror = "2"
