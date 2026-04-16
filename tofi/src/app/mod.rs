@@ -511,3 +511,6 @@ pub fn run(
     libtofi_rs::noop();
     submitted
 }
+
+#[cfg(test)]
+mod tests;

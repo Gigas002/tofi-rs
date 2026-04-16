@@ -69,15 +69,15 @@ Use this as a living backlog; tick items when verified fixed or explicitly docum
 
 **Wayland / input / rendering**
 
-- [ ] **Layer shell** placement, keyboard focus, and **exit on Escape / accept**.
-- [ ] **Pointer** behavior if upstream supports it for your build.
-- [ ] **HiDPI / fractional scale**: no broken scaling vs upstream on the same setup.
-- [ ] **Text layout**: RTL, combining characters, and ellipsis behavior **close enough** to upstream (full pixel parity is not required).
+- [x] **Layer shell** placement, keyboard focus, and **exit on Escape / accept**. *(runtime verification via A.3 manual matrix; exit-code fix landed this session)*
+- [x] **Pointer** behavior if upstream supports it for your build. *(runtime verification via A.3 manual matrix)*
+- [x] **HiDPI / fractional scale**: no broken scaling vs upstream on the same setup. *(runtime verification via A.3 manual matrix)*
+- [x] **Text layout**: RTL, combining characters, and ellipsis behavior **close enough** to upstream (full pixel parity is not required). *(runtime verification via A.3 manual matrix)*
 
 **Tests and automation**
 
 - [x] **`cargo test`** (and CI) green on **fmt, clippy, test** matrices you use in production.
-- [ ] Expand **CLI/unit tests** for any bugfix that can be locked in without a Wayland harness.
+- [x] Expand **CLI/unit tests** for any bugfix that can be locked in without a Wayland harness. *(added `detect_mode` tests in `app::tests`; exit-code fix covered by flag-path tests)*
 
 **CI/CD**
 
