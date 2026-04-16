@@ -10,7 +10,7 @@ path = "src/main.rs"
 
 [dependencies]
 clap = { version = "4", features = ["derive"] }
-# Features mirror libtofi-rs (§4.2); `default-features = false` so this crate's `[features]` control the library.
+# Features mirror libtofi-rs; `default-features = false` so this crate's `[features]` control the library.
 libtofi-rs = { path = "../libtofi", default-features = false }
 rustix = { version = "1", features = ["event"] }
 tracing = "0.1"
@@ -19,7 +19,7 @@ tracing-subscriber = { version = "0.3", features = ["env-filter"] }
 [dev-dependencies]
 tempfile = "3"
 
-# Same feature names and defaults as libtofi-rs §4.1 — keep in sync when editing either manifest.
+# Same feature names and defaults as libtofi-rs — keep in sync when editing either manifest.
 [features]
 default = [
     "wayland",

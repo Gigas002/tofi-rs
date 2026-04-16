@@ -10,13 +10,13 @@ unicode-normalization = "0.1"
 rustix = { version = "1", features = ["fs", "mm", "pipe"] }
 walkdir = "2"
 tracing = "0.1"
-# Wayland stack — all three must resolve to the same wayland-client major (§3.1).
+# Wayland stack — all three must resolve to the same wayland-client major.
 wayland-client = { version = "0.31", optional = true }
 wayland-protocols = { version = "0.32", features = ["client", "staging"], optional = true }
 wayland-protocols-wlr = { version = "0.3", features = ["client"], optional = true }
-# XKB keyboard state — keymap parsing and modifier tracking (§3.6).
+# XKB keyboard state — keymap parsing and modifier tracking.
 xkbcommon = { version = "0.9", optional = true }
-# Renderer stack (Cairo + Pango + HarfBuzz) — §3.2, §4.1.
+# Renderer stack (Cairo + Pango + HarfBuzz).
 # All three share the same gtk-rs minor (0.22) so version resolution is consistent.
 cairo-rs = { version = "0.22", optional = true }
 pango = { version = "0.22", features = ["v1_42"], optional = true }
@@ -25,7 +25,7 @@ pangocairo = { version = "0.22", optional = true }
 [dev-dependencies]
 tempfile = "3"
 
-# §4.1 / docs/RUST_MIGRATION_PLAN.md — engine + renderer feature split.
+# Engine + renderer feature split.
 [features]
 default = [
     "wayland",
@@ -35,7 +35,7 @@ default = [
     "single-instance-lock",
 ]
 wayland = ["dep:wayland-client", "dep:wayland-protocols", "dep:wayland-protocols-wlr", "dep:xkbcommon"]
-# Drawing stack: Cairo ImageSurface + Pango text layout (§3.2, §5.1+).
+# Drawing stack: Cairo ImageSurface + Pango text layout.
 renderer = ["dep:cairo-rs", "dep:pango", "dep:pangocairo"]
 drun = []
 # Paste implementation lives under `wayland::clipboard`; enabling implies `wayland`.

@@ -33,11 +33,11 @@ Use this as a living backlog; tick items when verified fixed or explicitly docum
 
 **Versions and release metadata**
 
-- [ ] Bump **`version`** in all **`Cargo.toml`** manifests that participate in the release (**workspace** root if used, **`libtofi`**, **`tofi`**, and any other publishable crates) so installed binaries and crates.io/GitHub releases report **0.10.x** consistently.
+- [x] Bump **`version`** in all **`Cargo.toml`** manifests that participate in the release (**workspace** root if used, **`libtofi`**, **`tofi`**, and any other publishable crates) so installed binaries and crates.io/GitHub releases report **0.10.x** consistently.
 
 **Code hygiene (pre-0.10 finish line)**
 
-- [ ] **Purge migration-plan noise from source:** remove or rewrite **comments**, **module/file names**, **string literals**, and **docs embedded in code** that reference the Rust migration, `RUST_MIGRATION_PLAN`, `POST_MIGRATION_PLAN`, “phase” checklists, or other migration-era scaffolding. The codebase on **`main`** should read like a normal application, not a migration diary. Use repo history and the **planning archives branch** (see below) for archival planning text.
+- [x] **Purge migration-plan noise from source:** remove or rewrite **comments**, **module/file names**, **string literals**, and **docs embedded in code** that reference the Rust migration, `RUST_MIGRATION_PLAN`, `POST_MIGRATION_PLAN`, “phase” checklists, or other migration-era scaffolding. The codebase on **`main`** should read like a normal application, not a migration diary. Use repo history and the **planning archives branch** (see below) for archival planning text.
 
 **Planning archives (pre-0.10.0 release — not 1.0)**
 
