@@ -290,7 +290,7 @@ pub fn scan(dirs: &[PathBuf]) -> Vec<DesktopEntry> {
 
 /// Save `entries` to `path` in a null-byte–separated format.
 ///
-/// The first line is always [`CACHE_HEADER`] so that stale C-tofi caches can
+/// The first line is always `CACHE_HEADER` so that stale C-tofi caches can
 /// be detected and discarded.
 ///
 /// Record layout (after header, one per line):
@@ -323,7 +323,7 @@ pub fn save_cache(entries: &[DesktopEntry], path: &Path) -> io::Result<()> {
 /// Load entries from a cache file produced by [`save_cache`].
 ///
 /// Returns `Err(InvalidData)` when the file does not start with the expected
-/// [`CACHE_HEADER`], allowing callers to detect a stale C-tofi cache and
+/// `CACHE_HEADER`, allowing callers to detect a stale C-tofi cache and
 /// trigger a fresh scan.
 pub fn load_cache(path: &Path) -> io::Result<Vec<DesktopEntry>> {
     let file = fs::File::open(path)?;

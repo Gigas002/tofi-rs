@@ -339,7 +339,7 @@ pub struct Cli {
     #[arg(long, value_name = "PX")]
     pub selection_background_corner_radius: Option<String>,
 
-    /// [Deprecated] Use --selection-background-padding instead.
+    /// \[Deprecated\] Use --selection-background-padding instead.
     #[arg(long, value_name = "PX", hide = true)]
     pub selection_padding: Option<String>,
 
@@ -366,7 +366,7 @@ pub struct Cli {
     #[arg(long, value_name = "ALGO")]
     pub matching_algorithm: Option<String>,
 
-    /// [Deprecated] Use --matching-algorithm=fuzzy instead.
+    /// \[Deprecated\] Use --matching-algorithm=fuzzy instead.
     #[arg(long, value_name = "BOOL", hide = true)]
     pub fuzzy_match: Option<String>,
 
@@ -399,7 +399,7 @@ pub struct Cli {
     #[arg(long, value_name = "BOOL")]
     pub drun_launch: Option<String>,
 
-    /// [Deprecated] drun always prints exec now; option is ignored.
+    /// \[Deprecated\] drun always prints exec now; option is ignored.
     #[arg(long, value_name = "BOOL", hide = true)]
     pub drun_print_exec: Option<String>,
 
