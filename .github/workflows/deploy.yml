@@ -55,7 +55,7 @@ jobs:
       # Only runs on real tag pushes; skipped for workflow_dispatch.
       - name: Create GitHub Release
         if: github.event_name == 'push'
-        uses: softprops/action-gh-release@v2
+        uses: softprops/action-gh-release@v3
         with:
           files: ${{ env.ARCHIVE }}
           generate_release_notes: true
