@@ -28,7 +28,7 @@ The `clipboard` feature is opt-in; add `--features clipboard` to enable paste su
 
 See [CHANGELOG.md](CHANGELOG.md) for known differences and migration notes per release.
 
-If something behaves differently from upstream, please [open an issue](https://github.com/Gigas002/tofi/issues) with the compositor name, scale factor, and a minimal config to reproduce.
+If something behaves differently from upstream, please [open an issue](https://github.com/Gigas002/tofi-rs/issues) with the compositor name, scale factor, and a minimal config to reproduce.
 
 ## Configuration
 
