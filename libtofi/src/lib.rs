@@ -6,9 +6,7 @@
 //! | --- | --- |
 //! | `wayland` | Core Wayland client, SHM, surfaces |
 //! | `renderer` | Drawing / text layout (Cairo stack under [`crate::renderer`]) |
-//! | `drun` | `.desktop` scanning / `tofi-drun` |
 //! | `clipboard` | Paste (`wayland::clipboard`; implies **`wayland`**) |
-//! | `single-instance-lock` | Single-instance lock file |
 //!
 //! With `--no-default-features`, only [`noop`] is guaranteed; optional modules are omitted.
 
@@ -16,18 +14,16 @@ pub mod error;
 pub use error::{Error, Result};
 
 pub mod color;
+pub mod drun;
 pub mod input;
+pub mod lock;
 pub mod matching;
 pub mod scale;
 pub mod string_table;
 pub mod unicode;
 
-#[cfg(feature = "drun")]
-pub mod drun;
 #[cfg(feature = "renderer")]
 pub mod entry;
-#[cfg(feature = "single-instance-lock")]
-pub mod lock;
 #[cfg(feature = "renderer")]
 pub mod renderer;
 #[cfg(feature = "wayland")]

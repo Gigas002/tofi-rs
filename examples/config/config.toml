@@ -1,31 +1,66 @@
 [base]
 # looks for theme in ~/.config/tofi/themes/
 # this is new option
+# can also be provided via cli: tofi --theme %path%
+# must default to: none
 theme = "Sweet.toml"
-# output
-# output = ""
-# terminal
-# terminal = "alacritty"
+
+# old: output
+# can be provided via cli: tofi --output name
+# must default to: none
+output = ""
+
+# old: terminal
+# can be provided via cli: tofi --terminal %name%
+# must default to: $TERMINAL
+terminal = "alacritty"
+
+# new option
+# this is default option for `tofi` when run without `--run`/`--drun`. Instead of these two now should either run `tofi` and value from config will be picked up, or run `tofi --mode run`/`tofi --mode drun`
+# must default to: drun
+mode = "drun"
+
+[logging]
+# new option
+# can be provided via cli: tofi --log-level %level%
+# must default to: warn
+level = "warn"
 
 [matching]
-# matching-algorithm
-# algorithm = "normal"
-# require-match
+# old: matching-algorithm
+# can be provided via cli: tofi --matching-algorithm %name%
+# must default to: normal
+algorithm = "normal"
+
+# old: require-match
+# can be provided via cli: tofi --require-match true
+# must default to: true
 require = true
-# ascii-input
+
+# old: ascii-input
+# can be provided via cli: tofi --ascii-input false
+# must default to: false
 ascii = false
 
 [history]
-# history
+# old: history
+# can be provided via cli: tofi --history
+# must default to: true
 history = true
-# history-file = /path/to/histfile
+
+# old: history-file
+# can be provided via cli: tofi --history-file %path%
+# must default to the same file tofi uses now
 # path = "/path/to/histfile"
 
 # deprecated:
 # auto-accept-single -- not supported
 # include -- not supported
-# drun-launch -- default mode (others removed)
-# multi-instance -- default mode (lock only one)
+# drun-launch -- default mode
+# multi-instance -- default mode, non-lock non-supported (lock only one)
 # physical-keybindings -- default
 # print-index -- have no effect in drub so removed
 # late-keyboard-init -- not supported
+# placeholder-text = "" -- not supported
+# exclusive-zone = -1 -- not supported, doesnt seem to have any effect
+# min-input-width = 0 -- not supported (default constant is good enough)

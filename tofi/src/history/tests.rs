@@ -10,11 +10,11 @@ fn tempfile() -> (tempfile::TempDir, std::path::PathBuf) {
     (dir, path)
 }
 
-// ── History::add ─────────────────────────────────────────────────────────────
+// ── AppHistory::add ─────────────────────────────────────────────────────────────
 
 #[test]
 fn add_new_entry_gets_count_one() {
-    let mut h = History::new();
+    let mut h = AppHistory::new();
     h.add("foo");
     assert_eq!(h.entries().len(), 1);
     assert_eq!(h.entries()[0].name, "foo");
@@ -23,7 +23,7 @@ fn add_new_entry_gets_count_one() {
 
 #[test]
 fn add_same_entry_increments_count() {
-    let mut h = History::new();
+    let mut h = AppHistory::new();
     h.add("foo");
     h.add("foo");
     assert_eq!(h.entries().len(), 1);
@@ -32,7 +32,7 @@ fn add_same_entry_increments_count() {
 
 #[test]
 fn add_bubbles_up_when_count_exceeds_predecessor() {
-    let mut h = History::new();
+    let mut h = AppHistory::new();
     h.add("a"); // count 1
     h.add("b"); // count 1  → order: a, b
     h.add("b"); // count 2  → b bubbles past a → order: b, a
@@ -44,7 +44,7 @@ fn add_bubbles_up_when_count_exceeds_predecessor() {
 fn add_does_not_reorder_on_equal_counts() {
     // If a has count 2 and b reaches count 2, b should NOT jump past a
     // (bubble stops when count <= predecessor's count).
-    let mut h = History::new();
+    let mut h = AppHistory::new();
     h.add("a");
     h.add("a"); // a→2
     h.add("b");
@@ -55,7 +55,7 @@ fn add_does_not_reorder_on_equal_counts() {
 
 #[test]
 fn add_multiple_distinct_entries() {
-    let mut h = History::new();
+    let mut h = AppHistory::new();
     for name in &["c", "a", "b"] {
         h.add(name);
     }
@@ -67,7 +67,7 @@ fn add_multiple_distinct_entries() {
 
 #[test]
 fn add_bubbles_to_front() {
-    let mut h = History::new();
+    let mut h = AppHistory::new();
     h.add("x");
     h.add("x");
     h.add("x"); // x→3
@@ -87,11 +87,11 @@ fn add_bubbles_to_front() {
     assert_eq!(h.entries()[0].name, "z");
 }
 
-// ── History::remove ───────────────────────────────────────────────────────────
+// ── AppHistory::remove ───────────────────────────────────────────────────────────
 
 #[test]
 fn remove_existing_entry() {
-    let mut h = History::new();
+    let mut h = AppHistory::new();
     h.add("foo");
     h.add("bar");
     h.remove("foo");
@@ -101,7 +101,7 @@ fn remove_existing_entry() {
 
 #[test]
 fn remove_nonexistent_is_noop() {
-    let mut h = History::new();
+    let mut h = AppHistory::new();
     h.add("foo");
     h.remove("bar"); // should not panic
     assert_eq!(h.entries().len(), 1);
@@ -112,7 +112,7 @@ fn remove_nonexistent_is_noop() {
 #[test]
 fn roundtrip_single_entry() {
     let (_dir, path) = tempfile();
-    let mut h = History::new();
+    let mut h = AppHistory::new();
     h.add("bash");
     save(&h, &path).expect("save");
     let loaded = load(&path).expect("load");
@@ -122,7 +122,7 @@ fn roundtrip_single_entry() {
 #[test]
 fn roundtrip_multiple_entries_preserves_order_and_counts() {
     let (_dir, path) = tempfile();
-    let mut h = History::new();
+    let mut h = AppHistory::new();
     // Build an ordered list: foo(3), bar(2), baz(1).
     for _ in 0..3 {
         h.add("foo");
@@ -138,21 +138,21 @@ fn roundtrip_multiple_entries_preserves_order_and_counts() {
     assert_eq!(loaded.entries().len(), 3);
     assert_eq!(
         loaded.entries()[0],
-        Program {
+        AppHistoryEntry {
             name: "foo".into(),
             run_count: 3
         }
     );
     assert_eq!(
         loaded.entries()[1],
-        Program {
+        AppHistoryEntry {
             name: "bar".into(),
             run_count: 2
         }
     );
     assert_eq!(
         loaded.entries()[2],
-        Program {
+        AppHistoryEntry {
             name: "baz".into(),
             run_count: 1
         }
@@ -171,7 +171,7 @@ fn load_missing_file_returns_empty_history() {
 fn save_creates_parent_directories() {
     let dir = tempfile::tempdir().expect("tempdir");
     let path = dir.path().join("a").join("b").join("history");
-    let h = History::new(); // empty is fine
+    let h = AppHistory::new(); // empty is fine
     save(&h, &path).expect("save should create parents");
     assert!(path.exists());
 }
@@ -180,7 +180,7 @@ fn save_creates_parent_directories() {
 fn file_permissions_are_0600() {
     use std::os::unix::fs::PermissionsExt as _;
     let (_dir, path) = tempfile();
-    save(&History::new(), &path).expect("save");
+    save(&AppHistory::new(), &path).expect("save");
     let meta = std::fs::metadata(&path).expect("metadata");
     assert_eq!(meta.permissions().mode() & 0o777, 0o600);
 }

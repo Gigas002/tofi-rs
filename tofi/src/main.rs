@@ -1,19 +1,16 @@
-//! `tofi` binary — wires [`cli::Cli`] to the rest of the program.
+//! `tofi` binary — wires CLI, config, theme, and settings into the app.
 #![deny(unsafe_code)]
 
 mod app;
 mod cli;
 #[cfg(feature = "completions")]
 mod completions;
-#[allow(dead_code)]
 mod config;
 #[cfg(feature = "history")]
 #[allow(dead_code)]
 mod history;
-#[cfg(feature = "run-commands")]
-#[allow(dead_code)]
-mod run_commands;
-mod submit;
+mod settings;
+mod theme;
 
 use clap::Parser as _;
 
@@ -24,31 +21,44 @@ fn main() {
 
     let cli = cli::Cli::parse();
 
-    // Handle --completions before anything else: print script and exit.
+    let _lock =
+        libtofi_rs::lock::try_acquire_default().expect("Failed to check single-instance lock");
+    if _lock.is_none() {
+        tracing::warn!("Another tofi instance is already running");
+        std::process::exit(1);
+    }
+
     #[cfg(feature = "completions")]
     if let Some(shell) = cli.completions {
         completions::generate_completions(shell);
         return;
     }
 
-    #[cfg(feature = "drun")]
-    let flag_drun = cli.drun;
-    #[cfg(feature = "run-commands")]
-    let flag_run = cli.run;
+    // Load config file.
+    let config_path = cli.config.clone().or_else(config::default_path);
+    let config = config_path
+        .as_deref()
+        .filter(|p| p.exists())
+        .map(config::load)
+        .unwrap_or_default();
 
-    #[allow(unused_variables)]
-    let (config, _errors) = cli.into_config().expect("Failed to load config");
+    // Resolve and load theme.
+    let theme_path = cli.theme.clone().map(|p| p.to_path_buf()).or_else(|| {
+        config.base.theme.as_deref().and_then(|name| {
+            let config_dir = config_path.as_deref().and_then(|p| p.parent());
+            theme::resolve_path(name, config_dir)
+        })
+    });
+    let theme = theme_path
+        .as_deref()
+        .filter(|p| p.exists())
+        .map(theme::load)
+        .unwrap_or_default();
 
-    let submitted = app::run(
-        config,
-        #[cfg(feature = "drun")]
-        flag_drun,
-        #[cfg(feature = "run-commands")]
-        flag_run,
-    );
+    let settings = settings::build(&cli, &config, &theme);
 
-    // Exit code 1 on cancel (Escape / close without selection), matching
-    // upstream tofi behaviour.
+    let submitted = app::run(settings);
+
     if !submitted {
         std::process::exit(1);
     }

@@ -9,7 +9,7 @@
 pub mod surface;
 
 use wayland_client::{
-    Connection, Dispatch, EventQueue, QueueHandle,
+    Connection, Dispatch, QueueHandle,
     protocol::{
         wl_buffer, wl_compositor, wl_keyboard, wl_output, wl_pointer, wl_registry, wl_seat, wl_shm,
         wl_shm_pool, wl_surface,
@@ -33,6 +33,10 @@ pub use zwlr_layer_surface_v1::Anchor;
 /// Re-export of the output transform enum so callers do not need a direct
 /// `wayland-client` dependency.
 pub use wl_output::Transform as OutputTransform;
+
+/// Re-export of [`wayland_client::EventQueue`] so callers do not need a direct
+/// `wayland-client` dependency.
+pub use wayland_client::EventQueue;
 
 #[cfg(feature = "clipboard")]
 pub mod clipboard;
@@ -128,7 +132,6 @@ pub struct WaylandState {
     pub entry: Option<crate::entry::Entry>,
 
     /// Desktop entries loaded in drun mode.
-    #[cfg(feature = "drun")]
     pub drun_entries: Vec<crate::drun::DesktopEntry>,
 
     /// Set by keyboard / repeat handlers when the entry needs to be redrawn.
@@ -173,7 +176,6 @@ impl WaylandState {
             keyboard_state: crate::input::keyboard::KeyboardState::new(true),
             pointer: None,
             hide_cursor: false,
-            #[cfg(feature = "drun")]
             drun_entries: Vec::new(),
             #[cfg(feature = "renderer")]
             entry: None,

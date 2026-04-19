@@ -1,113 +1,192 @@
-# TODO:
-# min-input-width = 0
-# placeholder-text = ""
-# exclusive-zone = -1
+# theme options must NOT be provided via cli
+# colors are supported only as #ffffff format, not three rgb values or string like "white"
 
 [prompt]
-# prompt-text
+# old: prompt-text
+# must default to: none
 text = "run: "
-# prompt-padding
-# padding = 0
+
+# old: prompt-padding
+# must default to: 0
+padding = 0
 
 [results]
-# num-results
+# old: num-results
+# must default to: 0 (behave same as now - show everything that can be shown at a time)
 count = 0
-# result-spacing
+
+# old: result-spacing
+# must default to: 25
 spacing = 25
-# horizontal
+
+# old: horizontal
+# must default to: vertical
 mode = "vertical"
-# min-input-width deprecated
 
 [text]
-# prompt-text
+# old: prompt-text
+# must default to: none
 prompt = "run: "
-# TODO: consider [colors]
-# text-color
-color = "#c3c7c8"
-# prompt_color
-prompt_color = "#f9dc5c"
-# placeholder-color
-# placeholder-color = "#FFFFFFA8"
-# input-color
-input-color = "#00c1e4"
-# default-result-color
-# default_result_color = "#FFFFFF"
-# selection-color
-selection_color = "#bd93f9"
-# selection-match-color
-# selection_match_color = "#00000000"
 
+# old: text-color
+# must default to: white
+color = "#c3c7c8"
+
+# old: prompt_color
+# must default to: white
+prompt_color = "#f9dc5c"
+
+# old: placeholder-color
+# must default to: none
+placeholder-color = "#ffffffa8"
+
+# old: input-color
+# must default to: white
+input-color = "#00c1e4"
+
+# old: default-result-color
+# must default to: white
+match_color = "#ffffff"
+
+# old: selection-color
+# must default to: yellow
+selection_color = "#bd93f9"
+
+# old: selection-match-color
+# must default to: none
+selection_match_color = "#00000000"
 
 [font]
-# font
+# old: font
+# must default to: none
 name = "CaskaydiaCove Nerd Font Mono"
-# font-size
+
+# old: font-size
+# must default to: 24
 size = 24
-# font-features
-# features = ""
-# font-variations
-# variations = ""
-# hint-font
+
+# old: font-features
+# must default to: none
+features = ""
+
+# old: font-variations
+# must default to: none
+variations = ""
+
+# old: hint-font
+# must default to: true
 hint = true
 
 [window]
-# anchor
+# old: anchor
+# must default to: center
 anchor = "center"
-# margin_top
-# margin_top = 0
-# margin_bottom
-# margin_bottom = 0
-# margin_left
-# margin_left = 0
-# margin_right
-# margin_right = 0
-# width
+
+# old: margin_top
+# must default to: 0
+margin_top = 0
+# old: margin_bottom
+# must default to: 0
+margin_bottom = 0
+
+# old: margin_left
+# must default to: 0
+margin_left = 0
+
+# old: margin_right
+# must default to: 0
+margin_right = 0
+
+# old: width
+# must default to: 45%
 width = "45%"
-# height
+
+# old: height
+# must default to: 60%
 height = "60%"
-# background-color
+
+# old: background-color
+# must default to: black
 background_color = "#000000bb"
-# outline-width
+
+# old: outline-width
+# must default to: 1
 outline_width = 1
-# outline-color
+
+# old: outline-color
+# must default to: none
 outline_color = "#ed254eff"
-# border-width
+
+# old: border-width
+# must default to: 2
 border_width = 2
-# border-color
+
+# old: border-color
+# must default to: black
 border_color = "#c74dedff"
-# corner-radius
+
+# old: corner-radius
+# must default to: 50
 corner_radius = 50
-# padding-top = 35%
-# padding_rop = "35%"   
-# padding-bottom = 0
-# padding_bottom = 0
-# padding-left = 35%
-# padding_left = "35%"
-# padding-right = 0
-# padding_right = 0
-# clip-to-padding
+
+# old: padding-top
+# must default to: 35%
+padding_top = "35%"
+
+# old: padding-bottom
+# must default to: 0
+padding_bottom = 0
+
+# old: padding-left
+# must default to: 35%
+padding_left = "35%"
+
+# old: padding-right
+# must default to: 0
+padding_right = 0
+
+# old: clip-to-padding
+# must default to: true
 clip_to_padding = true
-# scale
+
+# old: scale
+# must default to: true
 scale = true
 
 [cursor]
-# hide-cursor
+# old: hide-cursor
+# must default to: false
 hide = false
 
 [input]
-# text-cursor
+# old: text-cursor
+# must default to: false
 cursor = false
-# text-cursor-style 
-# cursor_style = "bar"
-# text-cursor-color
-# cursor_color = "#ffffff"
-# text-cursor-background
-# cursor_background = "#000000"
-# text-cursor-corner-radius
-# cursor_corner_radius = 0
-# text-cursor-thickness
-# cursor_thickness = 2
-# hide-input
+
+# old: text-cursor-style
+# must default to: bar
+cursor_style = "bar"
+
+# old: text-cursor-color
+# must default to: white
+cursor_color = "#ffffff"
+
+# old: text-cursor-background
+# must default to: black
+cursor_background = "#000000"
+
+# old: text-cursor-corner-radius
+# must default to: 0
+cursor_corner_radius = 0
+
+# old: text-cursor-thickness
+# must default to: 2
+cursor_thickness = 2
+
+# old: hide-input
+# must default to: false
 hide = false
-# hidden-character
+
+# old: hidden-character
+# must default to: *
 hidden_character = "*"

@@ -185,11 +185,11 @@ For each row, run C then Rust; record **pass / fail / different** and a one-line
 
 ### B.2 Config and theme format
 
-- [ ] Migrate **application config** from the legacy keyfile format to **`config.toml`**. Drop **unused** keys so the schema matches the reduced feature set.
-- [ ] Migrate **theme** to **`toml`** in its own file. Parse the **theme document separately** from the config document — **no** `source`-ing theme content inside the config file; the theme file is always loaded and parsed on its own.
-- [ ] **Resolution order** (document in **`settings.rs`** and user-facing docs): **`--config`** / **`--theme`** override defaults; then try **default paths** on disk (e.g. XDG **`config.toml`**); **`theme`** in a loaded config points at a theme file when **`--theme`** was not passed.
-- [ ] **Compiled-in defaults:** if **no** config path was given or **no file exists** at the default config location, **and** there is **no** usable theme path from CLI, disk, or **`theme`** in config (missing key, bad path, or missing file), **do not fail startup** — apply **default config and theme values defined in code** (minimal built-in TOML-equivalent structs or literals) so the launcher always has a coherent baseline.
-- [ ] Centralize **settings resolution** (defaults, file load order, CLI overrides, fallbacks, validation) in **`settings.rs`** (or equivalent single module). Expect **large deletion** of today’s CLI resolver files, config models, and merge logic that only existed for the old surface area.
+- [x] Migrate **application config** from the legacy keyfile format to **`config.toml`** (`[base]`, `[matching]`, `[history]`). Dropped stdin/deprecated keys.
+- [x] Migrate **theme** to **`toml`** in its own file (e.g. `Sweet.toml`). Parsed separately from config via `load_theme()`; never `include`-d inline.
+- [x] **Resolution order** (in `config/load.rs`): `--config`/`--theme` override defaults; then default XDG `config.toml`; `[base].theme` resolves theme when `--theme` not passed; plain filename looks in `~/.config/tofi/themes/`.
+- [x] **Compiled-in defaults:** missing/invalid config or theme files fall back to `TofiConfig::default()` — startup never fails due to missing files.
+- [x] Centralize **settings resolution** in `config/load.rs::build_config()`. Deleted `apply.rs`, `load.rs` (old keyfile parser). CLI slimmed to `--config`, `--theme`, `--drun`, `--run`, `--output`, `--terminal`, `--algorithm`, `--history`.
 
 ### B.3 Examples and tests
 

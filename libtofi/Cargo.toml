@@ -31,19 +31,14 @@ pangocairo = { version = "0.22", optional = true }
 [dev-dependencies]
 tempfile = "3"
 
-# Engine + renderer feature split.
 [features]
 default = [
     "wayland",
     "renderer",
-    "drun",
     "clipboard",
-    "single-instance-lock",
 ]
 wayland = ["dep:wayland-client", "dep:wayland-protocols", "dep:wayland-protocols-wlr", "dep:xkbcommon"]
 # Drawing stack: Cairo ImageSurface + Pango text layout.
 renderer = ["dep:cairo-rs", "dep:pango", "dep:pangocairo"]
-drun = []
 # Paste implementation lives under `wayland::clipboard`; enabling implies `wayland`.
 clipboard = ["wayland"]
-single-instance-lock = []
