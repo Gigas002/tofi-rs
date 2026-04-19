@@ -406,10 +406,6 @@ pub fn apply_key(cfg: &mut TofiConfig, key: &str, value: &str) -> Result<(), Str
             cfg.auto_accept_single =
                 parse_bool(value).ok_or_else(|| format!("Invalid boolean value \"{value}\""))?;
         }
-        "print-index" => {
-            cfg.print_index =
-                parse_bool(value).ok_or_else(|| format!("Invalid boolean value \"{value}\""))?;
-        }
         "hide-input" => {
             cfg.hide_input =
                 parse_bool(value).ok_or_else(|| format!("Invalid boolean value \"{value}\""))?;

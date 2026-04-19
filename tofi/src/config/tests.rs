@@ -292,7 +292,6 @@ fn default_behaviour_flags() {
     assert!(!cfg.hide_input);
     assert_eq!(cfg.hidden_character, HiddenCharacter(Some('*')));
     assert!(cfg.physical_keybindings);
-    assert!(!cfg.print_index);
     assert!(!cfg.drun_launch);
     assert!(cfg.default_terminal.is_none());
     assert!(!cfg.late_keyboard_init);
@@ -867,7 +866,6 @@ fn load_examples_config_complete() {
     assert_eq!(c.matching_algorithm, MatchingAlgorithm::Fuzzy);
     assert!(!c.require_match);
     assert!(c.auto_accept_single);
-    assert!(c.print_index);
     assert!(!c.hide_input);
     assert_eq!(c.hidden_character, HiddenCharacter(Some('*')));
     assert!(!c.physical_keybindings);

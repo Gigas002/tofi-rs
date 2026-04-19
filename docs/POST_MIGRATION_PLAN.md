@@ -176,12 +176,12 @@ For each row, run C then Rust; record **pass / fail / different** and a one-line
 
 **Kept modes**
 
-- [ ] **`drun`** and **`run`** are retained, accessed via `tofi --drun` and `tofi --run`.
-- [ ] **Stdin / dmenu-style** mode is removed: invoking `tofi` without `--drun` / `--run` should print an error and exit rather than reading stdin.
+- [x] **`drun`** and **`run`** are retained, accessed via `tofi --drun` and `tofi --run`. `drun` is the default when no flag is given.
+- [x] **Stdin / dmenu-style** mode is removed: `LaunchMode::Stdin` deleted; default falls back to `Drun`.
 
 **CLI**
 
-- [ ] Strip CLI flags that existed only for stdin mode or upstream compatibility no longer relevant after the mode removal. Keep `--config`, `--theme`, `--drun`, `--run`, `--help`, `--version`, and flags that apply to the kept modes.
+- [x] Strip CLI flags that existed only for stdin mode: `--print-index` removed. Kept `--config`, `--drun`, `--run`, `--help`, `--version`, and flags that apply to the kept modes.
 
 ### B.2 Config and theme format
 

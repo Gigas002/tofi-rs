@@ -5,16 +5,14 @@ use crate::config::TofiConfig;
 
 // ── Launch mode ───────────────────────────────────────────────────────────────
 
-/// Launch mode — determined from `argv[0]` before Wayland is initialised.
+/// Launch mode — determined from CLI flags or `argv[0]` before Wayland is initialised.
 #[cfg(feature = "wayland")]
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum LaunchMode {
-    /// Default: read entries from stdin (one per line).
-    Stdin,
-    /// Invoked as `tofi-run`: list executables from `$PATH`.
+    /// List executables from `$PATH`.
     #[cfg(feature = "run-commands")]
     Run,
-    /// Invoked as `tofi-drun`: list desktop applications.
+    /// List desktop applications (default).
     #[cfg(feature = "drun")]
     Drun,
 }
@@ -23,7 +21,7 @@ pub enum LaunchMode {
 ///
 /// `flag_drun` / `flag_run` are set when `--drun` / `--run` was passed on the
 /// command line.  If neither flag is set, `argv[0]` is checked for `-drun` /
-/// `-run` (symlink convention).  Falls back to `Stdin`.
+/// `-run` (symlink convention).  Defaults to `Drun`.
 #[cfg(feature = "wayland")]
 pub fn detect_mode(
     #[cfg(feature = "drun")] flag_drun: bool,
@@ -55,32 +53,14 @@ pub fn detect_mode(
         return LaunchMode::Run;
     }
     let _ = argv0;
-    tracing::debug!("detect_mode: no match → Stdin");
-    LaunchMode::Stdin
-}
-
-// ── stdin reader ──────────────────────────────────────────────────────────────
-
-/// Read stdin line-by-line into an owned `Vec<String>`.
-///
-/// Empty lines are skipped. When `normalize` is `true` each line is
-/// NFC-normalised.
-#[cfg(feature = "wayland")]
-pub fn read_stdin(normalize: bool) -> Vec<String> {
-    use std::io::BufRead as _;
-    std::io::stdin()
-        .lock()
-        .lines()
-        .map_while(Result::ok)
-        .filter(|l| !l.is_empty())
-        .map(|l| {
-            if normalize {
-                libtofi_rs::unicode::utf8_normalize(&l)
-            } else {
-                l
-            }
-        })
-        .collect()
+    tracing::debug!("detect_mode: no match → Drun (default)");
+    #[cfg(feature = "drun")]
+    return LaunchMode::Drun;
+    #[cfg(not(feature = "drun"))]
+    {
+        #[cfg(feature = "run-commands")]
+        return LaunchMode::Run;
+    }
 }
 
 // ── run ───────────────────────────────────────────────────────────────────────
@@ -171,10 +151,9 @@ pub fn run(
         )
         .expect("Failed to create layer surface");
 
-        // Snapshot of the full unfiltered result list, used by `do_submit` for
-        // `print_index` and history lookup.  Declared outside the renderer block
-        // but only compiled in when the renderer feature is active — the event
-        // loop's submit handler is gated on the same feature.
+        // Snapshot of the full unfiltered result list for re-filtering on input changes.
+        // Declared outside the renderer block but only compiled in when the renderer
+        // feature is active — the event loop's redraw handler is gated on the same feature.
         #[cfg(feature = "renderer")]
         let all_commands: Vec<String>;
 
@@ -253,22 +232,6 @@ pub fn run(
                     .expect("Failed to create entry");
 
             entry.results = match mode {
-                // ── stdin ─────────────────────────────────────────────────────
-                LaunchMode::Stdin => {
-                    tracing::debug!("Mode: stdin");
-                    let mut items = read_stdin(!config.ascii_input);
-                    #[cfg(feature = "history")]
-                    if config.use_history {
-                        // History for stdin mode requires an explicit history file path.
-                        if let Some(ref hf) = config.history_file
-                            && let Ok(hist) = crate::history::load(std::path::Path::new(hf))
-                        {
-                            crate::submit::sort_by_history(&mut items, &hist);
-                        }
-                    }
-                    items
-                }
-
                 // ── run ───────────────────────────────────────────────────────
                 #[cfg(feature = "run-commands")]
                 LaunchMode::Run => {
@@ -332,7 +295,7 @@ pub fn run(
                 }
             };
 
-            // Snapshot the full unfiltered list for `print_index`.
+            // Snapshot the full unfiltered list for redraw filtering.
             all_commands = entry.results.clone();
 
             // Re-render with the populated result list.  Entry::new calls
@@ -448,7 +411,7 @@ pub fn run(
                 state.submit = false;
                 #[cfg(feature = "renderer")]
                 {
-                    let accepted = crate::submit::do_submit(&state, &config, mode, &all_commands);
+                    let accepted = crate::submit::do_submit(&state, &config, mode);
                     tracing::debug!("Event loop: do_submit returned {accepted}");
                     if accepted {
                         submitted = true;

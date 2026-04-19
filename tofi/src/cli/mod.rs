@@ -378,10 +378,6 @@ pub struct Cli {
     #[arg(long, value_name = "BOOL")]
     pub auto_accept_single: Option<String>,
 
-    /// Print 1-based index instead of the selected entry (true/false).
-    #[arg(long, value_name = "BOOL")]
-    pub print_index: Option<String>,
-
     /// Hide typed input (true/false).
     #[arg(long, value_name = "BOOL")]
     pub hide_input: Option<String>,
@@ -572,7 +568,6 @@ impl Cli {
         apply!(self.fuzzy_match, "fuzzy-match");
         apply!(self.require_match, "require-match");
         apply!(self.auto_accept_single, "auto-accept-single");
-        apply!(self.print_index, "print-index");
         apply!(self.hide_input, "hide-input");
         apply!(self.hidden_character, "hidden-character");
         apply!(self.physical_keybindings, "physical-keybindings");

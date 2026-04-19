@@ -19,9 +19,9 @@ fn detect_mode_run_flag_wins() {
 
 #[test]
 #[cfg(all(feature = "wayland", feature = "drun", feature = "run-commands"))]
-fn detect_mode_no_flags_falls_back_to_stdin() {
-    // Test-runner argv[0] will not contain "-drun" or "-run".
-    assert_eq!(detect_mode(false, false), LaunchMode::Stdin);
+fn detect_mode_no_flags_falls_back_to_drun() {
+    // Test-runner argv[0] will not contain "-drun" or "-run"; default is Drun.
+    assert_eq!(detect_mode(false, false), LaunchMode::Drun);
 }
 
 #[test]

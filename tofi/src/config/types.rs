@@ -248,8 +248,6 @@ pub struct TofiConfig {
     /// Use physical key positions for shortcuts regardless of layout.
     /// Default: `true`.
     pub physical_keybindings: bool,
-    /// Print 1-based index instead of the selected entry. Default: `false`.
-    pub print_index: bool,
     /// In drun mode: launch the app directly instead of printing the command.
     /// Default: `false`.
     pub drun_launch: bool,

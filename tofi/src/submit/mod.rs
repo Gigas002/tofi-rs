@@ -14,7 +14,6 @@ pub fn do_submit(
     state: &libtofi_rs::wayland::WaylandState,
     config: &config::TofiConfig,
     mode: crate::app::LaunchMode,
-    all_commands: &[String],
 ) -> bool {
     let Some(entry) = state.entry.as_ref() else {
         return false;
@@ -29,7 +28,7 @@ pub fn do_submit(
         if config.require_match {
             return false;
         }
-        // Stdin/run mode without require_match: echo back raw input.
+        // Run mode without require_match: echo back raw input.
         println!("{}", entry.input);
         return true;
     }
@@ -51,24 +50,10 @@ pub fn do_submit(
             drun_print(app, config.default_terminal.as_deref());
         }
     } else {
-        if matches!(mode, crate::app::LaunchMode::Stdin) && config.print_index {
-            if let Some(idx) = all_commands.iter().position(|s| s == result) {
-                println!("{}", idx + 1);
-            }
-        } else {
-            println!("{result}");
-        }
+        println!("{result}");
     }
     #[cfg(not(feature = "drun"))]
-    {
-        if matches!(mode, crate::app::LaunchMode::Stdin) && config.print_index {
-            if let Some(idx) = all_commands.iter().position(|s| s == result) {
-                println!("{}", idx + 1);
-            }
-        } else {
-            println!("{result}");
-        }
-    }
+    println!("{result}");
 
     // ── History ───────────────────────────────────────────────────────────────
     #[cfg(feature = "history")]

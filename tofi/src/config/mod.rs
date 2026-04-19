@@ -130,7 +130,6 @@ impl Default for types::TofiConfig {
             hide_input: false,
             hidden_character: HiddenCharacter::default(),
             physical_keybindings: true,
-            print_index: false,
             drun_launch: false,
             default_terminal: None,
             late_keyboard_init: false,
