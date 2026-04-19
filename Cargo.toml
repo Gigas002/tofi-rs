@@ -6,5 +6,5 @@ resolver = "3"
 edition = "2024"
 license = "MIT"
 authors = ["Gigas002 <gigas002@pm.me>"]
-repository = "https://github.com/Gigas002/tofi"
-homepage = "https://github.com/Gigas002/tofi"
+repository = "https://github.com/Gigas002/tofi-rs"
+homepage = "https://github.com/Gigas002/tofi-rs"
