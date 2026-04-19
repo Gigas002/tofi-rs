@@ -1,0 +1,29 @@
+# Maximal config — every parsed config option is set explicitly.
+# Use this as a complete reference for all supported config keys.
+
+[base]
+# Theme file: plain name looks in ~/.config/tofi/themes/
+theme = "theme.toml"
+
+# Wayland output name (e.g. "HDMI-A-1", "eDP-1"); empty = compositor default.
+output = "eDP-1"
+
+# Terminal emulator for desktop entries that require a terminal.
+terminal = "foot"
+
+[matching]
+# Matching algorithm: "normal" (substring), "fuzzy", or "prefix".
+algorithm = "fuzzy"
+
+# Require a result match before accepting input; false = print raw input.
+require = false
+
+# Restrict input to printable ASCII characters only.
+ascii = true
+
+[history]
+# Sort results by selection frequency.
+history = false
+
+# History file path; omit to use the default XDG cache location.
+path = "/home/user/.cache/tofi/history"

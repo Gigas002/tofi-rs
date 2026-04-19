@@ -6,18 +6,18 @@ use super::*;
 
 #[test]
 fn resolve_absolute_unchanged() {
-    let result = resolve_path("/etc/tofi/themes/Sweet.toml", None);
+    let result = resolve_path("/etc/tofi/themes/theme.toml", None);
     assert_eq!(
         result,
-        Some(std::path::PathBuf::from("/etc/tofi/themes/Sweet.toml"))
+        Some(std::path::PathBuf::from("/etc/tofi/themes/theme.toml"))
     );
 }
 
 #[test]
 fn resolve_relative_with_slash_uses_config_dir() {
     let dir = std::path::Path::new("/home/user/.config/tofi");
-    let result = resolve_path("themes/Sweet.toml", Some(dir));
-    assert_eq!(result, Some(dir.join("themes/Sweet.toml")));
+    let result = resolve_path("themes/theme.toml", Some(dir));
+    assert_eq!(result, Some(dir.join("themes/theme.toml")));
 }
 
 // ---------------------------------------------------------------------------
@@ -104,7 +104,7 @@ padding_bottom = 0
 }
 
 // ---------------------------------------------------------------------------
-// Example Sweet.toml
+// Example themes
 // ---------------------------------------------------------------------------
 
 fn examples_dir() -> std::path::PathBuf {
@@ -115,8 +115,8 @@ fn examples_dir() -> std::path::PathBuf {
 }
 
 #[test]
-fn load_example_sweet_toml_parses() {
-    let path = examples_dir().join("config/Sweet.toml");
+fn load_example_theme_parses() {
+    let path = examples_dir().join("theme/theme.toml");
     if !path.exists() {
         return;
     }
@@ -137,4 +137,63 @@ fn load_example_sweet_toml_parses() {
     );
     assert_eq!(theme.window.corner_radius, Some(50));
     assert_eq!(theme.text.input_color.as_deref(), Some("#00c1e4"));
+}
+
+#[test]
+fn load_minimal_theme_has_all_none() {
+    let path = examples_dir().join("theme/minimal.toml");
+    if !path.exists() {
+        return;
+    }
+    let theme = load(&path);
+
+    assert!(theme.prompt.text.is_none());
+    assert!(theme.prompt.padding.is_none());
+    assert!(theme.results.count.is_none());
+    assert!(theme.results.spacing.is_none());
+    assert!(theme.results.mode.is_none());
+    assert!(theme.font.name.is_none());
+    assert!(theme.font.size.is_none());
+    assert!(theme.window.width.is_none());
+    assert!(theme.window.height.is_none());
+    assert!(theme.window.corner_radius.is_none());
+    assert!(theme.text.color.is_none());
+    assert!(theme.text.selection_color.is_none());
+    assert!(theme.cursor.hide.is_none());
+    assert!(theme.input.cursor.is_none());
+}
+
+#[test]
+fn load_maximal_theme_sets_all_fields() {
+    let path = examples_dir().join("theme/maximal.toml");
+    if !path.exists() {
+        return;
+    }
+    let theme = load(&path);
+
+    assert_eq!(theme.prompt.text.as_deref(), Some("> "));
+    assert_eq!(theme.prompt.padding, Some(4));
+    assert_eq!(theme.results.count, Some(8));
+    assert_eq!(theme.results.spacing, Some(6));
+    assert_eq!(theme.results.mode.as_deref(), Some("horizontal"));
+    assert_eq!(theme.font.name.as_deref(), Some("Monospace"));
+    assert_eq!(theme.font.size, Some(16));
+    assert_eq!(theme.font.hint, Some(true));
+    assert_eq!(theme.window.anchor.as_deref(), Some("top"));
+    assert_eq!(theme.window.margin_top, Some(10));
+    assert_eq!(
+        dim_to_unit(theme.window.width.as_ref().unwrap()),
+        UnitValue::percent(80)
+    );
+    assert_eq!(
+        dim_to_unit(theme.window.height.as_ref().unwrap()),
+        UnitValue::percent(5)
+    );
+    assert_eq!(theme.window.corner_radius, Some(4));
+    assert_eq!(theme.window.border_width, Some(1));
+    assert_eq!(theme.window.clip_to_padding, Some(false));
+    assert_eq!(theme.cursor.hide, Some(true));
+    assert_eq!(theme.input.cursor, Some(true));
+    assert_eq!(theme.input.cursor_style.as_deref(), Some("block"));
+    assert_eq!(theme.input.cursor_corner_radius, Some(2));
 }

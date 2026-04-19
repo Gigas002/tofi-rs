@@ -1,66 +1,41 @@
 [base]
-# looks for theme in ~/.config/tofi/themes/
-# this is new option
-# can also be provided via cli: tofi --theme %path%
-# must default to: none
-theme = "Sweet.toml"
+# Theme file to load. A plain filename is looked up in ~/.config/tofi/themes/;
+# a path that contains "/" is resolved relative to this config file's directory.
+# Can also be provided via CLI: tofi --theme <path>
+theme = "theme.toml"
 
-# old: output
-# can be provided via cli: tofi --output name
-# must default to: none
+# Wayland output name to display tofi on (e.g. "HDMI-A-1", "eDP-1").
+# Leave empty to use the compositor's default output.
+# Can be provided via CLI: tofi --output <name>
 output = ""
 
-# old: terminal
-# can be provided via cli: tofi --terminal %name%
-# must default to: $TERMINAL
+# Terminal emulator launched when a desktop entry has Terminal=true in drun mode.
+# Can be provided via CLI: tofi --terminal <name>
 terminal = "alacritty"
 
-# new option
-# this is default option for `tofi` when run without `--run`/`--drun`. Instead of these two now should either run `tofi` and value from config will be picked up, or run `tofi --mode run`/`tofi --mode drun`
-# must default to: drun
-mode = "drun"
-
-[logging]
-# new option
-# can be provided via cli: tofi --log-level %level%
-# must default to: warn
-level = "warn"
-
 [matching]
-# old: matching-algorithm
-# can be provided via cli: tofi --matching-algorithm %name%
-# must default to: normal
+# Algorithm used to filter and score results as you type.
+# "normal" — substring match, scored by position
+# "fuzzy"  — non-contiguous character match
+# "prefix" — only match entries that start with the query
+# Can be provided via CLI: tofi --algorithm <name>
 algorithm = "normal"
 
-# old: require-match
-# can be provided via cli: tofi --require-match true
-# must default to: true
+# When true, pressing Enter with no matching result does nothing.
+# When false, the raw typed text is printed (run mode) or ignored (drun mode).
+# Can be provided via CLI: tofi --require-match <bool>
 require = true
 
-# old: ascii-input
-# can be provided via cli: tofi --ascii-input false
-# must default to: false
+# Restrict input to printable ASCII characters only.
+# Can be provided via CLI: tofi --ascii-input <bool>
 ascii = false
 
 [history]
-# old: history
-# can be provided via cli: tofi --history
-# must default to: true
+# Remember how often each entry was selected and sort by frequency.
+# Can be provided via CLI: tofi --history <bool>
 history = true
 
-# old: history-file
-# can be provided via cli: tofi --history-file %path%
-# must default to the same file tofi uses now
+# Custom path for the history file.
+# Defaults to the standard XDG cache location when unset.
+# Can be provided via CLI: tofi --history-file <path>
 # path = "/path/to/histfile"
-
-# deprecated:
-# auto-accept-single -- not supported
-# include -- not supported
-# drun-launch -- default mode
-# multi-instance -- default mode, non-lock non-supported (lock only one)
-# physical-keybindings -- default
-# print-index -- have no effect in drub so removed
-# late-keyboard-init -- not supported
-# placeholder-text = "" -- not supported
-# exclusive-zone = -1 -- not supported, doesnt seem to have any effect
-# min-input-width = 0 -- not supported (default constant is good enough)

@@ -1,4 +1,4 @@
-//! Visual types and theme loading from a theme TOML file (e.g. `Sweet.toml`).
+//! Visual types and theme loading from a theme TOML file.
 //!
 //! All theme fields are `Option<T>` — unset means "use default".
 //! Final resolution with defaults happens in [`crate::settings`].

@@ -147,7 +147,7 @@ fn examples_dir() -> std::path::PathBuf {
 fn build_from_example_files() {
     use clap::Parser as _;
     let config_path = examples_dir().join("config/config.toml");
-    let theme_path = examples_dir().join("config/Sweet.toml");
+    let theme_path = examples_dir().join("theme/theme.toml");
     if !config_path.exists() || !theme_path.exists() {
         return;
     }
@@ -164,4 +164,68 @@ fn build_from_example_files() {
     assert_eq!(s.height, UnitValue::percent(60));
     assert_eq!(s.font, "CaskaydiaCove Nerd Font Mono");
     assert_eq!(s.result_spacing, 25);
+}
+
+#[test]
+fn build_from_minimal_files_uses_defaults() {
+    use clap::Parser as _;
+    let config_path = examples_dir().join("config/minimal.toml");
+    let theme_path = examples_dir().join("theme/minimal.toml");
+    if !config_path.exists() || !theme_path.exists() {
+        return;
+    }
+
+    let config = crate::config::load(&config_path);
+    let theme = crate::theme::load(&theme_path);
+    let cli = Cli::try_parse_from(["tofi"]).unwrap();
+    let s = build(&cli, &config, &theme);
+
+    assert_eq!(s.algorithm, MatchingAlgorithm::Normal);
+    assert!(s.require_match);
+    assert!(!s.ascii_input);
+    assert!(s.use_history);
+    assert!(s.history_file.is_none());
+    assert!(s.target_output.is_empty());
+    assert!(s.default_terminal.is_none());
+    assert_eq!(s.width, UnitValue::pixels(1280));
+    assert_eq!(s.height, UnitValue::pixels(720));
+    assert_eq!(s.font, "Sans");
+    assert_eq!(s.font_size, 24);
+    assert!(!s.horizontal);
+    assert_eq!(s.num_results, 0);
+    assert_eq!(s.result_spacing, 0);
+}
+
+#[test]
+fn build_from_maximal_files_sets_all_options() {
+    use clap::Parser as _;
+    let config_path = examples_dir().join("config/maximal.toml");
+    let theme_path = examples_dir().join("theme/maximal.toml");
+    if !config_path.exists() || !theme_path.exists() {
+        return;
+    }
+
+    let config = crate::config::load(&config_path);
+    let theme = crate::theme::load(&theme_path);
+    let cli = Cli::try_parse_from(["tofi"]).unwrap();
+    let s = build(&cli, &config, &theme);
+
+    // behavioral — from maximal config
+    assert_eq!(s.algorithm, MatchingAlgorithm::Fuzzy);
+    assert!(!s.require_match);
+    assert!(s.ascii_input);
+    assert!(!s.use_history);
+    assert_eq!(s.target_output, "eDP-1");
+    assert_eq!(s.default_terminal.as_deref(), Some("foot"));
+
+    // visual — from maximal theme
+    assert_eq!(s.font, "Monospace");
+    assert_eq!(s.font_size, 16);
+    assert_eq!(s.width, UnitValue::percent(80));
+    assert_eq!(s.height, UnitValue::percent(5));
+    assert_eq!(s.num_results, 8);
+    assert_eq!(s.result_spacing, 6);
+    assert!(s.horizontal);
+    assert!(s.hide_cursor);
+    assert!(s.cursor.show);
 }
