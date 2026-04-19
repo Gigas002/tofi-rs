@@ -15,11 +15,32 @@ mod theme;
 use clap::Parser as _;
 
 fn main() {
-    tracing_subscriber::fmt()
-        .with_env_filter(tracing_subscriber::EnvFilter::from_default_env())
-        .init();
-
     let cli = cli::Cli::parse();
+
+    // Load config early so [logging].level is available before subscriber init.
+    let config_path = cli.config.clone().or_else(config::default_path);
+    let config = config_path
+        .as_deref()
+        .filter(|p| p.exists())
+        .map(config::load)
+        .unwrap_or_default();
+
+    #[cfg(feature = "logging")]
+    {
+        let level = cli
+            .log_level
+            .as_deref()
+            .or(config.logging.level.as_deref())
+            .unwrap_or("warn");
+        tracing_subscriber::fmt()
+            .with_env_filter(
+                tracing_subscriber::EnvFilter::try_from_default_env()
+                    .unwrap_or_else(|_| tracing_subscriber::EnvFilter::new(level)),
+            )
+            .init();
+    }
+
+    tracing::debug!("tofi starting");
 
     let _lock =
         libtofi_rs::lock::try_acquire_default().expect("Failed to check single-instance lock");
@@ -34,13 +55,10 @@ fn main() {
         return;
     }
 
-    // Load config file.
-    let config_path = cli.config.clone().or_else(config::default_path);
-    let config = config_path
-        .as_deref()
-        .filter(|p| p.exists())
-        .map(config::load)
-        .unwrap_or_default();
+    tracing::debug!(
+        path = ?config_path,
+        "config loaded",
+    );
 
     // Resolve and load theme.
     let theme_path = cli.theme.clone().map(|p| p.to_path_buf()).or_else(|| {
@@ -55,7 +73,19 @@ fn main() {
         .map(theme::load)
         .unwrap_or_default();
 
+    tracing::debug!(
+        path = ?theme_path,
+        "theme loaded",
+    );
+
     let settings = settings::build(&cli, &config, &theme);
+
+    tracing::info!(
+        mode = ?settings.mode,
+        output = %settings.target_output,
+        algorithm = ?settings.algorithm,
+        "settings resolved",
+    );
 
     let submitted = app::run(settings);
 

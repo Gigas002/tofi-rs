@@ -22,7 +22,7 @@ rustix = { version = "1", features = ["event"] }
 serde = { version = "1", features = ["derive"] }
 toml = { version = "1.1" }
 tracing = "0.1"
-tracing-subscriber = { version = "0.3", features = ["env-filter"] }
+tracing-subscriber = { version = "0.3", features = ["env-filter"], optional = true }
 clap_complete = { version = "4", optional = true }
 clap_complete_nushell = { version = "4", optional = true }
 
@@ -34,9 +34,11 @@ default = [
     "wayland",
     "renderer",
     "history",
+    "logging",
 ]
 wayland = ["libtofi-rs/wayland"]
 renderer = ["libtofi-rs/renderer"]
 clipboard = ["libtofi-rs/clipboard"]
 history = []
+logging = ["dep:tracing-subscriber", "libtofi-rs/logging"]
 completions = ["dep:clap_complete", "dep:clap_complete_nushell"]

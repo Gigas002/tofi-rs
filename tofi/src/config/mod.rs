@@ -17,6 +17,9 @@ pub struct Config {
     pub matching: Matching,
     #[serde(default)]
     pub history: History,
+    #[serde(default)]
+    #[cfg_attr(not(feature = "logging"), allow(dead_code))]
+    pub logging: Logging,
 }
 
 #[derive(Debug, Default, Deserialize)]
@@ -37,6 +40,12 @@ pub struct Matching {
 pub struct History {
     pub history: Option<bool>,
     pub path: Option<String>,
+}
+
+#[derive(Debug, Default, Deserialize)]
+#[cfg_attr(not(feature = "logging"), allow(dead_code))]
+pub struct Logging {
+    pub level: Option<String>,
 }
 
 // ── Loading ───────────────────────────────────────────────────────────────────

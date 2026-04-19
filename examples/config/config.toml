@@ -39,3 +39,8 @@ history = true
 # Defaults to the standard XDG cache location when unset.
 # Can be provided via CLI: tofi --history-file <path>
 # path = "/path/to/histfile"
+
+[logging]
+# Log level for the application.
+# Can be provided via CLI: tofi --log-level <level>
+level = "warn"

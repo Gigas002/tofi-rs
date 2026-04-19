@@ -35,9 +35,12 @@ tempfile = "3"
 default = [
     "wayland",
     "renderer",
+    "logging",
 ]
 wayland = ["dep:wayland-client", "dep:wayland-protocols", "dep:wayland-protocols-wlr", "dep:xkbcommon"]
 # Drawing stack: Cairo ImageSurface + Pango text layout.
 renderer = ["dep:cairo-rs", "dep:pango", "dep:pangocairo"]
 # Paste implementation lives under `wayland::clipboard`; enabling implies `wayland`.
 clipboard = ["wayland"]
+# Tracing instrumentation — zero-cost when disabled (no subscriber is registered).
+logging = []

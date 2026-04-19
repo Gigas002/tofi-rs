@@ -59,6 +59,11 @@ pub struct Cli {
         require_equals = false
     )]
     pub history: Option<bool>,
+
+    /// Log level: error, warn, info, debug, trace. Overrides `[logging].level` in config.
+    #[cfg(feature = "logging")]
+    #[arg(long, value_name = "LEVEL")]
+    pub log_level: Option<String>,
 }
 
 #[cfg(test)]

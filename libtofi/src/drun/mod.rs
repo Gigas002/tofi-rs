@@ -250,11 +250,13 @@ pub fn application_dirs() -> Vec<PathBuf> {
 /// Enforces uniqueness: the first (highest-precedence) file with a given ID
 /// wins, matching the Desktop Entry Specification.
 pub fn scan(dirs: &[PathBuf]) -> Vec<DesktopEntry> {
+    tracing::debug!(dirs = dirs.len(), "scanning application directories");
     // id → entry; insertion order maintained via a vec for sorting.
     let mut seen: HashMap<String, ()> = HashMap::new();
     let mut entries: Vec<DesktopEntry> = Vec::new();
 
     for dir in dirs {
+        tracing::trace!(dir = %dir.display(), "scanning directory");
         let prefix_len = dir.as_os_str().len() + 1; // +1 for separator
         for result in WalkDir::new(dir).follow_links(true).into_iter().flatten() {
             let path = result.path();
@@ -270,17 +272,22 @@ pub fn scan(dirs: &[PathBuf]) -> Vec<DesktopEntry> {
             let id = full[prefix_len..].replace('/', "-");
 
             if seen.contains_key(&id) {
+                tracing::trace!(id, "skipping duplicate desktop entry");
                 continue;
             }
             seen.insert(id.clone(), ());
 
             if let Some(entry) = parse_entry(&id, path) {
+                tracing::trace!(id = entry.id, name = entry.name, "parsed desktop entry");
                 entries.push(entry);
+            } else {
+                tracing::trace!(id, path = %path.display(), "desktop entry skipped (hidden/filtered)");
             }
         }
     }
 
     entries.sort_by(|a, b| a.name.cmp(&b.name));
+    tracing::debug!(count = entries.len(), "scan complete");
     entries
 }
 
@@ -317,7 +324,9 @@ pub fn save_cache(entries: &[DesktopEntry], path: &Path) -> io::Result<()> {
             e.terminal as u8,
         )?;
     }
-    w.flush()
+    w.flush()?;
+    tracing::debug!(count = entries.len(), path = %path.display(), "drun cache saved");
+    Ok(())
 }
 
 /// Load entries from a cache file produced by [`save_cache`].
@@ -341,6 +350,7 @@ pub fn load_cache(path: &Path) -> io::Result<Vec<DesktopEntry>> {
         let line = line?;
         let fields: Vec<&str> = line.splitn(7, '\0').collect();
         if fields.len() < 7 {
+            tracing::warn!("drun cache: malformed record (expected 7 fields), skipping");
             continue;
         }
         entries.push(DesktopEntry {
@@ -353,6 +363,7 @@ pub fn load_cache(path: &Path) -> io::Result<Vec<DesktopEntry>> {
             terminal: fields[6] == "1",
         });
     }
+    tracing::debug!(count = entries.len(), path = %path.display(), "drun cache loaded");
     Ok(entries)
 }
 

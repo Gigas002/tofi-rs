@@ -22,8 +22,10 @@ pub fn run(settings: Settings) -> bool {
 
 #[cfg(feature = "wayland")]
 fn run_inner(settings: Settings) -> bool {
+    tracing::debug!("connecting to Wayland");
     let (mut state, mut event_queue) =
         libtofi_rs::wayland::connect().expect("Failed to initialize Wayland");
+    tracing::debug!("Wayland connected");
 
     let mode = settings.mode;
     state.physical_keybindings = true;
@@ -32,7 +34,13 @@ fn run_inner(settings: Settings) -> bool {
     state.keyboard_state.physical_keybindings = true;
 
     let (out_w, out_h) = output_size(&state.outputs);
+    tracing::debug!(width = out_w, height = out_h, "output size");
     let surface_cfg = make_surface_config(&settings, out_w, out_h);
+    tracing::debug!(
+        width = surface_cfg.width,
+        height = surface_cfg.height,
+        "creating layer surface",
+    );
 
     libtofi_rs::wayland::surface::create_surface(
         &mut state,
@@ -87,11 +95,13 @@ fn event_loop(
         handle_key_repeat(state);
 
         if state.closed {
+            tracing::debug!("user cancelled");
             return false;
         }
 
         if state.submit {
             state.submit = false;
+            tracing::debug!("user submitted");
             if let Some(result) = on_submit(state, settings, mode) {
                 return result;
             }
@@ -263,6 +273,7 @@ fn init_entry(
 
     entry.results = load_mode_entries(mode, settings, state);
     let all_entries = entry.results.clone();
+    tracing::debug!(count = all_entries.len(), "entries loaded");
     entry.update();
     entry.flush();
 
@@ -272,6 +283,7 @@ fn init_entry(
     libtofi_rs::wayland::surface::draw(state).expect("Failed to commit entry frame");
     event_queue.flush().expect("Wayland flush failed");
     state.entry = Some(entry);
+    tracing::debug!("entry widget initialized");
 
     all_entries
 }

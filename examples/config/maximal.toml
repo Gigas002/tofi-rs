@@ -27,3 +27,8 @@ history = false
 
 # History file path; omit to use the default XDG cache location.
 path = "/home/user/.cache/tofi/history"
+
+[logging]
+# Log level: error, warn, info, debug, trace.
+# Can be provided via CLI: tofi --log-level <level>
+level = "warn"
