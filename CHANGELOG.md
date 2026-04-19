@@ -105,8 +105,8 @@ These options live in the theme file referenced by `[base].theme`.
 
 | Old key          | New section | New key   | Old default | New default  |
 | ---------------- | ----------- | --------- | ----------- | ------------ | ---------------------------------------------------------- |
-| `num-results`    | `[results]` | `count`   | `0`         | `0`          |
-| `result-spacing` | `[results]` | `spacing` | `0`         | `0`          |
+| `num-results`    | `[results]` | `count`   | `0`         | `0`          |                                                            |
+| `result-spacing` | `[results]` | `spacing` | `0`         | `0`          |                                                            |
 | `horizontal`     | `[results]` | `mode`    | `false`     | `"vertical"` | set `mode = "horizontal"` to replicate `horizontal = true` |
 
 **Cursor (system pointer)**
