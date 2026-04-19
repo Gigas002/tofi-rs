@@ -1,0 +1,31 @@
+[base]
+# looks for theme in ~/.config/tofi/themes/
+# this is new option
+theme = "Sweet.toml"
+# output
+# output = ""
+# terminal
+# terminal = "alacritty"
+
+[matching]
+# matching-algorithm
+# algorithm = "normal"
+# require-match
+require = true
+# ascii-input
+ascii = false
+
+[history]
+# history
+history = true
+# history-file = /path/to/histfile
+# path = "/path/to/histfile"
+
+# deprecated:
+# auto-accept-single -- not supported
+# include -- not supported
+# drun-launch -- default mode (others removed)
+# multi-instance -- default mode (lock only one)
+# physical-keybindings -- default
+# print-index -- have no effect in drub so removed
+# late-keyboard-init -- not supported
