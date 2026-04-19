@@ -1,4 +1,4 @@
-//! Single-instance lock (feature **`single-instance-lock`**).
+//! Single-instance lock.
 #![deny(unsafe_code)]
 //!
 //! Calls `flock(2)` with `LOCK_EX | LOCK_NB` on a well-known file so that

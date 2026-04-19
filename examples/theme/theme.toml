@@ -1,0 +1,133 @@
+# Theme file — visual settings only.
+# Theme options cannot be provided on the command line.
+# Colors must use #rrggbb or #rrggbbaa hex notation.
+
+[prompt]
+# Text shown to the left of the search box.
+text = "run: "
+
+# Extra pixels of space between the prompt text and the input box.
+padding = 0
+
+[results]
+# Maximum number of results to display; 0 means as many as fit in the window.
+count = 0
+
+# Vertical (or horizontal) space in pixels between result entries.
+spacing = 25
+
+# Layout direction: "vertical" (stacked list) or "horizontal" (single row).
+mode = "vertical"
+
+[text]
+# Default text color for result entries.
+color = "#c3c7c8"
+
+# Color of the prompt label shown before the input box.
+prompt_color = "#f9dc5c"
+
+# Color of the text the user types into the search box.
+input-color = "#00c1e4"
+
+# Color of unselected result entries.
+match_color = "#ffffff"
+
+# Foreground color of the highlighted (selected) result entry.
+selection_color = "#bd93f9"
+
+# Color drawn over matching characters inside the selected entry.
+# Set to #00000000 to disable the per-character highlight.
+selection_match_color = "#00000000"
+
+[font]
+# Font family name passed to Pango (e.g. "Sans", "Monospace", "Noto Sans").
+name = "CaskaydiaCove Nerd Font Mono"
+
+# Font size in points.
+size = 24
+
+# Comma-separated OpenType feature tags (e.g. "liga=1,calt=1"). Empty = none.
+features = ""
+
+# Comma-separated OpenType variation axes (e.g. "wght=700"). Empty = none.
+variations = ""
+
+# Apply font hinting for crisper glyph edges on low-DPI displays.
+hint = true
+
+[window]
+# Screen edge or corner where tofi appears.
+# Values: "top-left", "top", "top-right", "right",
+#         "bottom-right", "bottom", "bottom-left", "left", "center"
+anchor = "center"
+
+# Distance in pixels from the respective screen edge.
+margin_top = 0
+margin_bottom = 0
+margin_left = 0
+margin_right = 0
+
+# Window width and height. Append "%" for screen-relative sizing,
+# or use a plain integer for an absolute pixel value.
+width = "45%"
+height = "60%"
+
+# Window background fill color (alpha channel supported).
+background_color = "#000000bb"
+
+# Width in pixels of the thin outline drawn outside the border.
+outline_width = 1
+
+# Color of the outer outline.
+outline_color = "#ed254eff"
+
+# Width in pixels of the window border drawn inside the outline.
+border_width = 2
+
+# Color of the window border.
+border_color = "#c74dedff"
+
+# Corner rounding radius in pixels; 0 produces square corners.
+corner_radius = 50
+
+# Inner padding between the window edge and its content.
+# Accepts "%" (relative to the window dimension) or a plain pixel value.
+padding_top = "35%"
+padding_bottom = 0
+padding_left = "35%"
+padding_right = 0
+
+# Clip (mask) any content that falls outside the padding region.
+clip_to_padding = true
+
+# Scale the window dimensions with the output's HiDPI scale factor.
+scale = true
+
+[cursor]
+# Hide the system pointer cursor while tofi is focused.
+hide = false
+
+[input]
+# Show a text cursor inside the search box.
+cursor = false
+
+# Text cursor shape: "bar" (thin vertical line), "block", or "underscore".
+cursor_style = "bar"
+
+# Cursor foreground color (the cursor's own fill).
+cursor_color = "#ffffff"
+
+# Cursor background color (the area behind the cursor character).
+cursor_background = "#000000"
+
+# Corner rounding radius of the cursor shape in pixels.
+cursor_corner_radius = 0
+
+# Thickness in pixels for the bar or underscore cursor style.
+cursor_thickness = 2
+
+# Replace every typed character with hidden_character (password mode).
+hide = false
+
+# The masking character shown when hide = true.
+hidden_character = "*"

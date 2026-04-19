@@ -1,4 +1,0 @@
-# Minimal tofi configuration.
-#
-# All tofi options have built-in defaults, so no keys are required.
-# Loading this file must produce a config identical to TofiConfig::default().

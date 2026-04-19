@@ -1,31 +1,46 @@
 [base]
-# looks for theme in ~/.config/tofi/themes/
-# this is new option
-theme = "Sweet.toml"
-# output
-# output = ""
-# terminal
-# terminal = "alacritty"
+# Theme file to load. A plain filename is looked up in ~/.config/tofi/themes/;
+# a path that contains "/" is resolved relative to this config file's directory.
+# Can also be provided via CLI: tofi --theme <path>
+theme = "theme.toml"
+
+# Wayland output name to display tofi on (e.g. "HDMI-A-1", "eDP-1").
+# Leave empty to use the compositor's default output.
+# Can be provided via CLI: tofi --output <name>
+output = ""
+
+# Terminal emulator launched when a desktop entry has Terminal=true in drun mode.
+# Can be provided via CLI: tofi --terminal <name>
+terminal = "alacritty"
 
 [matching]
-# matching-algorithm
-# algorithm = "normal"
-# require-match
+# Algorithm used to filter and score results as you type.
+# "normal" — substring match, scored by position
+# "fuzzy"  — non-contiguous character match
+# "prefix" — only match entries that start with the query
+# Can be provided via CLI: tofi --algorithm <name>
+algorithm = "normal"
+
+# When true, pressing Enter with no matching result does nothing.
+# When false, the raw typed text is printed (run mode) or ignored (drun mode).
+# Can be provided via CLI: tofi --require-match <bool>
 require = true
-# ascii-input
+
+# Restrict input to printable ASCII characters only.
+# Can be provided via CLI: tofi --ascii-input <bool>
 ascii = false
 
 [history]
-# history
+# Remember how often each entry was selected and sort by frequency.
+# Can be provided via CLI: tofi --history <bool>
 history = true
-# history-file = /path/to/histfile
+
+# Custom path for the history file.
+# Defaults to the standard XDG cache location when unset.
+# Can be provided via CLI: tofi --history-file <path>
 # path = "/path/to/histfile"
 
-# deprecated:
-# auto-accept-single -- not supported
-# include -- not supported
-# drun-launch -- default mode (others removed)
-# multi-instance -- default mode (lock only one)
-# physical-keybindings -- default
-# print-index -- have no effect in drub so removed
-# late-keyboard-init -- not supported
+[logging]
+# Log level for the application.
+# Can be provided via CLI: tofi --log-level <level>
+level = "warn"

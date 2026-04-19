@@ -1,143 +1,71 @@
-//! Config data model for `tofi`.
+//! Behavioral config loaded from `config.toml`.
 //!
-//! This module defines [`TofiConfig`] (and its supporting value types) as **plain data**.
-//! There is **no** file I/O or argument parsing here — the file loader lives in
-//! [`crate::config::load()`] and CLI parsing in [`crate::cli`].
-//!
-//! # Defaults
-//!
-//! [`TofiConfig::default()`] reflects the defaults documented in
-//! [`doc/config`](../../../doc/config).
+//! All fields are `Option<T>` — unset means "use theme/default".
+//! Merging with CLI overrides and defaults happens in [`crate::settings`].
 
-pub mod apply;
-pub mod load;
-pub mod types;
+use std::path::{Path, PathBuf};
 
-pub use apply::apply_key;
-pub use load::{ParseError, default_config_path, load};
-pub use types::*;
+use serde::Deserialize;
 
-impl Default for types::TofiConfig {
-    fn default() -> Self {
-        use libtofi_rs::color::Color;
-        use types::*;
-        Self {
-            // Window geometry
-            width: UnitValue::pixels(1280),
-            height: UnitValue::pixels(720),
-            anchor: Anchor::Center,
-            exclusive_zone: -1,
-            exclusive_zone_is_percent: false,
-            margin_top: UnitValue::pixels(0),
-            margin_bottom: UnitValue::pixels(0),
-            margin_left: UnitValue::pixels(0),
-            margin_right: UnitValue::pixels(0),
-            scale: true,
-            target_output: String::new(),
+// ── Config ────────────────────────────────────────────────────────────────────
 
-            // Font
-            font: String::from("Sans"),
-            font_size: 24,
-            font_features: String::new(),
-            font_variations: String::new(),
-            hint_font: true,
+#[derive(Debug, Default, Deserialize)]
+pub struct Config {
+    #[serde(default)]
+    pub base: Base,
+    #[serde(default)]
+    pub matching: Matching,
+    #[serde(default)]
+    pub history: History,
+    #[serde(default)]
+    #[cfg_attr(not(feature = "logging"), allow(dead_code))]
+    pub logging: Logging,
+}
 
-            // Colors / decoration
-            background_color: Color {
-                r: 0.106,
-                g: 0.114,
-                b: 0.118,
-                a: 1.0,
-            },
-            foreground_color: Color {
-                r: 1.0,
-                g: 1.0,
-                b: 1.0,
-                a: 1.0,
-            },
-            border_color: Color {
-                r: 0.976,
-                g: 0.149,
-                b: 0.447,
-                a: 1.0,
-            },
-            outline_color: Color {
-                r: 0.031,
-                g: 0.031,
-                b: 0.0,
-                a: 1.0,
-            },
-            selection_highlight_color: Color {
-                r: 0.0,
-                g: 0.0,
-                b: 0.0,
-                a: 0.0,
-            },
-            corner_radius: 0,
-            border_width: 12,
-            outline_width: 4,
+#[derive(Debug, Default, Deserialize)]
+pub struct Base {
+    pub output: Option<String>,
+    pub terminal: Option<String>,
+    pub theme: Option<String>,
+}
 
-            // Padding
-            padding_top: UnitValue::pixels(8),
-            padding_bottom: UnitValue::pixels(8),
-            padding_left: UnitValue::pixels(8),
-            padding_right: UnitValue::pixels(8),
-            clip_to_padding: true,
+#[derive(Debug, Default, Deserialize)]
+pub struct Matching {
+    pub algorithm: Option<String>,
+    pub require: Option<bool>,
+    pub ascii: Option<bool>,
+}
 
-            // Text layout
-            prompt_text: String::from("run: "),
-            prompt_padding: 0,
-            placeholder_text: String::new(),
-            num_results: 0,
-            result_spacing: 0,
-            horizontal: false,
-            min_input_width: 0,
+#[derive(Debug, Default, Deserialize)]
+pub struct History {
+    pub history: Option<bool>,
+    pub path: Option<String>,
+}
 
-            // Themes: most None (inherit) — only pre-specified defaults set here
-            cursor_theme: CursorTheme::default(),
-            prompt_theme: TextTheme::default(),
-            input_theme: TextTheme::default(),
-            placeholder_theme: TextTheme {
-                // placeholder-color = #FFFFFFA8 ≈ (1.0, 1.0, 1.0, 0.659)
-                foreground_color: Some(Color {
-                    r: 1.0,
-                    g: 1.0,
-                    b: 1.0,
-                    a: 0.659,
-                }),
-                ..TextTheme::default()
-            },
-            default_result_theme: TextTheme::default(),
-            alternate_result_theme: TextTheme::default(),
-            selection_theme: TextTheme {
-                // selection-color = #F92672
-                foreground_color: Some(Color {
-                    r: 0.976,
-                    g: 0.149,
-                    b: 0.447,
-                    a: 1.0,
-                }),
-                ..TextTheme::default()
-            },
+#[derive(Debug, Default, Deserialize)]
+#[cfg_attr(not(feature = "logging"), allow(dead_code))]
+pub struct Logging {
+    pub level: Option<String>,
+}
 
-            // Behaviour
-            hide_cursor: false,
-            use_history: true,
-            history_file: None,
-            matching_algorithm: libtofi_rs::matching::MatchingAlgorithm::Normal,
-            require_match: true,
-            auto_accept_single: false,
-            hide_input: false,
-            hidden_character: HiddenCharacter::default(),
-            physical_keybindings: true,
-            print_index: false,
-            drun_launch: false,
-            default_terminal: None,
-            late_keyboard_init: false,
-            multi_instance: false,
-            ascii_input: false,
-        }
+// ── Loading ───────────────────────────────────────────────────────────────────
+
+pub fn default_path() -> Option<PathBuf> {
+    xdg_config_dir().map(|d| d.join("tofi/config.toml"))
+}
+
+pub fn load(path: &Path) -> Config {
+    let s = std::fs::read_to_string(path).unwrap_or_default();
+    toml::from_str(&s).unwrap_or_default()
+}
+
+pub(crate) fn xdg_config_dir() -> Option<PathBuf> {
+    if let Ok(p) = std::env::var("XDG_CONFIG_HOME") {
+        return Some(PathBuf::from(p));
     }
+    std::env::var("HOME")
+        .ok()
+        .map(|h| PathBuf::from(h).join(".config"))
 }
 
 #[cfg(test)]

@@ -1,4 +1,4 @@
-//! History file (feature **`history`**).
+//! Selection history file (opt-in via the `history` feature).
 //!
 //! # File format
 //!
@@ -29,27 +29,27 @@ const DRUN_HISTFILE_BASENAME: &str = "tofi-drun-history";
 
 /// A single program entry in the history.
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub struct Program {
+pub struct AppHistoryEntry {
     /// Program name (or desktop entry id for drun mode).
     pub name: String,
     /// Number of times this program has been launched.
     pub run_count: usize,
 }
 
-/// In-memory history, sorted descending by [`Program::run_count`].
+/// In-memory history, sorted descending by [`AppHistoryEntry::run_count`].
 #[derive(Debug, Default, Clone)]
-pub struct History {
-    entries: Vec<Program>,
+pub struct AppHistory {
+    entries: Vec<AppHistoryEntry>,
 }
 
-impl History {
+impl AppHistory {
     /// Create an empty history.
     pub fn new() -> Self {
         Self::default()
     }
 
     /// Iterate over entries in descending run-count order.
-    pub fn entries(&self) -> &[Program] {
+    pub fn entries(&self) -> &[AppHistoryEntry] {
         &self.entries
     }
 
@@ -73,7 +73,7 @@ impl History {
             let entry = self.entries.remove(i);
             self.entries.insert(j, entry);
         } else {
-            self.entries.push(Program {
+            self.entries.push(AppHistoryEntry {
                 name: name.to_owned(),
                 run_count: 1,
             });
@@ -119,14 +119,14 @@ fn resolve_history_path(
     }
 }
 
-/// Load a [`History`] from `path`.
+/// Load a [`AppHistory`] from `path`.
 ///
 /// Returns an empty history (not an error) when the file does not exist.
 /// Returns an error for I/O failures other than `NotFound`.
-pub fn load(path: &Path) -> io::Result<History> {
+pub fn load(path: &Path) -> io::Result<AppHistory> {
     let bytes = match fs::read(path) {
         Ok(b) => b,
-        Err(e) if e.kind() == io::ErrorKind::NotFound => return Ok(History::new()),
+        Err(e) if e.kind() == io::ErrorKind::NotFound => return Ok(AppHistory::new()),
         Err(e) => return Err(e),
     };
 
@@ -143,7 +143,7 @@ pub fn load(path: &Path) -> io::Result<History> {
 
     let text =
         std::str::from_utf8(&bytes).map_err(|e| io::Error::new(io::ErrorKind::InvalidData, e))?;
-    let mut history = History::new();
+    let mut history = AppHistory::new();
 
     for line in text.lines() {
         // Format: "{run_count} {name}"
@@ -155,7 +155,7 @@ pub fn load(path: &Path) -> io::Result<History> {
             continue;
         };
         if !name.is_empty() {
-            history.entries.push(Program {
+            history.entries.push(AppHistoryEntry {
                 name: name.to_owned(),
                 run_count,
             });
@@ -168,7 +168,7 @@ pub fn load(path: &Path) -> io::Result<History> {
 /// Save `history` to `path`, creating intermediate directories as needed.
 ///
 /// The file is written with mode `0600` (owner read/write only).
-pub fn save(history: &History, path: &Path) -> io::Result<()> {
+pub fn save(history: &AppHistory, path: &Path) -> io::Result<()> {
     use std::os::unix::fs::OpenOptionsExt as _;
 
     if let Some(parent) = path.parent()
@@ -193,15 +193,15 @@ pub fn save(history: &History, path: &Path) -> io::Result<()> {
 }
 
 /// Load history from the platform-default path.
-pub fn load_default(drun: bool) -> io::Result<History> {
+pub fn load_default(drun: bool) -> io::Result<AppHistory> {
     match default_history_path(drun) {
         Some(path) => load(&path),
-        None => Ok(History::new()),
+        None => Ok(AppHistory::new()),
     }
 }
 
 /// Save history to the platform-default path.
-pub fn save_default(history: &History, drun: bool) -> io::Result<()> {
+pub fn save_default(history: &AppHistory, drun: bool) -> io::Result<()> {
     match default_history_path(drun) {
         Some(path) => save(history, &path),
         None => Ok(()),
