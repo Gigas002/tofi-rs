@@ -12,7 +12,7 @@ use std::os::unix::io::{AsFd, OwnedFd};
 use std::ptr::{self, NonNull};
 
 use rustix::fs::{MemfdFlags, ftruncate, memfd_create};
-use rustix::mm::{Advice, MapFlags, ProtFlags, madvise, mmap, munmap};
+use rustix::mm::{MapFlags, ProtFlags, mmap, munmap};
 use wayland_client::{
     QueueHandle,
     protocol::{wl_buffer, wl_shm, wl_shm_pool},
@@ -90,17 +90,6 @@ where
         };
         // SAFETY: rustix converts MAP_FAILED to Err; a successful mmap is never null.
         let ptr: NonNull<c_void> = unsafe { NonNull::new_unchecked(raw) };
-
-        // ── MADV_HUGEPAGE ─────────────────────────────────────────────────────
-        // Transparent HugePages can reduce page-fault overhead on the first
-        // cairo_paint().  Disabled for shared memory in many kernels, but the
-        // hint is harmless and costs nothing to request.
-        if pool_size >= 2 * 1024 * 1024 {
-            // SAFETY: ptr is a valid mmap of `pool_size` bytes.
-            if let Err(e) = unsafe { madvise(ptr.as_ptr(), pool_size, Advice::LinuxHugepage) } {
-                tracing::debug!("MADV_HUGEPAGE unavailable (ignored): {e}");
-            }
-        }
 
         // ── Create Wayland pool + two buffers ──────────────────────────────────
         let pool = wl_shm.create_pool(fd.as_fd(), pool_size as i32, qh, ());

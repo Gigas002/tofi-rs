@@ -7,6 +7,10 @@
 - **Stdin / dmenu-style mode removed.** Only `drun` and `run` modes are supported.
 - **Config format changed** from a flat keyfile to two separate TOML files.
 - **`tofi-drun` / `tofi-run` symlinks removed.** Use `tofi --mode drun` / `tofi --mode run`.
+- **`--drun` / `--run` flags replaced by `--mode`.** `tofi --drun` → `tofi --mode drun`; `tofi --run` → `tofi --mode run`.
+- **CLI surface drastically reduced.** All visual and window geometry flags (anchor, width, height, colors, padding, font, …) are removed from the CLI; they are now theme-file-only. The surviving flags are: `--config`, `--theme`, `--mode`, `--output`, `--terminal`, `--algorithm`, `--history`.
+- **`--include` removed.** Config file inclusion is no longer supported; use a single `config.toml`.
+- **`clipboard` paste support is now opt-in.** Build with `--features clipboard` to enable; it is excluded from the default build.
 
 ### Migrating from C tofi (or tofi-rs 0.10.x)
 
@@ -121,6 +125,24 @@ These options live in the theme file referenced by `[base].theme`.
 | `text-cursor-thickness`     | `[input]`   | `cursor_thickness`     | `2`         | `2`         |
 | `hide-input`                | `[input]`   | `hide`                 | `false`     | `false`     |
 | `hidden-character`          | `[input]`   | `hidden_character`     | `"*"`       | `"*"`       |
+
+#### Removed CLI flags
+
+These command-line flags no longer exist. Scripts and shell aliases using them must be updated.
+
+| Old flag(s)                               | Replacement / notes                     |
+| ----------------------------------------- | --------------------------------------- |
+| `--drun`                                  | `--mode drun`                           |
+| `--run`                                   | `--mode run`                            |
+| `--include <file>`                        | removed; use a single `config.toml`     |
+| `--anchor`, `--width`, `--height`, …      | moved to theme file; no CLI override    |
+| `--background-color`, `--border-color`, … | moved to theme file; no CLI override    |
+| `--font`, `--font-size`, …                | moved to theme file; no CLI override    |
+| `--padding-*`, `--margin-*`, …            | moved to theme file; no CLI override    |
+| `--num-results`, `--result-spacing`, …    | moved to theme file; no CLI override    |
+| `--require-match`, `--ascii-input`        | config file (`[matching]` section) only |
+| `--history-file`                          | config file (`[history].path`) only     |
+| `--print-index`                           | stdin mode removed                      |
 
 #### Removed options
 

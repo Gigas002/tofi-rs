@@ -20,7 +20,7 @@ cargo build --release
 # binary is at target/release/tofi
 ```
 
-The `clipboard` and `single-instance-lock` features are on by default. Build without them via `--no-default-features` if not needed.
+The `clipboard` feature is opt-in; add `--features clipboard` to enable paste support.
 
 **Note on binary name:** the installed binary is named `tofi`, the same as the upstream C program. Installing both will cause a PATH conflict — ensure only one is on your `PATH` at a time, or install one under a distinct prefix.
 

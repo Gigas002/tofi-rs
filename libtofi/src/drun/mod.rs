@@ -1,4 +1,4 @@
-//! Desktop-entry / `tofi-drun` support (feature **`drun`**).
+//! Desktop-entry discovery and launching for `tofi --drun`.
 #![deny(unsafe_code)]
 //!
 //! # Responsibilities

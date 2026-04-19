@@ -35,7 +35,6 @@ tempfile = "3"
 default = [
     "wayland",
     "renderer",
-    "clipboard",
 ]
 wayland = ["dep:wayland-client", "dep:wayland-protocols", "dep:wayland-protocols-wlr", "dep:xkbcommon"]
 # Drawing stack: Cairo ImageSurface + Pango text layout.

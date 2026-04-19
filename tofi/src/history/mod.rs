@@ -1,4 +1,4 @@
-//! AppHistory file (feature **`history`**).
+//! Selection history file (opt-in via the `history` feature).
 //!
 //! # File format
 //!

@@ -7,7 +7,7 @@ license.workspace = true
 authors.workspace = true
 repository.workspace = true
 homepage.workspace = true
-keywords = ["wayland", "launcher", "tofi", "dmenu", "drun"]
+keywords = ["wayland", "launcher", "tofi", "drun"]
 categories = ["command-line-utilities"]
 
 [[bin]]
@@ -33,7 +33,6 @@ tempfile = "3"
 default = [
     "wayland",
     "renderer",
-    "clipboard",
     "history",
 ]
 wayland = ["libtofi-rs/wayland"]

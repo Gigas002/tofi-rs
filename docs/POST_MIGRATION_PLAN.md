@@ -193,16 +193,16 @@ For each row, run C then Rust; record **pass / fail / different** and a one-line
 
 ### B.3 Examples and tests
 
-- [ ] Convert **example configs and themes** to the new **TOML** shapes; remove examples for deleted modes.
-- [ ] Update **automated tests** so fixtures and assertions match TOML + single-mode behavior, including **startup with no config/theme files** (compiled-in defaults path); **`cargo test`** (and CI) must pass before tagging **1.0.0**.
+- [x] Convert **example configs and themes** to the new **TOML** shapes; remove examples for deleted modes.
+- [x] Update **automated tests** so fixtures and assertions match TOML + single-mode behavior, including **startup with no config/theme files** (compiled-in defaults path); **`cargo test`** (and CI) must pass before tagging **1.0.0**.
 
 ### B.4 Cargo features and implementation cleanup
 
-- [ ] **`clipboard`:** keep as a **`[features]`** flag but turn it **off** by default (opt-in). Remove or isolate code paths so default builds do not pull clipboard unless requested.
-- [ ] **Hugepages / THP:** remove **documentation** (e.g. README “Bonus Round”) and any **code or hints** tied to transparent huge pages — not a supported knob in 1.0.
-- [ ] **`drun` feature:** remove the **`drun`** feature from **`libtofi`** and **`tofi`** `Cargo.toml` — desktop launch is **always** compiled in.
-- [ ] **`run-commands` feature:** same — always compiled in; drop the feature flag.
-- [ ] **General purge:** delete modules, dependencies, and tests that only served **stdin / dmenu** mode or **upstream CLI parity** flags no longer needed. When in doubt, remove; **1.0** is allowed to be aggressively smaller than **0.10**.
+- [x] **`clipboard`:** keep as a **`[features]`** flag but turn it **off** by default (opt-in). Remove or isolate code paths so default builds do not pull clipboard unless requested.
+- [x] **Hugepages / THP:** remove **documentation** (e.g. README “Bonus Round”) and any **code or hints** tied to transparent huge pages — not a supported knob in 1.0.
+- [x] **`drun` feature:** remove the **`drun`** feature from **`libtofi`** and **`tofi`** `Cargo.toml` — desktop launch is **always** compiled in. _(was already absent; stale doc comment cleaned up)_
+- [x] **`run-commands` feature:** same — always compiled in; drop the feature flag. _(was already absent)_
+- [x] **General purge:** delete modules, dependencies, and tests that only served **stdin / dmenu** mode or **upstream CLI parity** flags no longer needed. When in doubt, remove; **1.0** is allowed to be aggressively smaller than **0.10**. _(no stdin code remained)_
 
 ### B.5 Release artifacts for 1.0
 
