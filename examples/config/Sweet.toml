@@ -1,0 +1,113 @@
+# TODO:
+# min-input-width = 0
+# placeholder-text = ""
+# exclusive-zone = -1
+
+[prompt]
+# prompt-text
+text = "run: "
+# prompt-padding
+# padding = 0
+
+[results]
+# num-results
+count = 0
+# result-spacing
+spacing = 25
+# horizontal
+mode = "vertical"
+# min-input-width deprecated
+
+[text]
+# prompt-text
+prompt = "run: "
+# TODO: consider [colors]
+# text-color
+color = "#c3c7c8"
+# prompt_color
+prompt_color = "#f9dc5c"
+# placeholder-color
+# placeholder-color = "#FFFFFFA8"
+# input-color
+input-color = "#00c1e4"
+# default-result-color
+# default_result_color = "#FFFFFF"
+# selection-color
+selection_color = "#bd93f9"
+# selection-match-color
+# selection_match_color = "#00000000"
+
+
+[font]
+# font
+name = "CaskaydiaCove Nerd Font Mono"
+# font-size
+size = 24
+# font-features
+# features = ""
+# font-variations
+# variations = ""
+# hint-font
+hint = true
+
+[window]
+# anchor
+anchor = "center"
+# margin_top
+# margin_top = 0
+# margin_bottom
+# margin_bottom = 0
+# margin_left
+# margin_left = 0
+# margin_right
+# margin_right = 0
+# width
+width = "45%"
+# height
+height = "60%"
+# background-color
+background_color = "#000000bb"
+# outline-width
+outline_width = 1
+# outline-color
+outline_color = "#ed254eff"
+# border-width
+border_width = 2
+# border-color
+border_color = "#c74dedff"
+# corner-radius
+corner_radius = 50
+# padding-top = 35%
+# padding_rop = "35%"   
+# padding-bottom = 0
+# padding_bottom = 0
+# padding-left = 35%
+# padding_left = "35%"
+# padding-right = 0
+# padding_right = 0
+# clip-to-padding
+clip_to_padding = true
+# scale
+scale = true
+
+[cursor]
+# hide-cursor
+hide = false
+
+[input]
+# text-cursor
+cursor = false
+# text-cursor-style 
+# cursor_style = "bar"
+# text-cursor-color
+# cursor_color = "#ffffff"
+# text-cursor-background
+# cursor_background = "#000000"
+# text-cursor-corner-radius
+# cursor_corner_radius = 0
+# text-cursor-thickness
+# cursor_thickness = 2
+# hide-input
+hide = false
+# hidden-character
+hidden_character = "*"
