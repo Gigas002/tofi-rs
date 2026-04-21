@@ -103,7 +103,7 @@ These options live in the theme file referenced by `[base].theme`.
 
 **Results**
 
-| Old key          | New section | New key   | Old default | New default  |
+| Old key          | New section | New key   | Old default | New default  | Notes                                                      |
 | ---------------- | ----------- | --------- | ----------- | ------------ | ---------------------------------------------------------- |
 | `num-results`    | `[results]` | `count`   | `0`         | `0`          |                                                            |
 | `result-spacing` | `[results]` | `spacing` | `0`         | `0`          |                                                            |
