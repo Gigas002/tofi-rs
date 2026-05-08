@@ -46,7 +46,7 @@ impl PangoBackend {
             font_desc.set_variations(Some(&config.font_variations));
         }
 
-        context.set_font_description(Some(&font_desc));
+        context.set_font_description(&font_desc);
 
         let layout = pango::Layout::new(&context);
 
