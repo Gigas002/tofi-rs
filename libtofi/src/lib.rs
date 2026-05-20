@@ -14,6 +14,7 @@ pub mod error;
 pub use error::{Error, Result};
 
 pub mod color;
+pub mod dmenu;
 pub mod drun;
 pub mod input;
 pub mod lock;

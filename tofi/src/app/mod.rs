@@ -389,20 +389,27 @@ fn load_mode_entries(
     state: &mut libtofi_rs::wayland::WaylandState,
 ) -> Vec<String> {
     match mode {
+        LaunchMode::Dmenu => {
+            let mut items = libtofi_rs::dmenu::read_lines(!settings.ascii_input);
+            #[cfg(feature = "history")]
+            if settings.use_history
+                && let Some(hp) =
+                    history_utils::history_path(mode, settings.history_file.as_deref())
+                && let Ok(hist) = crate::history::load(&hp)
+            {
+                history_utils::sort_by_history(&mut items, &hist);
+            }
+            items
+        }
         LaunchMode::Run => {
             let mut commands = run_utils::run_commands_cached();
             #[cfg(feature = "history")]
-            if settings.use_history {
-                let hist_path = settings
-                    .history_file
-                    .as_deref()
-                    .map(std::path::PathBuf::from)
-                    .or_else(|| crate::history::default_history_path(false));
-                if let Some(hp) = hist_path
-                    && let Ok(hist) = crate::history::load(&hp)
-                {
-                    history_utils::sort_by_history(&mut commands, &hist);
-                }
+            if settings.use_history
+                && let Some(hp) =
+                    history_utils::history_path(mode, settings.history_file.as_deref())
+                && let Ok(hist) = crate::history::load(&hp)
+            {
+                history_utils::sort_by_history(&mut commands, &hist);
             }
             commands
         }
@@ -413,17 +420,12 @@ fn load_mode_entries(
             let mut entries =
                 libtofi_rs::drun::entries_cached(&dirs, &cache_path).unwrap_or_default();
             #[cfg(feature = "history")]
-            if settings.use_history {
-                let hist_path = settings
-                    .history_file
-                    .as_deref()
-                    .map(std::path::PathBuf::from)
-                    .or_else(|| crate::history::default_history_path(true));
-                if let Some(hp) = hist_path
-                    && let Ok(hist) = crate::history::load(&hp)
-                {
-                    history_utils::sort_drun_by_history(&mut entries, &hist);
-                }
+            if settings.use_history
+                && let Some(hp) =
+                    history_utils::history_path(mode, settings.history_file.as_deref())
+                && let Ok(hist) = crate::history::load(&hp)
+            {
+                history_utils::sort_drun_by_history(&mut entries, &hist);
             }
             let names: Vec<String> = entries.iter().map(|e| e.name.clone()).collect();
             state.drun_entries = entries;

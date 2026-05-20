@@ -19,11 +19,15 @@ use crate::theme::{
 pub enum LaunchMode {
     Run,
     Drun,
+    Dmenu,
 }
 
-fn detect_mode(mode: Option<&str>) -> LaunchMode {
+pub(crate) fn detect_mode(mode: Option<&str>) -> LaunchMode {
     match mode {
         Some("run") => LaunchMode::Run,
+        Some("dmenu") => LaunchMode::Dmenu,
+        Some("drun") => LaunchMode::Drun,
+        None => LaunchMode::Drun,
         _ => LaunchMode::Drun,
     }
 }
@@ -307,7 +311,7 @@ pub fn build(cli: &Cli, config: &Config, theme: &Theme) -> Settings {
     };
 
     // ── Behavioral: cli > config > default ────────────────────────────────────
-    let mode = detect_mode(cli.mode.as_deref());
+    let mode = detect_mode(cli.mode.as_deref().or(config.base.mode.as_deref()));
 
     let target_output = cli
         .output

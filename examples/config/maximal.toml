@@ -2,6 +2,9 @@
 # Use this as a complete reference for all supported config keys.
 
 [base]
+# Launch mode: "drun", "run", or "dmenu".
+mode = "drun"
+
 # Theme file: plain name looks in ~/.config/tofi/themes/
 theme = "theme.toml"
 

@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+### Added
+
+- **Dmenu mode restored.** Use `tofi --mode dmenu` or `[base].mode = "dmenu"` in config. Reads newline-separated items from stdin and prints the selection to stdout (same behavior as upstream tofi / dmenu).
+
 ## [1.0.0] - 2026-04-19
 
 ### Breaking changes
