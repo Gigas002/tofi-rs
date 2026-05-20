@@ -39,14 +39,13 @@ pub(crate) fn do_submit(
     }
 
     #[cfg(feature = "history")]
-    if settings.use_history {
-        if let Some(hp) = super::history_utils::history_path(mode, settings.history_file.as_deref())
-        {
-            let mut hist = crate::history::load(&hp).unwrap_or_default();
-            hist.add(result);
-            if let Err(e) = crate::history::save(&hist, &hp) {
-                tracing::warn!("Failed to save history: {e}");
-            }
+    if settings.use_history
+        && let Some(hp) = super::history_utils::history_path(mode, settings.history_file.as_deref())
+    {
+        let mut hist = crate::history::load(&hp).unwrap_or_default();
+        hist.add(result);
+        if let Err(e) = crate::history::save(&hist, &hp) {
+            tracing::warn!("Failed to save history: {e}");
         }
     }
 
