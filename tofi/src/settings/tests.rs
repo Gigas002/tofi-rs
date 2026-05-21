@@ -18,6 +18,11 @@ fn detect_mode_run_string() {
 }
 
 #[test]
+fn detect_mode_dmenu_string() {
+    assert_eq!(detect_mode(Some("dmenu")), LaunchMode::Dmenu);
+}
+
+#[test]
 fn detect_mode_none_defaults_to_drun() {
     assert_eq!(detect_mode(None), LaunchMode::Drun);
 }
@@ -73,6 +78,24 @@ fn cli_history_false_overrides_config() {
     config.history.history = Some(true);
     let s = build(&cli, &config, &Theme::default());
     assert!(!s.use_history);
+}
+
+#[test]
+fn config_mode_used_when_cli_absent() {
+    let mut config = Config::default();
+    config.base.mode = Some("dmenu".to_owned());
+    let s = build(&default_cli(), &config, &Theme::default());
+    assert_eq!(s.mode, LaunchMode::Dmenu);
+}
+
+#[test]
+fn cli_mode_overrides_config() {
+    use clap::Parser as _;
+    let cli = Cli::try_parse_from(["tofi", "--mode", "run"]).unwrap();
+    let mut config = Config::default();
+    config.base.mode = Some("dmenu".to_owned());
+    let s = build(&cli, &config, &Theme::default());
+    assert_eq!(s.mode, LaunchMode::Run);
 }
 
 #[test]

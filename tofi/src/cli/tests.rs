@@ -141,6 +141,12 @@ fn mode_flag_run() {
 }
 
 #[test]
+fn mode_flag_dmenu() {
+    let cli = Cli::try_parse_from(["tofi", "--mode", "dmenu"]).unwrap();
+    assert_eq!(cli.mode.as_deref(), Some("dmenu"));
+}
+
+#[test]
 fn mode_absent_is_none() {
     let cli = Cli::try_parse_from(["tofi"]).unwrap();
     assert_eq!(cli.mode, None);

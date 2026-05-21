@@ -39,19 +39,13 @@ pub(crate) fn do_submit(
     }
 
     #[cfg(feature = "history")]
-    if settings.use_history {
-        let is_drun = matches!(mode, LaunchMode::Drun);
-        let hist_path = settings
-            .history_file
-            .as_deref()
-            .map(std::path::PathBuf::from)
-            .or_else(|| crate::history::default_history_path(is_drun));
-        if let Some(hp) = hist_path {
-            let mut hist = crate::history::load(&hp).unwrap_or_default();
-            hist.add(result);
-            if let Err(e) = crate::history::save(&hist, &hp) {
-                tracing::warn!("Failed to save history: {e}");
-            }
+    if settings.use_history
+        && let Some(hp) = super::history_utils::history_path(mode, settings.history_file.as_deref())
+    {
+        let mut hist = crate::history::load(&hp).unwrap_or_default();
+        hist.add(result);
+        if let Err(e) = crate::history::save(&hist, &hp) {
+            tracing::warn!("Failed to save history: {e}");
         }
     }
 

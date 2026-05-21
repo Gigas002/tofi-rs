@@ -24,6 +24,8 @@ pub struct Config {
 
 #[derive(Debug, Default, Deserialize)]
 pub struct Base {
+    /// Launch mode: `drun`, `run`, or `dmenu`.
+    pub mode: Option<String>,
     pub output: Option<String>,
     pub terminal: Option<String>,
     pub theme: Option<String>,

@@ -1,4 +1,8 @@
 [base]
+# Launch mode: "drun" (desktop apps), "run" ($PATH executables), or "dmenu" (stdin lines).
+# Can be provided via CLI: tofi --mode <name>
+# mode = "drun"
+
 # Theme file to load. A plain filename is looked up in ~/.config/tofi/themes/;
 # a path that contains "/" is resolved relative to this config file's directory.
 # Can also be provided via CLI: tofi --theme <path>

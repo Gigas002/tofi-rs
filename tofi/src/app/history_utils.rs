@@ -1,4 +1,21 @@
 #[cfg(feature = "history")]
+use crate::settings::LaunchMode;
+
+#[cfg(feature = "history")]
+pub(crate) fn history_path(
+    mode: LaunchMode,
+    history_file: Option<&str>,
+) -> Option<std::path::PathBuf> {
+    history_file
+        .map(std::path::PathBuf::from)
+        .or_else(|| match mode {
+            LaunchMode::Dmenu => None,
+            LaunchMode::Drun => crate::history::default_history_path(true),
+            LaunchMode::Run => crate::history::default_history_path(false),
+        })
+}
+
+#[cfg(feature = "history")]
 pub(crate) fn sort_by_history(items: &mut [String], hist: &crate::history::AppHistory) {
     use std::collections::HashMap;
     let scores: HashMap<&str, i32> = hist

@@ -33,7 +33,7 @@ pub struct Cli {
     #[arg(short = 't', long, value_name = "FILE")]
     pub theme: Option<PathBuf>,
 
-    /// Launch mode: drun (desktop apps) or run (PATH executables). Defaults to drun.
+    /// Launch mode: drun (desktop apps), run (PATH executables), or dmenu (stdin lines).
     #[arg(long, value_name = "MODE")]
     pub mode: Option<String>,
 
