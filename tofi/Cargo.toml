@@ -4,7 +4,6 @@ version = "1.0.0"
 description = "A Wayland application launcher — Rust port of tofi"
 edition.workspace = true
 license.workspace = true
-authors.workspace = true
 repository.workspace = true
 homepage.workspace = true
 keywords = ["wayland", "launcher", "tofi", "drun"]
