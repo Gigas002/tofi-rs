@@ -40,7 +40,7 @@ selection_color = "#bd93f9"
 selection_match_color = "#00000000"
 
 [font]
-# Font family name passed to Pango (e.g. "Sans", "Monospace", "Noto Sans").
+# Font family name (e.g. "Sans", "Monospace", "Noto Sans").
 name = "CaskaydiaCove Nerd Font Mono"
 
 # Font size in points.

@@ -6,14 +6,14 @@ A Rust fork of [tofi](https://github.com/philj56/tofi).
 
 **System dependencies** (development headers required at compile time):
 
-| Library        | Debian/Ubuntu package | Arch package   |
-| -------------- | --------------------- | -------------- |
-| Wayland client | `libwayland-dev`      | `wayland`      |
-| Cairo          | `libcairo2-dev`       | `cairo`        |
-| Pango          | `libpango1.0-dev`     | `pango`        |
-| HarfBuzz       | `libharfbuzz-dev`     | `harfbuzz`     |
-| xkbcommon      | `libxkbcommon-dev`    | `libxkbcommon` |
-| pkg-config     | `pkg-config`          | `pkgconf`      |
+| Library        | Debian/Ubuntu package   | Arch package   |
+| -------------- | ----------------------- | -------------- |
+| Wayland client | `libwayland-dev`        | `wayland`      |
+| Fontconfig     | `libfontconfig1-dev`    | `fontconfig`   |
+| xkbcommon      | `libxkbcommon-dev`      | `libxkbcommon` |
+| pkg-config     | `pkg-config`            | `pkgconf`      |
+
+Rendering is pure Rust (`tiny-skia` + `cosmic-text` / `harfrust` / `fontdb` / `swash`). No Cairo or Pango system libraries are required.
 
 ```sh
 cargo build --release

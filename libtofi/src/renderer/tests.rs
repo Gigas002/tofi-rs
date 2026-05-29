@@ -15,8 +15,9 @@ mod renderer_tests {
         let mut buf = vec![0u8; (width * height * 4) as usize];
 
         // SAFETY: buf is valid for the lifetime of the Renderer below.
-        let renderer = unsafe { Renderer::create_for_data(buf.as_mut_ptr(), width, height, 120) }
-            .expect("Renderer::create_for_data should succeed");
+        let mut renderer =
+            unsafe { Renderer::create_for_data(buf.as_mut_ptr(), width, height, 120) }
+                .expect("Renderer::create_for_data should succeed");
 
         assert_eq!(renderer.logical_width, width);
         assert_eq!(renderer.logical_height, height);

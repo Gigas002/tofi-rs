@@ -568,8 +568,8 @@ mod entry_tests {
 // ── pango_backend tests ───────────────────────────────────────────────────────
 
 #[cfg(feature = "renderer")]
-mod pango_backend_tests {
-    use super::super::pango_backend::find_match_position;
+mod text_backend_tests {
+    use super::super::text_backend::find_match_position;
 
     #[test]
     fn empty_needle_returns_none() {

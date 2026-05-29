@@ -5,7 +5,7 @@
 //! | Feature | Role |
 //! | --- | --- |
 //! | `wayland` | Core Wayland client, SHM, surfaces |
-//! | `renderer` | Drawing / text layout (Cairo stack under [`crate::renderer`]) |
+//! | `renderer` | Drawing / text layout (tiny-skia + cosmic-text) |
 //! | `clipboard` | Paste (`wayland::clipboard`; implies **`wayland`**) |
 //!
 //! With `--no-default-features`, only [`noop`] is guaranteed; optional modules are omitted.

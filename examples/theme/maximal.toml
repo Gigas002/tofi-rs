@@ -40,7 +40,7 @@ selection_color = "#89b4fa"
 selection_match_color = "#fab387ff"
 
 [font]
-# Font family name passed to Pango.
+# Font family name (e.g. "Sans", "Monospace", "Noto Sans").
 name = "Monospace"
 
 # Font size in points.

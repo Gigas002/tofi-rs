@@ -6,6 +6,15 @@
 
 - **Dmenu mode restored.** Use `tofi --mode dmenu` or `[base].mode = "dmenu"` in config. Reads newline-separated items from stdin and prints the selection to stdout (same behavior as upstream tofi / dmenu).
 
+### Changed
+
+- **Rendering stack is now pure Rust.** Cairo + Pango were replaced with `tiny-skia` (vector drawing) and `cosmic-text` (layout, shaping via harfrust, font discovery via fontdb, rasterization via swash).
+- **System build dependencies updated.** `libcairo2-dev`, `libpango1.0-dev`, and `libharfbuzz-dev` are no longer required; `libfontconfig1-dev` is used on Linux for font resolution.
+
+### Notes
+
+- OpenType **`font_variations`** from theme files are accepted in config but not yet applied by the cosmic-text backend; **`font_features`** (`liga=1`, etc.) work as before.
+
 ## [1.0.0] - 2026-04-19
 
 ### Breaking changes
