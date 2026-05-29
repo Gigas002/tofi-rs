@@ -142,14 +142,13 @@ impl<'a> Canvas<'a> {
 
         for py_i in start_y..end_y {
             for px_i in start_x..end_x {
-                if let Some(clip) = self.clip {
-                    if px_i as f32 + 0.5 < clip.left()
+                if let Some(clip) = self.clip
+                    && (px_i as f32 + 0.5 < clip.left()
                         || py_i as f32 + 0.5 < clip.top()
                         || px_i as f32 + 0.5 >= clip.right()
-                        || py_i as f32 + 0.5 >= clip.bottom()
-                    {
-                        continue;
-                    }
+                        || py_i as f32 + 0.5 >= clip.bottom())
+                {
+                    continue;
                 }
 
                 let lx = ((px_i as f64 + 0.5 - px) / scale) as u32;
@@ -238,7 +237,7 @@ pub fn rounded_rectangle_path(width: f64, height: f64, r: f64) -> Path {
     let w = width as f32;
     let h = height as f32;
     let r = r.min(width / 2.0).min(height / 2.0) as f32;
-    let k = r * 0.5522847498;
+    let k = r * 0.552_284_8;
 
     let mut pb = PathBuilder::new();
     pb.move_to(r, 0.0);

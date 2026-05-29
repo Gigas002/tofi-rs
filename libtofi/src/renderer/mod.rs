@@ -1,14 +1,14 @@
 //! Drawing / text layout — tiny-skia + cosmic-text backend (feature **`renderer`**).
 //!
-//! [`Renderer`] wraps a tiny-skia [`PixmapMut`] backed by a raw SHM buffer
+//! [`Renderer`] wraps a tiny-skia [`Pixmap`] backed by a raw SHM buffer
 //! slice and exposes a minimal text-drawing API.
 //!
 //! # Safety note
 //!
 //! [`Renderer::create_for_data`] is `unsafe` because the raw pointer must
 //! remain valid for the lifetime of the `Renderer`.  The SHM buffer from
-//! [`crate::shm::ShmPool`] satisfies this requirement as long as the
-//! `ShmPool` is not dropped or resized while the `Renderer` is alive.
+//! `ShmPool` (feature **`wayland`**) satisfies this requirement as long as the
+//! pool is not dropped or resized while the `Renderer` is alive.
 
 #[cfg(feature = "renderer")]
 use cosmic_text::{
@@ -106,25 +106,19 @@ impl Renderer {
 
         let width = self.pixmap.width();
         let height = self.pixmap.height();
+        let mut target = BlitTarget {
+            data: self.pixmap.data_mut(),
+            width,
+            height,
+            scale,
+            origin_x: x,
+            origin_y: y,
+        };
         buffer.draw(
             &mut font_system,
             &mut swash_cache,
             color,
-            |gx, gy, w, h, c| {
-                blit_glyph(
-                    self.pixmap.data_mut(),
-                    width,
-                    height,
-                    scale,
-                    x,
-                    y,
-                    gx,
-                    gy,
-                    w,
-                    h,
-                    c,
-                );
-            },
+            |gx, gy, w, h, c| blit_glyph(&mut target, gx, gy, w, h, c),
         );
 
         tracing::debug!("Renderer::draw_hello: text {text_w}×{text_h} at ({x:.1},{y:.1})");
@@ -143,54 +137,52 @@ impl Renderer {
 }
 
 #[cfg(feature = "renderer")]
-fn blit_glyph(
-    data: &mut [u8],
+struct BlitTarget<'a> {
+    data: &'a mut [u8],
     width: u32,
     height: u32,
     scale: f64,
     origin_x: f64,
     origin_y: f64,
-    gx: i32,
-    gy: i32,
-    gw: u32,
-    gh: u32,
-    color: CTColor,
-) {
-    let base_x = (origin_x + gx as f64) * scale;
-    let base_y = (origin_y + gy as f64) * scale;
-    let pw = gw as f64 * scale;
-    let ph = gh as f64 * scale;
+}
+
+#[cfg(feature = "renderer")]
+fn blit_glyph(target: &mut BlitTarget<'_>, gx: i32, gy: i32, gw: u32, gh: u32, color: CTColor) {
+    let base_x = (target.origin_x + gx as f64) * target.scale;
+    let base_y = (target.origin_y + gy as f64) * target.scale;
+    let pw = gw as f64 * target.scale;
+    let ph = gh as f64 * target.scale;
 
     let start_x = base_x.floor().max(0.0) as u32;
     let start_y = base_y.floor().max(0.0) as u32;
-    let end_x = (base_x + pw).ceil().min(width as f64) as u32;
-    let end_y = (base_y + ph).ceil().min(height as f64) as u32;
+    let end_x = (base_x + pw).ceil().min(target.width as f64) as u32;
+    let end_y = (base_y + ph).ceil().min(target.height as f64) as u32;
 
     let [r, g, b, a] = color.as_rgba();
     for py in start_y..end_y {
         for px in start_x..end_x {
-            let lx = ((px as f64 + 0.5 - base_x) / scale) as u32;
-            let ly = ((py as f64 + 0.5 - base_y) / scale) as u32;
+            let lx = ((px as f64 + 0.5 - base_x) / target.scale) as u32;
+            let ly = ((py as f64 + 0.5 - base_y) / target.scale) as u32;
             if lx >= gw || ly >= gh {
                 continue;
             }
             if a == 0 {
                 continue;
             }
-            let offset = (py as usize * width as usize + px as usize) * 4;
-            if offset + 3 >= data.len() {
+            let offset = (py as usize * target.width as usize + px as usize) * 4;
+            if offset + 3 >= target.data.len() {
                 continue;
             }
             if a == 255 {
                 let pr = ((r as u16 * a as u16 + 127) / 255) as u8;
                 let pg = ((g as u16 * a as u16 + 127) / 255) as u8;
                 let pb = ((b as u16 * a as u16 + 127) / 255) as u8;
-                data[offset] = pr;
-                data[offset + 1] = pg;
-                data[offset + 2] = pb;
-                data[offset + 3] = a;
+                target.data[offset] = pr;
+                target.data[offset + 1] = pg;
+                target.data[offset + 2] = pb;
+                target.data[offset + 3] = a;
             } else {
-                blend_pixel(&mut data[offset..offset + 4], r, g, b, a);
+                blend_pixel(&mut target.data[offset..offset + 4], r, g, b, a);
             }
         }
     }

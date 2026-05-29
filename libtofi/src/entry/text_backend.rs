@@ -34,7 +34,7 @@ impl TextExtents {
 
 // ── TextBackend ───────────────────────────────────────────────────────────────
 
-/// Text layout state held by [`Entry`] for the lifetime of the widget.
+/// Text layout state held by [`super::Entry`] for the lifetime of the widget.
 pub struct TextBackend {
     pub(crate) font_system: FontSystem,
     swash_cache: SwashCache,
@@ -647,7 +647,7 @@ fn render_selected_result(
         };
 
         for (seg_text, seg_color) in &segments {
-            text.draw_text(canvas, *seg_text, *seg_color);
+            text.draw_text(canvas, seg_text, *seg_color);
             let seg = text.layout(seg_text);
 
             if first_segment {
