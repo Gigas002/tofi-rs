@@ -13,3 +13,4 @@ extend-exclude = [
 fo = "fo"
 # Standard OpenType font variation axis tags (4-char codes, not English words).
 wdth = "wdth"
+ratatui = "ratatui"
