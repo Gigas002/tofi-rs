@@ -47,7 +47,7 @@ pub mod clipboard;
 ///
 /// Populated during the second roundtrip.  `name` is empty for compositors
 /// that advertise `wl_output` < version 4.
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct OutputInfo {
     /// The underlying output proxy; kept for surface binding.
     pub output: wl_output::WlOutput,

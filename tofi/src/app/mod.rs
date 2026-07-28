@@ -33,9 +33,10 @@ fn run_inner(settings: Settings) -> bool {
     state.hide_cursor = settings.hide_cursor;
     state.keyboard_state.physical_keybindings = true;
 
-    let (out_w, out_h) = output_size(&state.outputs);
+    let selected_output = select_output(&state.outputs, &settings.target_output);
+    let (out_w, out_h) = output_size(selected_output);
     tracing::debug!(width = out_w, height = out_h, "output size");
-    let surface_cfg = make_surface_config(&settings, out_w, out_h);
+    let surface_cfg = make_surface_config(&settings, out_w, out_h, selected_output.cloned());
     tracing::debug!(
         width = surface_cfg.width,
         height = surface_cfg.height,
@@ -291,9 +292,28 @@ fn init_entry(
 // ── Private helpers ───────────────────────────────────────────────────────────
 
 #[cfg(feature = "wayland")]
-fn output_size(outputs: &[libtofi_rs::wayland::OutputInfo]) -> (u32, u32) {
-    outputs
-        .first()
+fn select_output<'a>(
+    outputs: &'a [libtofi_rs::wayland::OutputInfo],
+    target: &str,
+) -> Option<&'a libtofi_rs::wayland::OutputInfo> {
+    if target.is_empty() {
+        return outputs.first();
+    }
+    match outputs.iter().find(|o| o.name == target) {
+        found @ Some(_) => found,
+        None => {
+            tracing::warn!(
+                target = %target,
+                "requested output not found; letting compositor choose",
+            );
+            None
+        }
+    }
+}
+
+#[cfg(feature = "wayland")]
+fn output_size(output: Option<&libtofi_rs::wayland::OutputInfo>) -> (u32, u32) {
+    output
         .map(|o| {
             use libtofi_rs::wayland::OutputTransform;
             match o.transform {
@@ -321,6 +341,7 @@ fn make_surface_config(
     settings: &Settings,
     out_w: u32,
     out_h: u32,
+    output: Option<libtofi_rs::wayland::OutputInfo>,
 ) -> libtofi_rs::wayland::surface::SurfaceConfig {
     use submit_utils::anchor_to_layer;
     let width = px(&settings.width, out_w);
@@ -334,7 +355,7 @@ fn make_surface_config(
         margin_right: px(&settings.margin_right, out_w) as i32,
         margin_bottom: px(&settings.margin_bottom, out_h) as i32,
         margin_left: px(&settings.margin_left, out_w) as i32,
-        output: None,
+        output,
     }
 }
 
