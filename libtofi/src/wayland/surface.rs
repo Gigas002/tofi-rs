@@ -86,7 +86,7 @@ fn fill_argb8888(buf: &mut [u8], color: Color) {
     let b = (color.b * 255.0) as u8;
     let pixel = (a as u32) << 24 | (r as u32) << 16 | (g as u32) << 8 | (b as u32);
     let bytes = pixel.to_ne_bytes();
-    for chunk in buf.chunks_exact_mut(4) {
+    for chunk in buf.as_chunks_mut::<4>().0 {
         chunk.copy_from_slice(&bytes);
     }
 }
