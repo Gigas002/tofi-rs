@@ -2,9 +2,15 @@
 
 ## Unreleased
 
+## [1.1.0] - 2026-09-04
+
 ### Added
 
 - **Dmenu mode restored.** Use `tofi --mode dmenu` or `[base].mode = "dmenu"` in config. Reads newline-separated items from stdin and prints the selection to stdout (same behavior as upstream tofi / dmenu).
+
+### Fixed
+
+- **`--output` / `[base].output` now actually selects the target monitor.** Previously the requested output name was parsed but never passed through to surface creation, so tofi always opened on the compositor's default output regardless of the setting.
 
 ## [1.0.0] - 2026-04-19
 
