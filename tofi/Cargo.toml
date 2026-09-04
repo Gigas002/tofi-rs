@@ -1,6 +1,6 @@
 [package]
 name = "tofi-rs"
-version = "1.0.0"
+version.workspace = true
 description = "A Wayland application launcher — Rust port of tofi"
 edition.workspace = true
 license.workspace = true
