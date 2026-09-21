@@ -620,9 +620,11 @@ fn render_selected_result(
                     .set_width(combined_logical.width() + seg_logical.x() + seg_logical.width());
             }
 
-            // Advance CTM to the right for the next segment.
+            // Advance CTM to the right for the next segment. `pixel_extents()`
+            // already returns device/pixel units, so no `pango::SCALE`
+            // division is needed here (unlike Pango-unit rectangles).
             let adv = seg_logical.x() as f64 + seg_logical.width() as f64;
-            cr.translate(adv / pango::SCALE as f64, 0.0);
+            cr.translate(adv, 0.0);
         }
 
         cr.restore().unwrap_or_default();
