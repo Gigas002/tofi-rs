@@ -13,7 +13,10 @@
 //! A `wp_viewport` is set up when `wp_viewporter` is present so the compositor
 //! maps the physical buffer back to the logical size, enabling fractional HiDPI.
 
-use wayland_client::{EventQueue, QueueHandle, protocol::wl_surface};
+use wayland_client::{
+    EventQueue, QueueHandle,
+    protocol::{wl_shm, wl_surface},
+};
 use wayland_protocols::wp::{
     fractional_scale::v1::client::wp_fractional_scale_v1,
     viewporter::client::{wp_viewport, wp_viewporter},
@@ -64,6 +67,7 @@ pub struct SurfaceState {
     pub phys_width: u32,
     /// Physical height in pixels (logical × scale).
     pub phys_height: u32,
+    pub scale: u32,
     /// `true` once `ack_configure` has been sent.
     pub configured: bool,
     /// Double-buffered SHM pool; `None` until after the configure roundtrip.
@@ -92,6 +96,87 @@ fn fill_argb8888(buf: &mut [u8], color: Color) {
 }
 
 // ── Public API ────────────────────────────────────────────────────────────────
+
+/// Determine the output we're going to appear on.
+///
+/// This seems like an ugly solution, but as far as I know there's no way to
+/// determine the default output other than to call get_layer_surface with NULL
+/// as the output and see which output our surface turns up on.
+///
+/// Here we set up a single pixel surface, perform the required two roundtrips,
+/// then tear it down.
+pub fn probe_output(
+    state: &mut WaylandState,
+    event_queue: &mut EventQueue<WaylandState>,
+) -> Result<Option<super::OutputInfo>> {
+    let qh: QueueHandle<WaylandState> = event_queue.handle();
+
+    let wl_shm = state
+        .shm
+        .clone()
+        .ok_or_else(|| Error::Wayland("wl_shm missing".into()))?;
+
+    tracing::debug!("Determining output");
+    state.probing = true;
+    state.probed_output = None;
+
+    let result = map_probe_surface(state, event_queue, &qh, &wl_shm);
+
+    state.probing = false;
+    let entered = state.probed_output.take();
+    result?;
+
+    Ok(entered.and_then(|idx| state.outputs.get(idx).cloned()))
+}
+
+fn map_probe_surface(
+    state: &mut WaylandState,
+    event_queue: &mut EventQueue<WaylandState>,
+    qh: &QueueHandle<WaylandState>,
+    wl_shm: &wl_shm::WlShm,
+) -> Result<()> {
+    let compositor = state
+        .compositor
+        .clone()
+        .ok_or_else(|| Error::Wayland("wl_compositor missing".into()))?;
+    let layer_shell = state
+        .layer_shell
+        .clone()
+        .ok_or_else(|| Error::Wayland("zwlr_layer_shell_v1 missing".into()))?;
+
+    let wl_surface: wl_surface::WlSurface = compositor.create_surface(qh, ());
+    let layer_surface: zwlr_layer_surface_v1::ZwlrLayerSurfaceV1 = layer_shell.get_layer_surface(
+        &wl_surface,
+        None,
+        zwlr_layer_shell_v1::Layer::Background,
+        "tofi-output-probe".to_owned(),
+        qh,
+        (),
+    );
+    // Workaround for Hyprland, where if this is not set the dummy surface never
+    // enters an output for some reason.
+    layer_surface
+        .set_keyboard_interactivity(zwlr_layer_surface_v1::KeyboardInteractivity::Exclusive);
+    layer_surface.set_size(1, 1);
+
+    wl_surface.commit();
+    event_queue
+        .roundtrip(state)
+        .map_err(|e| Error::Wayland(e.to_string()))?;
+
+    let pool = ShmPool::new(wl_shm, qh, 1, 1)?;
+    wl_surface.attach(Some(pool.buffer(0)), 0, 0);
+    wl_surface.damage_buffer(0, 0, 1, 1);
+    wl_surface.commit();
+    event_queue
+        .roundtrip(state)
+        .map_err(|e| Error::Wayland(e.to_string()))?;
+
+    layer_surface.destroy();
+    wl_surface.destroy();
+
+    Ok(())
+}
 
 /// Create the launcher layer surface, allocate a double-buffered SHM pool
 /// sized to **physical** pixels, and commit the first frame.
@@ -243,6 +328,7 @@ pub fn create_surface(
         height: cfg.height,
         phys_width: cfg.width, // updated after configure roundtrip
         phys_height: cfg.height,
+        scale: 0,
         configured: false,
         shm: None,
         index: 0,
@@ -337,6 +423,7 @@ pub fn create_surface(
     if let Some(s) = state.surface.as_mut() {
         s.phys_width = phys_w;
         s.phys_height = phys_h;
+        s.scale = effective_scale;
     }
 
     // ── 9. Set viewport destination to logical size ───────────────────────────

@@ -33,10 +33,10 @@ fn run_inner(settings: Settings) -> bool {
     state.hide_cursor = settings.hide_cursor;
     state.keyboard_state.physical_keybindings = true;
 
-    let selected_output = select_output(&state.outputs, &settings.target_output);
-    let (out_w, out_h) = output_size(selected_output);
+    let selected_output = resolve_output(&mut state, &mut event_queue, &settings.target_output);
+    let (out_w, out_h) = output_size(selected_output.as_ref());
     tracing::debug!(width = out_w, height = out_h, "output size");
-    let surface_cfg = make_surface_config(&settings, out_w, out_h, selected_output.cloned());
+    let surface_cfg = make_surface_config(&settings, out_w, out_h, selected_output);
     tracing::debug!(
         width = surface_cfg.width,
         height = surface_cfg.height,
@@ -256,11 +256,12 @@ fn init_entry(
 
     let entry_config = make_entry_config(settings, width, height);
 
-    let scale_num = if state.fractional_scale != 0 {
-        state.fractional_scale
-    } else {
-        (state.outputs.first().map(|o| o.scale).unwrap_or(1) as u32) * 120
-    };
+    let scale_num = state
+        .surface
+        .as_ref()
+        .map(|s| s.scale)
+        .filter(|s| *s != 0)
+        .unwrap_or_else(|| (state.outputs.first().map(|o| o.scale).unwrap_or(1) as u32) * 120);
 
     let (data_ptr, phys_w, phys_h) = {
         let surf = state.surface.as_mut().expect("surface must exist");
@@ -291,23 +292,31 @@ fn init_entry(
 
 // ── Private helpers ───────────────────────────────────────────────────────────
 
+/// Walk through our output list and select the one we want if the user's asked
+/// for a specific one, otherwise just get the default one.
 #[cfg(feature = "wayland")]
-fn select_output<'a>(
-    outputs: &'a [libtofi_rs::wayland::OutputInfo],
+fn resolve_output(
+    state: &mut libtofi_rs::wayland::WaylandState,
+    event_queue: &mut libtofi_rs::wayland::EventQueue<libtofi_rs::wayland::WaylandState>,
     target: &str,
-) -> Option<&'a libtofi_rs::wayland::OutputInfo> {
-    if target.is_empty() {
-        return outputs.first();
-    }
-    match outputs.iter().find(|o| o.name == target) {
-        found @ Some(_) => found,
-        None => {
-            tracing::warn!(
+) -> Option<libtofi_rs::wayland::OutputInfo> {
+    if !target.is_empty() {
+        tracing::debug!(output = %target, "Looking for output");
+        match state.outputs.iter().find(|o| o.name == target) {
+            Some(found) => return Some(found.clone()),
+            None => tracing::warn!(
                 target = %target,
                 "requested output not found; letting compositor choose",
-            );
-            None
+            ),
         }
+    }
+
+    match libtofi_rs::wayland::surface::probe_output(state, event_queue) {
+        Ok(Some(out)) => {
+            tracing::debug!(output = %out.name, "Selected output");
+            Some(out)
+        }
+        _ => state.outputs.first().cloned(),
     }
 }
 
@@ -316,6 +325,8 @@ fn output_size(output: Option<&libtofi_rs::wayland::OutputInfo>) -> (u32, u32) {
     output
         .map(|o| {
             use libtofi_rs::wayland::OutputTransform;
+            // If we're rotated 90 degrees, we need to swap width and
+            // height to calculate percentages.
             match o.transform {
                 OutputTransform::_90
                 | OutputTransform::_270

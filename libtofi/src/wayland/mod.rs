@@ -9,7 +9,7 @@
 pub mod surface;
 
 use wayland_client::{
-    Connection, Dispatch, QueueHandle,
+    Connection, Dispatch, Proxy as _, QueueHandle,
     protocol::{
         wl_buffer, wl_compositor, wl_keyboard, wl_output, wl_pointer, wl_registry, wl_seat, wl_shm,
         wl_shm_pool, wl_surface,
@@ -153,6 +153,9 @@ pub struct WaylandState {
     /// `0` means not yet received; the caller should fall back to
     /// `integer_scale * 120` in that case.
     pub fractional_scale: u32,
+
+    pub probing: bool,
+    pub probed_output: Option<usize>,
 }
 
 impl WaylandState {
@@ -186,6 +189,8 @@ impl WaylandState {
             surface: None,
             closed: false,
             fractional_scale: 0,
+            probing: false,
+            probed_output: None,
         }
     }
 }
@@ -527,6 +532,10 @@ impl Dispatch<zwlr_layer_surface_v1::ZwlrLayerSurfaceV1, ()> for WaylandState {
                 width,
                 height,
             } => {
+                if state.probing {
+                    proxy.ack_configure(serial);
+                    return;
+                }
                 if width == 0 || height == 0 {
                     tracing::debug!("Layer surface configure: deferred (0×0)");
                     return;
@@ -540,6 +549,9 @@ impl Dispatch<zwlr_layer_surface_v1::ZwlrLayerSurfaceV1, ()> for WaylandState {
                 }
             }
             zwlr_layer_surface_v1::Event::Closed => {
+                if state.probing {
+                    return;
+                }
                 tracing::debug!("Layer surface closed");
                 state.closed = true;
             }
@@ -548,16 +560,26 @@ impl Dispatch<zwlr_layer_surface_v1::ZwlrLayerSurfaceV1, ()> for WaylandState {
     }
 }
 
-/// `wl_surface` enter/leave events (output changes) — intentionally blank.
+/// `wl_surface` enter/leave events (output changes)
 impl Dispatch<wl_surface::WlSurface, ()> for WaylandState {
     fn event(
-        _: &mut Self,
+        state: &mut Self,
         _: &wl_surface::WlSurface,
-        _event: wl_surface::Event,
+        event: wl_surface::Event,
         _: &(),
         _: &Connection,
         _: &QueueHandle<Self>,
     ) {
+        if !state.probing {
+            return;
+        }
+        let wl_surface::Event::Enter { output } = event else {
+            return;
+        };
+        let entered = output.id();
+        if let Some(idx) = state.outputs.iter().position(|o| o.output.id() == entered) {
+            state.probed_output = Some(idx);
+        }
     }
 }
 
