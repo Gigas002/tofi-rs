@@ -2,6 +2,18 @@
 
 ## Unreleased
 
+### Added
+
+- **`libtofi_rs::drun::exec_args` and `libtofi_rs::drun::split_args`.** `exec_args` turns a desktop entry's `Exec` value into an argument vector following the Desktop Entry Specification (string unescaping, double-quote quoting, per-argument field-code expansion); `split_args` is the underlying quote-aware splitter.
+
+### Fixed
+
+- **Quoted `Exec` arguments containing spaces are no longer split apart** ([#61](https://github.com/Gigas002/tofi-rs/issues/61)). E.g. `"--profile-directory=Profile 1"` in Chromium PWA entries is now passed as one argument, without the literal quotes. Field-code values (`%c`, `%k`, `%i`) containing spaces also stay a single argument, and the terminal command is split with the same quoting rules.
+
+### Deprecated
+
+- **`libtofi_rs::drun::exec_command`.** It returns a flat string that can't be split correctly; use `exec_args` instead.
+
 ## [1.1.0] - 2026-09-04
 
 ### Added

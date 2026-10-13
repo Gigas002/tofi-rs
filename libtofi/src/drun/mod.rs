@@ -440,10 +440,161 @@ fn resolve_cache_path(
 // Exec field-code expansion
 // ---------------------------------------------------------------------------
 
+/// Parse an `Exec` value into an argument vector, expanding field codes.
+///
+/// Follows the Desktop Entry Specification order of operations:
+///
+/// 1. Unescape the general string escapes (`\s`, `\n`, `\t`, `\r`, `\\`).
+/// 2. Split into arguments, honouring double quotes and their backslash
+///    escapes (see [`split_args`]).
+/// 3. Expand field codes per argument, so substituted values never get split:
+///    `%c` and `%k` expand in place, a standalone `%i` becomes
+///    `--icon <icon>` (two arguments), `%%` becomes `%`, and
+///    `%f`/`%F`/`%u`/`%U` plus deprecated codes are dropped (no files/URLs).
+///    An argument that becomes empty only because its codes were dropped is
+///    removed.
+pub fn exec_args(entry: &DesktopEntry) -> Vec<String> {
+    let mut out = Vec::new();
+
+    for arg in split_args(&unescape_string(&entry.exec)) {
+        if arg == "%i" {
+            if !entry.icon.is_empty() {
+                out.push("--icon".to_owned());
+                out.push(entry.icon.clone());
+            }
+            continue;
+        }
+
+        let mut expanded = String::with_capacity(arg.len());
+        let mut had_code = false;
+        let mut chars = arg.chars();
+        while let Some(ch) = chars.next() {
+            if ch != '%' {
+                expanded.push(ch);
+                continue;
+            }
+            match chars.next() {
+                Some('%') => expanded.push('%'),
+                Some(code) => {
+                    had_code = true;
+                    match code {
+                        'c' => expanded.push_str(&entry.name),
+                        'k' => expanded.push_str(&entry.path.display().to_string()),
+                        // %i inside a larger argument, %f/%F/%u/%U and
+                        // deprecated codes are dropped.
+                        _ => {}
+                    }
+                }
+                None => expanded.push('%'),
+            }
+        }
+
+        if !(had_code && expanded.is_empty()) {
+            out.push(expanded);
+        }
+    }
+
+    out
+}
+
+/// Split a command line into arguments using shell-like quoting rules.
+///
+/// Arguments are separated by unquoted whitespace. Inside double quotes,
+/// `\"`, `` \` ``, `\$` and `\\` escape the following character (as required
+/// by the `Exec` key); any other backslash is kept literally. For leniency
+/// with non-conforming desktop files, single quotes (no escapes inside) and a
+/// backslash escaping the next character outside quotes are accepted as well.
+/// An unterminated quote runs to the end of the input. No variable, glob or
+/// command expansion is performed.
+pub fn split_args(s: &str) -> Vec<String> {
+    let mut args = Vec::new();
+    let mut cur = String::new();
+    // Distinguishes an explicit empty argument (`""`) from no argument.
+    let mut in_arg = false;
+    let mut chars = s.chars().peekable();
+
+    while let Some(ch) = chars.next() {
+        match ch {
+            '"' => {
+                in_arg = true;
+                while let Some(c) = chars.next() {
+                    match c {
+                        '"' => break,
+                        '\\' if matches!(chars.peek(), Some('"' | '`' | '$' | '\\')) => {
+                            cur.extend(chars.next());
+                        }
+                        _ => cur.push(c),
+                    }
+                }
+            }
+            '\'' => {
+                in_arg = true;
+                for c in chars.by_ref() {
+                    if c == '\'' {
+                        break;
+                    }
+                    cur.push(c);
+                }
+            }
+            '\\' => {
+                in_arg = true;
+                cur.push(chars.next().unwrap_or('\\'));
+            }
+            c if c.is_whitespace() => {
+                if in_arg {
+                    args.push(std::mem::take(&mut cur));
+                    in_arg = false;
+                }
+            }
+            c => {
+                in_arg = true;
+                cur.push(c);
+            }
+        }
+    }
+    if in_arg {
+        args.push(cur);
+    }
+
+    args
+}
+
+/// Undo the general desktop-entry string escapes: `\s`, `\n`, `\t`, `\r`,
+/// `\\`. Other backslash sequences are left untouched for [`split_args`].
+fn unescape_string(s: &str) -> String {
+    let mut out = String::with_capacity(s.len());
+    let mut chars = s.chars().peekable();
+
+    while let Some(ch) = chars.next() {
+        if ch != '\\' {
+            out.push(ch);
+            continue;
+        }
+        match chars.peek() {
+            Some('s') => out.push(' '),
+            Some('n') => out.push('\n'),
+            Some('t') => out.push('\t'),
+            Some('r') => out.push('\r'),
+            Some('\\') => out.push('\\'),
+            _ => {
+                out.push('\\');
+                continue;
+            }
+        }
+        chars.next();
+    }
+
+    out
+}
+
 /// Expand freedesktop.org `Exec` field codes and return the command string.
 ///
 /// Handles `%i`, `%c`, `%k`; drops `%f`/`%F`/`%u`/`%U` and deprecated codes;
 /// turns `%%` into a literal `%`.
+#[deprecated(
+    since = "1.2.0",
+    note = "quoting is not handled, so splitting the result on whitespace breaks quoted arguments; use `exec_args` instead"
+)]
 pub fn exec_command(entry: &DesktopEntry) -> String {
     let mut out = String::with_capacity(entry.exec.len());
     let mut chars = entry.exec.chars().peekable();
