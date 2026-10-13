@@ -241,12 +241,14 @@ fn entry_for_exec(exec: &str) -> DesktopEntry {
 }
 
 #[test]
+#[allow(deprecated)]
 fn exec_plain_command_unchanged() {
     let e = entry_for_exec("myapp --flag");
     assert_eq!(exec_command(&e), "myapp --flag");
 }
 
 #[test]
+#[allow(deprecated)]
 fn exec_file_codes_removed() {
     let e = entry_for_exec("myapp %f");
     assert_eq!(exec_command(&e), "myapp");
@@ -255,30 +257,35 @@ fn exec_file_codes_removed() {
 }
 
 #[test]
+#[allow(deprecated)]
 fn exec_percent_percent_becomes_literal() {
     let e = entry_for_exec("echo %%");
     assert_eq!(exec_command(&e), "echo %");
 }
 
 #[test]
+#[allow(deprecated)]
 fn exec_icon_expansion() {
     let e = entry_for_exec("myapp %i");
     assert_eq!(exec_command(&e), "myapp --icon test-icon");
 }
 
 #[test]
+#[allow(deprecated)]
 fn exec_name_expansion() {
     let e = entry_for_exec("myapp %c");
     assert_eq!(exec_command(&e), "myapp Test App");
 }
 
 #[test]
+#[allow(deprecated)]
 fn exec_path_expansion() {
     let e = entry_for_exec("myapp %k");
     assert_eq!(exec_command(&e), "myapp /usr/share/applications/t.desktop");
 }
 
 #[test]
+#[allow(deprecated)]
 fn exec_no_icon_field_drops_percent_i() {
     let mut e = entry_for_exec("myapp %i");
     e.icon = String::new();
@@ -486,6 +493,212 @@ NotShowIn=KDE;
     let result = parse_entry("not_kde.desktop", &path);
     unsafe { std::env::remove_var("XDG_CURRENT_DESKTOP") };
     assert!(result.is_some());
+}
+
+// -- split_args ---------------------------------------------------------------
+
+#[test]
+fn split_args_plain_whitespace() {
+    assert_eq!(split_args("  app  -a\t-b "), ["app", "-a", "-b"]);
+}
+
+#[test]
+fn split_args_empty_input() {
+    assert!(split_args("").is_empty());
+    assert!(split_args("   ").is_empty());
+}
+
+#[test]
+fn split_args_double_quoted_space_is_one_arg() {
+    assert_eq!(
+        split_args(r#"chromium "--profile-directory=Profile 1" --app-id=abc"#),
+        ["chromium", "--profile-directory=Profile 1", "--app-id=abc"]
+    );
+}
+
+#[test]
+fn split_args_quoted_program_path() {
+    assert_eq!(
+        split_args(r#""/opt/My App/bin/app" --flag"#),
+        ["/opt/My App/bin/app", "--flag"]
+    );
+}
+
+#[test]
+fn split_args_quotes_join_adjacent_text() {
+    assert_eq!(split_args(r#"--name="a b"c"#), ["--name=a bc"]);
+}
+
+#[test]
+fn split_args_double_quote_escapes() {
+    assert_eq!(
+        split_args(r#""a\"b" "\`x\`" "\$HOME" "c\\d""#),
+        ["a\"b", "`x`", "$HOME", "c\\d"]
+    );
+}
+
+#[test]
+fn split_args_other_backslash_in_double_quotes_kept() {
+    assert_eq!(split_args(r#""a\nb""#), ["a\\nb"]);
+}
+
+#[test]
+fn split_args_empty_quoted_arg_preserved() {
+    assert_eq!(split_args(r#"app "" ''"#), ["app", "", ""]);
+}
+
+#[test]
+fn split_args_single_quotes_lenient() {
+    assert_eq!(split_args(r#"app 'a b' 'c\d'"#), ["app", "a b", "c\\d"]);
+}
+
+#[test]
+fn split_args_backslash_outside_quotes_escapes_next() {
+    assert_eq!(split_args(r"app a\ b"), ["app", "a b"]);
+}
+
+#[test]
+fn split_args_unterminated_quote_runs_to_end() {
+    assert_eq!(split_args(r#"app "a b"#), ["app", "a b"]);
+}
+
+#[test]
+fn split_args_no_shell_expansion() {
+    assert_eq!(split_args("echo $HOME *"), ["echo", "$HOME", "*"]);
+}
+
+// -- exec_args ----------------------------------------------------------------
+
+/// Regression test for issue #61: Chromium PWA in a secondary profile.
+#[test]
+fn exec_args_quoted_arg_with_space() {
+    let e = entry_for_exec(
+        r#"/opt/google/chrome/chrome "--profile-directory=Profile 1" --app-id=abc %U"#,
+    );
+    assert_eq!(
+        exec_args(&e),
+        [
+            "/opt/google/chrome/chrome",
+            "--profile-directory=Profile 1",
+            "--app-id=abc"
+        ]
+    );
+}
+
+#[test]
+fn exec_args_drops_file_and_url_codes() {
+    let e = entry_for_exec("app %f %F %u %U %d %D %n %N %v %m -x");
+    assert_eq!(exec_args(&e), ["app", "-x"]);
+}
+
+#[test]
+fn exec_args_drops_quoted_file_code() {
+    let e = entry_for_exec(r#"app "%u""#);
+    assert_eq!(exec_args(&e), ["app"]);
+}
+
+#[test]
+fn exec_args_keeps_literal_empty_arg() {
+    let e = entry_for_exec(r#"app """#);
+    assert_eq!(exec_args(&e), ["app", ""]);
+}
+
+#[test]
+fn exec_args_icon_expands_to_two_args() {
+    let e = entry_for_exec("app %i");
+    assert_eq!(exec_args(&e), ["app", "--icon", "test-icon"]);
+}
+
+#[test]
+fn exec_args_icon_with_space_stays_one_arg() {
+    let mut e = entry_for_exec("app %i");
+    e.icon = "/home/u/My Icons/a.png".to_owned();
+    assert_eq!(exec_args(&e), ["app", "--icon", "/home/u/My Icons/a.png"]);
+}
+
+#[test]
+fn exec_args_icon_dropped_when_empty() {
+    let mut e = entry_for_exec("app %i -x");
+    e.icon = String::new();
+    assert_eq!(exec_args(&e), ["app", "-x"]);
+}
+
+#[test]
+fn exec_args_name_with_space_stays_one_arg() {
+    let e = entry_for_exec("app --caption %c");
+    assert_eq!(exec_args(&e), ["app", "--caption", "Test App"]);
+}
+
+#[test]
+fn exec_args_name_with_quote_chars_is_literal() {
+    let mut e = entry_for_exec(r#"app --caption %c "%c""#);
+    e.name = r#"Don't "Starve""#.to_owned();
+    assert_eq!(
+        exec_args(&e),
+        ["app", "--caption", r#"Don't "Starve""#, r#"Don't "Starve""#]
+    );
+}
+
+#[test]
+fn exec_args_path_code_in_place() {
+    let mut e = entry_for_exec("app --desktop-file=%k");
+    e.path = PathBuf::from("/home/u/My Apps/test.desktop");
+    assert_eq!(
+        exec_args(&e),
+        ["app", "--desktop-file=/home/u/My Apps/test.desktop"]
+    );
+}
+
+#[test]
+fn exec_args_percent_escape() {
+    let e = entry_for_exec("app 100%% %%u");
+    assert_eq!(exec_args(&e), ["app", "100%", "%u"]);
+}
+
+#[test]
+fn exec_args_general_string_escapes() {
+    // `\s` is a space after unescaping, so quoting keeps it in one argument.
+    let e = entry_for_exec(r#"app "a\sb""#);
+    assert_eq!(exec_args(&e), ["app", "a b"]);
+}
+
+#[test]
+fn exec_args_double_level_backslash_unescape() {
+    // In the file, a literal backslash inside a quoted arg is written `\\\\`:
+    // string unescape gives `\\`, quote unescape gives `\`.
+    let e = entry_for_exec(r#"app "C:\\\\dir""#);
+    assert_eq!(exec_args(&e), ["app", r"C:\dir"]);
+}
+
+#[test]
+fn exec_args_escaped_dollar_in_quotes() {
+    let e = entry_for_exec(r#"sh -c "echo \\$HOME""#);
+    assert_eq!(exec_args(&e), ["sh", "-c", "echo $HOME"]);
+}
+
+#[test]
+fn exec_args_empty_exec() {
+    assert!(exec_args(&entry_for_exec("")).is_empty());
+}
+
+/// `exec_args` must work on the raw value stored by `parse_entry`.
+#[test]
+fn exec_args_from_parsed_file() {
+    let dir = tempfile::tempdir().expect("tempdir");
+    let path = write_desktop(
+        dir.path(),
+        "pwa.desktop",
+        r#"[Desktop Entry]
+Type=Application
+Name=PWA
+Exec=chromium "--profile-directory=Profile 1" --app-id=abc %U
+"#,
+    );
+    let entry = parse_entry("pwa.desktop", &path).expect("parse");
+    assert_eq!(
+        exec_args(&entry),
+        ["chromium", "--profile-directory=Profile 1", "--app-id=abc"]
+    );
 }
 
 // -- application_dirs ---------------------------------------------------------
