@@ -54,21 +54,19 @@ pub(crate) fn do_submit(
 
 #[cfg(feature = "wayland")]
 fn launch(entry: &libtofi_rs::drun::DesktopEntry, terminal: Option<&str>) {
-    let cmd = libtofi_rs::drun::exec_command(entry);
-    let full_cmd = if entry.terminal {
+    let mut argv = libtofi_rs::drun::exec_args(entry);
+    if entry.terminal {
         let term = terminal.filter(|t| !t.is_empty()).unwrap_or("xterm");
-        format!("{term} {cmd}")
-    } else {
-        cmd
-    };
-    let mut parts = full_cmd.split_whitespace();
-    let Some(program) = parts.next() else {
+        let mut term_argv = libtofi_rs::drun::split_args(term);
+        term_argv.append(&mut argv);
+        argv = term_argv;
+    }
+    let Some((program, args)) = argv.split_first() else {
         tracing::error!("Empty exec command for '{}'", entry.name);
         return;
     };
-    let args: Vec<&str> = parts.collect();
-    match std::process::Command::new(program).args(&args).spawn() {
-        Ok(_) => tracing::debug!("Launched '{}': {full_cmd}", entry.name),
+    match std::process::Command::new(program).args(args).spawn() {
+        Ok(_) => tracing::debug!("Launched '{}': {argv:?}", entry.name),
         Err(e) => tracing::error!("Failed to launch '{}': {e}", entry.name),
     }
 }
