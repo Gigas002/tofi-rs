@@ -663,6 +663,25 @@ fn exec_args_general_string_escapes() {
 }
 
 #[test]
+fn exec_args_whitespace_string_escapes() {
+    let e = entry_for_exec(r#"app "a\nb" "c\td" "e\rf""#);
+    assert_eq!(exec_args(&e), ["app", "a\nb", "c\td", "e\rf"]);
+}
+
+#[test]
+fn exec_args_escaped_quote_in_quotes() {
+    // `\"` is not a general string escape, so it must reach the quote parser.
+    let e = entry_for_exec(r#"sh -c "echo \"hi there\"""#);
+    assert_eq!(exec_args(&e), ["sh", "-c", r#"echo "hi there""#]);
+}
+
+#[test]
+fn exec_args_trailing_lone_percent_kept() {
+    let e = entry_for_exec("app 50%");
+    assert_eq!(exec_args(&e), ["app", "50%"]);
+}
+
+#[test]
 fn exec_args_double_level_backslash_unescape() {
     // In the file, a literal backslash inside a quoted arg is written `\\\\`:
     // string unescape gives `\\`, quote unescape gives `\`.

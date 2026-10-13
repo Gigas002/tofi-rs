@@ -54,13 +54,7 @@ pub(crate) fn do_submit(
 
 #[cfg(feature = "wayland")]
 fn launch(entry: &libtofi_rs::drun::DesktopEntry, terminal: Option<&str>) {
-    let mut argv = libtofi_rs::drun::exec_args(entry);
-    if entry.terminal {
-        let term = terminal.filter(|t| !t.is_empty()).unwrap_or("xterm");
-        let mut term_argv = libtofi_rs::drun::split_args(term);
-        term_argv.append(&mut argv);
-        argv = term_argv;
-    }
+    let argv = launch_argv(entry, terminal);
     let Some((program, args)) = argv.split_first() else {
         tracing::error!("Empty exec command for '{}'", entry.name);
         return;
@@ -69,6 +63,23 @@ fn launch(entry: &libtofi_rs::drun::DesktopEntry, terminal: Option<&str>) {
         Ok(_) => tracing::debug!("Launched '{}': {argv:?}", entry.name),
         Err(e) => tracing::error!("Failed to launch '{}': {e}", entry.name),
     }
+}
+
+/// Build the argument vector for `entry`, prefixing the terminal command
+/// (default `xterm`) when the entry has `Terminal=true`.
+#[cfg(feature = "wayland")]
+pub(super) fn launch_argv(
+    entry: &libtofi_rs::drun::DesktopEntry,
+    terminal: Option<&str>,
+) -> Vec<String> {
+    let mut argv = libtofi_rs::drun::exec_args(entry);
+    if entry.terminal {
+        let term = terminal.filter(|t| !t.is_empty()).unwrap_or("xterm");
+        let mut term_argv = libtofi_rs::drun::split_args(term);
+        term_argv.append(&mut argv);
+        argv = term_argv;
+    }
+    argv
 }
 
 #[cfg(all(feature = "wayland", feature = "renderer"))]

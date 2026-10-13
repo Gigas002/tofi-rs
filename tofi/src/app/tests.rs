@@ -123,3 +123,59 @@ mod run_commands_tests {
         assert!(!result.is_empty());
     }
 }
+
+// ── launch_argv ──────────────────────────────────────────────────────────────
+
+#[cfg(feature = "wayland")]
+mod launch_argv_tests {
+    use super::super::submit_utils::launch_argv;
+    use libtofi_rs::drun::DesktopEntry;
+    use std::path::PathBuf;
+
+    fn entry(exec: &str, terminal: bool) -> DesktopEntry {
+        DesktopEntry {
+            id: "t.desktop".into(),
+            name: "Test App".into(),
+            path: PathBuf::from("/usr/share/applications/t.desktop"),
+            keywords: String::new(),
+            exec: exec.to_owned(),
+            icon: String::new(),
+            terminal,
+        }
+    }
+
+    #[test]
+    fn gui_app_ignores_terminal() {
+        let e = entry(r#"chromium "--profile-directory=Profile 1""#, false);
+        assert_eq!(
+            launch_argv(&e, Some("foot")),
+            ["chromium", "--profile-directory=Profile 1"]
+        );
+    }
+
+    #[test]
+    fn terminal_app_defaults_to_xterm() {
+        let e = entry("htop", true);
+        assert_eq!(launch_argv(&e, None), ["xterm", "htop"]);
+    }
+
+    #[test]
+    fn terminal_app_empty_terminal_falls_back_to_xterm() {
+        let e = entry("htop", true);
+        assert_eq!(launch_argv(&e, Some("")), ["xterm", "htop"]);
+    }
+
+    #[test]
+    fn terminal_app_terminal_with_args_and_quotes() {
+        let e = entry(r#"vim "my file.txt""#, true);
+        assert_eq!(
+            launch_argv(&e, Some(r#""/opt/My Term/term" -e"#)),
+            ["/opt/My Term/term", "-e", "vim", "my file.txt"]
+        );
+    }
+
+    #[test]
+    fn empty_exec_gives_empty_argv() {
+        assert!(launch_argv(&entry("", false), None).is_empty());
+    }
+}
