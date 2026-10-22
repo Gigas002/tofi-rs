@@ -40,7 +40,8 @@ selection_color = "#89b4fa"
 selection_match_color = "#fab387ff"
 
 [font]
-# Font family name passed to Pango.
+# Font description: comma-separated family list, optionally followed by style
+# words such as "Bold", "Italic" or "Condensed" (e.g. "Fira Code, monospace Bold").
 name = "Monospace"
 
 # Font size in points.
