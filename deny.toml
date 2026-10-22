@@ -6,6 +6,8 @@ allow = [
     "MIT",
     "Apache-2.0",
     "Apache-2.0 WITH LLVM-exception",
+    # libloading (via fontique's dlopen of fontconfig).
+    "ISC",
     "Zlib",
     "Unicode-3.0",
 ]
