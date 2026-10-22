@@ -29,7 +29,7 @@ pub enum Error {
     #[error("Invalid value: {0}")]
     InvalidValue(String),
 
-    /// A Cairo / Pango rendering error (feature **`renderer`**).
+    /// A rendering error (feature **`renderer`**).
     #[cfg(feature = "renderer")]
     #[error("Renderer error: {0}")]
     Renderer(String),

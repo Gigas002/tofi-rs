@@ -22,11 +22,13 @@ wayland-protocols = { version = "0.32", features = ["client", "staging"], option
 wayland-protocols-wlr = { version = "0.3", features = ["client"], optional = true }
 # XKB keyboard state — keymap parsing and modifier tracking.
 xkbcommon = { version = "0.9", optional = true }
-# Renderer stack (Cairo + Pango + HarfBuzz).
-# All three share the same gtk-rs minor (0.22) so version resolution is consistent.
-cairo-rs = { version = "0.22", optional = true }
-pango = { version = "0.22", features = ["v1_42"], optional = true }
-pangocairo = { version = "0.22", optional = true }
+# Renderer stack (pure Rust): vello_cpu rasterizes, parley shapes and lays out text.
+# vello_cpu and parley must agree on the linebender peniko/kurbo versions.
+vello_cpu = { version = "0.3", optional = true }
+parley = { version = "0.12", optional = true }
+# Not used directly: enables dlopen so fontconfig (system font discovery) is
+# loaded at runtime instead of linked, removing the build-time C dependency.
+fontique = { version = "0.12", features = ["fontconfig-dlopen"], optional = true }
 
 [dev-dependencies]
 tempfile = "3"
@@ -38,8 +40,8 @@ default = [
     "logging",
 ]
 wayland = ["dep:wayland-client", "dep:wayland-protocols", "dep:wayland-protocols-wlr", "dep:xkbcommon"]
-# Drawing stack: Cairo ImageSurface + Pango text layout.
-renderer = ["dep:cairo-rs", "dep:pango", "dep:pangocairo"]
+# Drawing stack: vello_cpu rasterizer + parley text layout.
+renderer = ["dep:vello_cpu", "dep:parley", "dep:fontique"]
 # Paste implementation lives under `wayland::clipboard`; enabling implies `wayland`.
 clipboard = ["wayland"]
 # Tracing instrumentation — zero-cost when disabled (no subscriber is registered).

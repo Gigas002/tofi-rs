@@ -102,7 +102,7 @@ fn string_to_codepoints() {
 
 #[test]
 fn string_to_codepoints_empty() {
-    assert_eq!(utf8_string_to_utf32_string(""), vec![]);
+    assert_eq!(utf8_string_to_utf32_string(""), Vec::<char>::new());
 }
 
 // ── utf8_strlen ───────────────────────────────────────────────────────────────

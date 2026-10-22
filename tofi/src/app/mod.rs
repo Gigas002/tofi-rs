@@ -234,7 +234,6 @@ fn handle_redraw(
             entry.results = scored.into_iter().map(|(_, s)| s.clone()).collect();
         }
         entry.update();
-        entry.flush();
         libtofi_rs::wayland::surface::draw(state).expect("Failed to redraw entry");
         event_queue.flush().expect("Wayland flush after redraw");
     }
@@ -276,7 +275,6 @@ fn init_entry(
     let all_entries = entry.results.clone();
     tracing::debug!(count = all_entries.len(), "entries loaded");
     entry.update();
-    entry.flush();
 
     if let Some(surf) = state.surface.as_mut() {
         surf.index = entry.ready_index();

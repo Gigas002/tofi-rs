@@ -1,21 +1,24 @@
 //! Entry layout engine.
 //!
+//! Frames are rasterized with [`vello_cpu`] and text is laid out with
+//! [`parley`]; see [`text`] for the text drawing backend.
+//!
 //! # Safety
 //!
 //! [`Entry::new`] is `unsafe` because it wraps raw SHM buffer memory.
 //! See the function's doc-comment for invariants.
 
-use std::f64::consts::{FRAC_PI_2, PI};
+use vello_cpu::kurbo::{Affine, Rect, RoundedRect, Shape, Stroke};
+use vello_cpu::{RenderContext, Resources};
 
-use cairo::{Context, FillRule, Format, ImageSurface, Operator};
-
+use crate::Result;
 use crate::color::Color;
+use crate::renderer::{canvas_size, paint, rasterize};
 use crate::scale::scale_apply_inverse;
-use crate::{Error, Result};
 
-pub mod pango_backend;
 #[cfg(test)]
 mod tests;
+pub mod text;
 
 // ── Constants ────────────────────────────────────────────────────────────────
 
@@ -39,7 +42,7 @@ pub enum CursorStyle {
 /// Per-side insets in logical pixels.
 ///
 /// Negative values in [`TextTheme::padding`] are treated as "fill to edge"
-/// by the pango backend.
+/// by the text backend.
 #[derive(Debug, Clone, Copy, Default)]
 pub struct Directional {
     pub top: i32,
@@ -117,7 +120,7 @@ impl Default for CursorTheme {
     }
 }
 
-/// Cursor theme with all fields resolved by the Pango backend.
+/// Cursor theme with all fields resolved by the text backend.
 #[derive(Debug, Clone, Copy)]
 pub(crate) struct ResolvedCursorTheme {
     pub color: Color,
@@ -125,7 +128,7 @@ pub(crate) struct ResolvedCursorTheme {
     pub style: CursorStyle,
     pub corner_radius: u32,
     pub thickness: u32,
-    /// Distance from text baseline to the underline top (Pango-computed).
+    /// Distance from the top of the line to the underline top (font-computed).
     pub underline_depth: f64,
     /// Width of the 'm' glyph, used for block/underscore cursor width.
     pub em_width: f64,
@@ -255,16 +258,31 @@ impl Default for EntryConfig {
 
 /// Double-buffered entry widget.
 ///
-/// Holds two Cairo surfaces backed by consecutive halves of an SHM buffer,
-/// a Pango backend, resolved themes, and all runtime state.
+/// Renders into two frames occupying consecutive halves of an SHM buffer,
+/// and holds the text backend, resolved themes, and all runtime state.
 pub struct Entry {
-    // Double-buffered Cairo surfaces (index 0 and 1).
-    surfaces: [ImageSurface; 2],
-    contexts: [Context; 2],
+    /// Start of the two-frame SHM mapping.
+    data: *mut u8,
+    /// Physical frame dimensions.
+    width: u16,
+    height: u16,
+    scale: f64,
+    /// Logical frame dimensions (physical ÷ scale).
+    logical_width: u32,
+    logical_height: u32,
+
+    // Scene builder and rasterizer resources, reused across frames.
+    ctx: RenderContext,
+    resources: Resources,
     /// Which buffer is next to be drawn into.
     pub index: usize,
 
-    // Clip rectangle in physical / device pixels (set by entry_init).
+    /// Clip rectangle in logical pixels, before truncation.
+    clip_rect: Rect,
+    /// Where text drawing starts, in logical pixels.
+    text_origin: (f64, f64),
+
+    // Clip rectangle in logical pixels (set by `Entry::new`).
     pub clip_x: u32,
     pub clip_y: u32,
     pub clip_width: u32,
@@ -298,8 +316,8 @@ pub struct Entry {
     pub(crate) resolved_selection_theme: ResolvedTextTheme,
     pub(crate) resolved_cursor: ResolvedCursorTheme,
 
-    // Pango backend (lives for the lifetime of the Entry).
-    pub(crate) pango: pango_backend::PangoBackend,
+    // Text backend (lives for the lifetime of the Entry).
+    pub(crate) text: text::TextBackend,
 }
 
 impl Entry {
@@ -325,62 +343,17 @@ impl Entry {
         config: EntryConfig,
     ) -> Result<Self> {
         let scale = scale_numerator as f64 / 120.0;
-        let stride = width as i32 * 4;
-        let frame_bytes = (width * height * 4) as usize;
+        let (w16, h16) = canvas_size(width, height)?;
 
         tracing::debug!("Entry::new {width}×{height} physical, scale={scale:.4}");
-
-        // ── Create two Cairo surfaces (double buffering) ─────────────────────
-        // SAFETY: caller guarantees validity.
-        let surface0 = unsafe {
-            ImageSurface::create_for_data_unsafe(
-                data,
-                Format::ARgb32,
-                width as i32,
-                height as i32,
-                stride,
-            )
-        }
-        .map_err(|e| Error::Renderer(format!("entry surface[0]: {e}")))?;
-
-        let surface1 = unsafe {
-            ImageSurface::create_for_data_unsafe(
-                data.add(frame_bytes),
-                Format::ARgb32,
-                width as i32,
-                height as i32,
-                stride,
-            )
-        }
-        .map_err(|e| Error::Renderer(format!("entry surface[1]: {e}")))?;
-
-        surface0.set_device_scale(scale, scale);
-        surface1.set_device_scale(scale, scale);
-
-        let cr0 = Context::new(&surface0)
-            .map_err(|e| Error::Renderer(format!("entry context[0]: {e}")))?;
-        let cr1 = Context::new(&surface1)
-            .map_err(|e| Error::Renderer(format!("entry context[1]: {e}")))?;
 
         // Logical dimensions (physical ÷ scale).
         let logical_width = scale_apply_inverse(width, scale_numerator);
         let logical_height = scale_apply_inverse(height, scale_numerator);
 
-        // ── Draw static background + border on both frames ───────────────────
-        // C draws only on cairo[0] in entry_init, deferring the memcpy to
-        // cairo[1] until just after the first frame is shown.  We draw on both
-        // frames here to avoid the deferred-copy complexity; the result is
-        // identical.
-        for cr in [&cr0, &cr1] {
-            draw_background_and_border(cr, &config, logical_width, logical_height)?;
-        }
-
-        // ── Build clip transform on context[0], then mirror to context[1] ────
-        // Returns the clip rect and the final translation applied inside the
-        // clip so that text draws in the padded area.
-        let (clip_x, clip_y, clip_w, clip_h) =
-            setup_clip(&cr0, &config, logical_width, logical_height);
-        setup_clip(&cr1, &config, logical_width, logical_height);
+        // Clip region (border inset + optional padding + corner inset) and
+        // the point where text drawing starts.
+        let clip = compute_clip(&config, logical_width, logical_height);
 
         // ── Resolve text themes against global defaults ──────────────────────
         let transparent = Color {
@@ -408,24 +381,27 @@ impl Entry {
         let resolved_alternate_result_theme = config.alternate_result_theme.resolve(&alt_fallback);
         let resolved_selection_theme = config.selection_theme.resolve(&default_fallback);
 
-        // ── Initialise Pango backend ─────────────────────────────────────────
-        let (pango, resolved_cursor) = pango_backend::PangoBackend::init(
-            &cr0,
-            &config,
-            &resolved_input_theme,
-            default_fg,
-            default_bg,
-        )?;
+        // ── Initialise text backend ──────────────────────────────────────────
+        let (text, resolved_cursor) =
+            text::TextBackend::init(&config, &resolved_input_theme, default_bg)?;
 
-        // ── Build Entry and perform the initial text render ──────────────────
+        // ── Build Entry and render the first frame ───────────────────────────
         let mut entry = Self {
-            surfaces: [surface0, surface1],
-            contexts: [cr0, cr1],
+            data,
+            width: w16,
+            height: h16,
+            scale,
+            logical_width,
+            logical_height,
+            ctx: RenderContext::new(w16, h16),
+            resources: Resources::new(),
             index: 0,
-            clip_x,
-            clip_y,
-            clip_width: clip_w,
-            clip_height: clip_h,
+            clip_rect: clip.rect,
+            text_origin: clip.text_origin,
+            clip_x: clip.x,
+            clip_y: clip.y,
+            clip_width: clip.width,
+            clip_height: clip.height,
             input: String::new(),
             cursor_position: 0,
             selection: 0,
@@ -441,11 +417,10 @@ impl Entry {
             resolved_alternate_result_theme,
             resolved_selection_theme,
             resolved_cursor,
-            pango,
+            text,
         };
 
-        entry.pango_update();
-        entry.index = 1;
+        entry.update();
 
         Ok(entry)
     }
@@ -455,25 +430,45 @@ impl Entry {
     /// Must be called whenever the input, selection, or results change.
     pub fn update(&mut self) {
         tracing::debug!("Entry::update");
-        let cr = &self.contexts[self.index];
 
-        // Clear the interior with background color.
-        let c = self.config.background_color;
-        cr.set_source_rgba(c.r as f64, c.g as f64, c.b as f64, c.a as f64);
-        cr.save().unwrap_or_default();
-        cr.set_operator(Operator::Source);
-        cr.paint().unwrap_or_default();
-        cr.restore().unwrap_or_default();
+        // The whole scene is rebuilt each frame; vello_cpu only rasterizes
+        // what is drawn, so this is cheap compared to the text layout.
+        self.ctx.reset();
+        self.ctx.set_transform(Affine::scale(self.scale));
+        draw_background_and_border(
+            &mut self.ctx,
+            &self.config,
+            self.logical_width,
+            self.logical_height,
+        );
 
-        self.pango_update();
+        self.ctx.push_clip_rect(&self.clip_rect);
+        text::update(self);
+        self.ctx.pop_clip();
+
+        let frame_bytes = self.width as usize * self.height as usize * 4;
+        // SAFETY: `Entry::new`'s contract guarantees `data` is valid for two
+        // consecutive frames of `frame_bytes` and is not aliased while `self`
+        // is alive; `index` is always 0 or 1.
+        let frame = unsafe {
+            std::slice::from_raw_parts_mut(self.data.add(self.index * frame_bytes), frame_bytes)
+        };
+        rasterize(
+            &mut self.ctx,
+            &mut self.resources,
+            frame,
+            self.width,
+            self.height,
+        );
+
         self.index ^= 1;
     }
 
-    /// Flush both Cairo surfaces so pixel writes are visible in the SHM buffer.
-    pub fn flush(&self) {
-        self.surfaces[0].flush();
-        self.surfaces[1].flush();
-    }
+    /// No-op kept for API compatibility.
+    ///
+    /// [`Entry::update`] now writes finished pixels into the SHM buffer.
+    #[deprecated(note = "`Entry::update` writes finished pixels; flushing is no longer needed")]
+    pub fn flush(&self) {}
 
     /// Returns the index of the frame that is ready to be committed to the
     /// compositor (the one most recently drawn into, before the flip).
@@ -547,121 +542,75 @@ impl Entry {
         self.selection = 0;
         self.last_num_results_drawn = self.num_results_drawn;
     }
-
-    // ── Internal helpers ─────────────────────────────────────────────────────
-
-    /// Invoke the Pango backend update on the current context.
-    fn pango_update(&mut self) {
-        // Clone the Context (GObject refcount — zero-cost for the surface).
-        // This avoids a split-borrow conflict: `self.contexts[idx]` is an
-        // immutable borrow of `self`, but `update` also needs `&mut self`.
-        let cr = self.contexts[self.index].clone();
-        pango_backend::update(&cr, self);
-    }
 }
 
 // ── Drawing helpers ───────────────────────────────────────────────────────────
 
-/// Draw a rounded rectangle path.
+/// Paint background + border + outline inside the rounded window shape.
 ///
-/// When `r == 0` the result is a plain rectangle.
-pub(crate) fn rounded_rectangle(cr: &Context, width: f64, height: f64, r: f64) {
-    cr.new_path();
-    if r <= 0.0 {
-        cr.rectangle(0.0, 0.0, width, height);
-        return;
-    }
-    // Top-left
-    cr.arc(r, r, r, -PI, -FRAC_PI_2);
-    // Top-right
-    cr.arc(width - r, r, r, -FRAC_PI_2, 0.0);
-    // Bottom-right
-    cr.arc(width - r, height - r, r, 0.0, FRAC_PI_2);
-    // Bottom-left
-    cr.arc(r, height - r, r, FRAC_PI_2, PI);
-    cr.close_path();
-}
-
-/// Paint background + border + outline, and clear pixel artifacts outside
-/// rounded corners.
-fn draw_background_and_border(
-    cr: &Context,
-    cfg: &EntryConfig,
-    width: u32,
-    height: u32,
-) -> Result<()> {
-    let (w, h) = (width as f64, height as f64);
-    let r = cfg.corner_radius as f64;
+/// Everything outside the rounded rectangle stays transparent.
+fn draw_background_and_border(ctx: &mut RenderContext, cfg: &EntryConfig, width: u32, height: u32) {
+    let rect = Rect::new(0.0, 0.0, width as f64, height as f64);
+    let shape = RoundedRect::from_rect(rect, cfg.corner_radius as f64).to_path(0.1);
     let bw = cfg.border_width as f64;
     let ow = cfg.outline_width as f64;
 
-    // Fill with background color.
-    let c = cfg.background_color;
-    cr.set_source_rgba(c.r as f64, c.g as f64, c.b as f64, c.a as f64);
-    cr.set_operator(Operator::Source);
-    cr.paint()
-        .map_err(|e| Error::Renderer(format!("background paint: {e}")))?;
+    // Strokes are centered on the window edge; clipping to the shape keeps
+    // only their inner half, leaving outline / border / outline bands.
+    ctx.push_clip_layer(&shape);
 
-    // Outer outline stroke.
-    cr.set_line_width(4.0 * ow + 2.0 * bw);
-    rounded_rectangle(cr, w, h, r);
-    let c = cfg.outline_color;
-    cr.set_source_rgba(c.r as f64, c.g as f64, c.b as f64, c.a as f64);
-    cr.stroke_preserve()
-        .map_err(|e| Error::Renderer(format!("outline stroke: {e}")))?;
+    ctx.set_paint(paint(cfg.background_color));
+    ctx.fill_rect(&rect);
 
-    // Border stroke.
-    let c = cfg.border_color;
-    cr.set_source_rgba(c.r as f64, c.g as f64, c.b as f64, c.a as f64);
-    cr.set_line_width(2.0 * ow + 2.0 * bw);
-    cr.stroke_preserve()
-        .map_err(|e| Error::Renderer(format!("border stroke: {e}")))?;
+    for (line_width, color) in [
+        (4.0 * ow + 2.0 * bw, cfg.outline_color),
+        (2.0 * ow + 2.0 * bw, cfg.border_color),
+        (2.0 * ow, cfg.outline_color),
+    ] {
+        if line_width > 0.0 {
+            ctx.set_stroke(Stroke::new(line_width));
+            ctx.set_paint(paint(color));
+            ctx.stroke_path(&shape);
+        }
+    }
 
-    // Inner outline stroke.
-    let c = cfg.outline_color;
-    cr.set_source_rgba(c.r as f64, c.g as f64, c.b as f64, c.a as f64);
-    cr.set_line_width(2.0 * ow);
-    cr.stroke_preserve()
-        .map_err(|e| Error::Renderer(format!("inner outline stroke: {e}")))?;
-
-    // Clear pixels outside rounded corners using EVEN_ODD fill rule.
-    // The +1 prevents 1-pixel artifacts at certain fractional scale factors.
-    cr.rectangle(0.0, 0.0, w + 1.0, h + 1.0);
-    cr.set_source_rgba(0.0, 0.0, 0.0, 1.0);
-    cr.save()
-        .map_err(|e| Error::Renderer(format!("save: {e}")))?;
-    cr.set_fill_rule(FillRule::EvenOdd);
-    cr.set_operator(Operator::Clear);
-    cr.fill()
-        .map_err(|e| Error::Renderer(format!("corner clear: {e}")))?;
-    cr.restore()
-        .map_err(|e| Error::Renderer(format!("restore: {e}")))?;
-
-    cr.set_operator(Operator::Over);
-
-    Ok(())
+    ctx.pop_layer();
 }
 
-/// Apply the clip transform (border inset + optional padding + corner inset)
-/// and return the clip rectangle `(clip_x, clip_y, clip_width, clip_height)`.
-///
-/// The context is left in a state where the current-transform-matrix (CTM)
-/// origin is at the text drawing start, and a clip rectangle is active.
-fn setup_clip(cr: &Context, cfg: &EntryConfig, width: u32, height: u32) -> (u32, u32, u32, u32) {
+/// Clip region and text origin computed by [`compute_clip`].
+struct ClipLayout {
+    /// Clip rectangle in logical pixels.
+    rect: Rect,
+    /// `rect`, truncated to whole pixels.
+    x: u32,
+    y: u32,
+    width: u32,
+    height: u32,
+    /// Where text drawing starts, in logical pixels.
+    text_origin: (f64, f64),
+}
+
+/// Compute the clip region (border inset + optional padding + corner inset)
+/// and the text drawing origin.
+fn compute_clip(cfg: &EntryConfig, width: u32, height: u32) -> ClipLayout {
+    let mut x = 0.0;
+    let mut y = 0.0;
     let mut w = width as f64;
     let mut h = height as f64;
     let bw = cfg.border_width as f64;
     let ow = cfg.outline_width as f64;
 
-    // Translate inside the border+outline inset.
+    // Inset inside the border+outline.
     let dx = 2.0 * ow + bw;
-    cr.translate(dx, dx);
+    x += dx;
+    y += dx;
     w -= 2.0 * dx;
     h -= 2.0 * dx;
 
     // Optionally include padding in the clip region.
     if cfg.clip_to_padding {
-        cr.translate(cfg.padding_left as f64, cfg.padding_top as f64);
+        x += cfg.padding_left as f64;
+        y += cfg.padding_top as f64;
         w -= (cfg.padding_left + cfg.padding_right) as f64;
         h -= (cfg.padding_top + cfg.padding_bottom) as f64;
     }
@@ -669,25 +618,27 @@ fn setup_clip(cr: &Context, cfg: &EntryConfig, width: u32, height: u32) -> (u32,
     // Further inset for rounded corner clearance.
     let inner_r = (cfg.corner_radius as f64 - dx).max(0.0);
     let corner_dx = (inner_r * (1.0 - 1.0 / std::f64::consts::SQRT_2)).ceil();
-    cr.translate(corner_dx, corner_dx);
+    x += corner_dx;
+    y += corner_dx;
     w -= 2.0 * corner_dx;
     h -= 2.0 * corner_dx;
 
-    cr.rectangle(0.0, 0.0, w, h);
-    cr.clip();
+    let rect = Rect::new(x, y, x + w.max(0.0), y + h.max(0.0));
 
-    // Record clip rect position from the CTM.
-    let mat = cr.matrix();
-    let clip_x = mat.x0() as u32;
-    let clip_y = mat.y0() as u32;
-    let clip_w = w as u32;
-    let clip_h = h as u32;
+    // If padding is *not* part of the clip region, still offset past it so
+    // text starts at the right place.
+    let text_origin = if cfg.clip_to_padding {
+        (x, y)
+    } else {
+        (x + cfg.padding_left as f64, y + cfg.padding_top as f64)
+    };
 
-    // If padding is *not* part of the clip region, still translate past it
-    // so text starts at the right place.
-    if !cfg.clip_to_padding {
-        cr.translate(cfg.padding_left as f64, cfg.padding_top as f64);
+    ClipLayout {
+        rect,
+        x: x as u32,
+        y: y as u32,
+        width: w as u32,
+        height: h as u32,
+        text_origin,
     }
-
-    (clip_x, clip_y, clip_w, clip_h)
 }

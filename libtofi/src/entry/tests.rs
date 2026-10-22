@@ -39,7 +39,6 @@ mod entry_tests {
         let (w, h) = (400u32, 200u32);
         let mut buf = make_buf(w, h);
         let entry = make_entry(&mut buf, w, h);
-        entry.flush();
         drop(entry);
 
         let all_zero = buf.iter().all(|&b| b == 0);
@@ -77,7 +76,6 @@ mod entry_tests {
         entry.input = "hello world".into();
         entry.cursor_position = entry.input.chars().count();
         entry.update();
-        entry.flush();
 
         let all_zero = buf.iter().all(|&b| b == 0);
         assert!(!all_zero, "entry_update should paint pixels");
@@ -93,7 +91,6 @@ mod entry_tests {
         entry.results = vec!["alpha".into(), "beta".into(), "gamma".into()];
         entry.selection = 1;
         entry.update();
-        entry.flush();
 
         assert!(
             entry.num_results_drawn <= 3,
@@ -371,7 +368,6 @@ mod entry_tests {
         entry.input = "secret".into();
         entry.cursor_position = entry.input.chars().count();
         entry.update();
-        entry.flush();
         let all_zero = buf.iter().all(|&b| b == 0);
         assert!(!all_zero, "hide_input should still paint pixels");
     }
@@ -407,7 +403,6 @@ mod entry_tests {
         entry.selection = 0;
         entry.num_results_drawn = 1;
         entry.update();
-        entry.flush();
         let all_zero = buf.iter().all(|&b| b == 0);
         assert!(!all_zero, "selection highlight should paint pixels");
     }
@@ -436,7 +431,6 @@ mod entry_tests {
         entry.results = vec!["alpha".into(), "beta".into(), "gamma".into()];
         entry.selection = 0;
         entry.update();
-        entry.flush();
         let all_zero = buf.iter().all(|&b| b == 0);
         assert!(!all_zero, "horizontal layout should paint pixels");
     }
@@ -450,7 +444,6 @@ mod entry_tests {
         entry.input = "hello".into();
         entry.cursor_position = 2;
         entry.update();
-        entry.flush();
         let all_zero = buf.iter().all(|&b| b == 0);
         assert!(!all_zero, "cursor in middle should paint pixels");
     }
@@ -483,7 +476,6 @@ mod entry_tests {
         entry.input = "abc".into();
         entry.cursor_position = 1;
         entry.update();
-        entry.flush();
         let all_zero = buf.iter().all(|&b| b == 0);
         assert!(!all_zero, "block cursor should paint pixels");
     }
@@ -516,7 +508,6 @@ mod entry_tests {
         entry.input = "abc".into();
         entry.cursor_position = 3;
         entry.update();
-        entry.flush();
         let all_zero = buf.iter().all(|&b| b == 0);
         assert!(!all_zero, "underscore cursor should paint pixels");
     }
@@ -556,7 +547,6 @@ mod entry_tests {
         entry.selection = 1;
         entry.num_results_drawn = 3;
         entry.update();
-        entry.flush();
         let all_zero = buf.iter().all(|&b| b == 0);
         assert!(
             !all_zero,
@@ -565,11 +555,11 @@ mod entry_tests {
     }
 }
 
-// ── pango_backend tests ───────────────────────────────────────────────────────
+// ── text backend tests ────────────────────────────────────────────────────────
 
 #[cfg(feature = "renderer")]
-mod pango_backend_tests {
-    use super::super::pango_backend::find_match_position;
+mod text_tests {
+    use super::super::text::find_match_position;
 
     #[test]
     fn empty_needle_returns_none() {
@@ -609,5 +599,129 @@ mod pango_backend_tests {
     #[test]
     fn unicode_haystack_match_is_some() {
         assert!(find_match_position("café", "afé").is_some());
+    }
+
+    #[test]
+    fn match_changing_byte_length_on_lowercase_does_not_panic() {
+        // 'İ' lowercases to two chars, so offsets from the lowercased string
+        // need not be char boundaries in the original.
+        use crate::color::Color;
+        use crate::entry::{Entry, EntryConfig};
+        let (w, h) = (400u32, 200u32);
+        let mut buf = vec![0u8; (w * h * 4 * 2) as usize];
+        let config = EntryConfig {
+            num_results: 3,
+            selection_highlight_color: Color {
+                r: 1.0,
+                g: 0.0,
+                b: 0.0,
+                a: 1.0,
+            },
+            ..EntryConfig::default()
+        };
+        let mut entry =
+            unsafe { Entry::new(buf.as_mut_ptr(), w, h, 120, config).expect("Entry::new") };
+        entry.input = "i".into();
+        entry.results = vec!["İİİi".into()];
+        entry.update();
+    }
+}
+
+// ── font description / OpenType settings parsing ──────────────────────────────
+
+#[cfg(feature = "renderer")]
+mod font_parsing_tests {
+    use parley::setting::Tag;
+    use parley::{FontFamilyName, FontStyle, FontWeight, FontWidth, GenericFamily};
+
+    use super::super::text::{parse_font_description, parse_font_features, parse_font_variations};
+
+    fn named(name: &str) -> FontFamilyName<'static> {
+        FontFamilyName::Named(name.to_owned().into())
+    }
+
+    #[test]
+    fn plain_family() {
+        let spec = parse_font_description("CaskaydiaCove Nerd Font Mono");
+        assert_eq!(spec.families, vec![named("CaskaydiaCove Nerd Font Mono")]);
+        assert_eq!(spec.weight, FontWeight::NORMAL);
+        assert_eq!(spec.style, FontStyle::Normal);
+    }
+
+    #[test]
+    fn generic_families_map_case_insensitively() {
+        let spec = parse_font_description("Sans");
+        assert_eq!(
+            spec.families,
+            vec![FontFamilyName::Generic(GenericFamily::SansSerif)]
+        );
+        let spec = parse_font_description("monospace");
+        assert_eq!(
+            spec.families,
+            vec![FontFamilyName::Generic(GenericFamily::Monospace)]
+        );
+    }
+
+    #[test]
+    fn trailing_style_words_and_size() {
+        let spec = parse_font_description("Noto Sans Bold Italic Condensed 12");
+        assert_eq!(spec.families, vec![named("Noto Sans")]);
+        assert_eq!(spec.weight, FontWeight::BOLD);
+        assert_eq!(spec.style, FontStyle::Italic);
+        assert_eq!(spec.width, FontWidth::CONDENSED);
+    }
+
+    #[test]
+    fn single_style_word_is_a_family() {
+        let spec = parse_font_description("Bold");
+        assert_eq!(spec.families, vec![named("Bold")]);
+        assert_eq!(spec.weight, FontWeight::NORMAL);
+    }
+
+    #[test]
+    fn family_list() {
+        let spec = parse_font_description("Fira Code, Noto Color Emoji, monospace Medium");
+        assert_eq!(
+            spec.families,
+            vec![
+                named("Fira Code"),
+                named("Noto Color Emoji"),
+                FontFamilyName::Generic(GenericFamily::Monospace),
+            ]
+        );
+        assert_eq!(spec.weight, FontWeight::MEDIUM);
+    }
+
+    #[test]
+    fn features_all_syntaxes() {
+        let features = parse_font_features("liga=0, calt, -kern, +smcp, ss01 2, zero=on");
+        let got: Vec<(Tag, u16)> = features.iter().map(|f| (f.tag, f.value)).collect();
+        assert_eq!(
+            got,
+            vec![
+                (Tag::new(b"liga"), 0),
+                (Tag::new(b"calt"), 1),
+                (Tag::new(b"kern"), 0),
+                (Tag::new(b"smcp"), 1),
+                (Tag::new(b"ss01"), 2),
+                (Tag::new(b"zero"), 1),
+            ]
+        );
+    }
+
+    #[test]
+    fn features_skip_invalid() {
+        assert!(parse_font_features("toolong=1, x=1, liga=nope").is_empty());
+        assert!(parse_font_features("").is_empty());
+    }
+
+    #[test]
+    fn variations() {
+        let vars = parse_font_variations("wght=700, wdth 75.5, slnt");
+        let got: Vec<(Tag, f32)> = vars.iter().map(|v| (v.tag, v.value)).collect();
+        assert_eq!(
+            got,
+            vec![(Tag::new(b"wght"), 700.0), (Tag::new(b"wdth"), 75.5)]
+        );
     }
 }

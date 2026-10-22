@@ -157,7 +157,7 @@ where
 
     /// Raw pointer to the start of the entire pool (both frames contiguous).
     ///
-    /// Used by [`crate::entry::Entry::new`] which creates two Cairo surfaces
+    /// Used by [`crate::entry::Entry::new`] which renders two frames
     /// from consecutive halves of this mapping.
     ///
     /// # Safety

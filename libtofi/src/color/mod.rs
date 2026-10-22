@@ -19,7 +19,7 @@ use std::str::FromStr;
 use crate::error::{Error, Result};
 
 /// RGBA color with linear `f32` channels in `0.0..=1.0`.
-#[derive(Debug, Clone, Copy, PartialEq)]
+#[derive(Debug, Clone, Copy, PartialEq, Default)]
 pub struct Color {
     pub r: f32,
     pub g: f32,

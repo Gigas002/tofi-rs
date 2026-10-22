@@ -22,8 +22,6 @@ mod renderer_tests {
         assert_eq!(renderer.logical_height, height);
 
         renderer.draw_hello();
-        renderer.flush();
-        drop(renderer);
 
         // After draw_hello the buffer should not be all-zero (some pixels painted).
         let all_zero = buf.iter().all(|&b| b == 0);
