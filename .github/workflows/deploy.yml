@@ -34,9 +34,6 @@ jobs:
           sudo apt-get install -y \
             pkg-config \
             libwayland-dev \
-            libcairo2-dev \
-            libpango1.0-dev \
-            libharfbuzz-dev \
             libxkbcommon-dev
 
       - name: Build release binary
@@ -78,9 +75,6 @@ jobs:
           sudo apt-get install -y \
             pkg-config \
             libwayland-dev \
-            libcairo2-dev \
-            libpango1.0-dev \
-            libharfbuzz-dev \
             libxkbcommon-dev
 
       - name: Publish libtofi-rs
