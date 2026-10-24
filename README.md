@@ -10,9 +10,10 @@ A Rust fork of [tofi](https://github.com/philj56/tofi).
 | -------------- | --------------------- | -------------- |
 | Wayland client | `libwayland-dev`      | `wayland`      |
 | xkbcommon      | `libxkbcommon-dev`    | `libxkbcommon` |
+| fontconfig     | `libfontconfig-dev`   | `fontconfig`   |
 | pkg-config     | `pkg-config`          | `pkgconf`      |
 
-Rendering and text layout are pure Rust ([vello_cpu](https://github.com/linebender/vello) and [parley](https://github.com/linebender/parley)). At runtime, system fonts are discovered through fontconfig (`libfontconfig.so`, present on virtually every desktop), which is loaded dynamically and needs no headers at build time.
+Rendering and text layout are pure Rust ([vello_cpu](https://github.com/linebender/vello) and [parley](https://github.com/linebender/parley)). System fonts are discovered through fontconfig.
 
 The `clipboard` feature is opt-in; add `--features clipboard` to enable paste support.
 

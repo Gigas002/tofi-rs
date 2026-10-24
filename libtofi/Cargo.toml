@@ -26,9 +26,6 @@ xkbcommon = { version = "0.9", optional = true }
 # vello_cpu and parley must agree on the linebender peniko/kurbo versions.
 vello_cpu = { version = "0.3", optional = true }
 parley = { version = "0.12", optional = true }
-# Not used directly: enables dlopen so fontconfig (system font discovery) is
-# loaded at runtime instead of linked, removing the build-time C dependency.
-fontique = { version = "0.12", features = ["fontconfig-dlopen"], optional = true }
 
 [dev-dependencies]
 tempfile = "3"
@@ -41,7 +38,7 @@ default = [
 ]
 wayland = ["dep:wayland-client", "dep:wayland-protocols", "dep:wayland-protocols-wlr", "dep:xkbcommon"]
 # Drawing stack: vello_cpu rasterizer + parley text layout.
-renderer = ["dep:vello_cpu", "dep:parley", "dep:fontique"]
+renderer = ["dep:vello_cpu", "dep:parley"]
 # Paste implementation lives under `wayland::clipboard`; enabling implies `wayland`.
 clipboard = ["wayland"]
 # Tracing instrumentation — zero-cost when disabled (no subscriber is registered).
