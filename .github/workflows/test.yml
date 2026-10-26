@@ -26,7 +26,8 @@ jobs:
           sudo apt-get install -y \
             pkg-config \
             libwayland-dev \
-            libxkbcommon-dev
+            libxkbcommon-dev \
+            libfontconfig-dev
       - name: Install cargo-llvm-cov
         uses: taiki-e/install-action@v2
         with:
