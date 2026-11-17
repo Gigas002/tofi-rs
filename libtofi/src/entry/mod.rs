@@ -142,6 +142,8 @@ pub struct EntryConfig {
     pub font_size: u32,
     pub font_features: String,
     pub font_variations: String,
+    /// Hint glyph outlines (fontconfig decides how); `false` turns hinting off.
+    pub hint_font: bool,
 
     // Colors
     pub foreground_color: Color,
@@ -193,6 +195,7 @@ impl Default for EntryConfig {
             font_size: 24,
             font_features: String::new(),
             font_variations: String::new(),
+            hint_font: true,
             foreground_color: Color {
                 r: 1.0,
                 g: 1.0,

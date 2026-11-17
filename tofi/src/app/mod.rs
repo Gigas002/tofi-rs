@@ -391,6 +391,7 @@ fn make_entry_config(
         font_size: settings.font_size,
         font_features: settings.font_features.clone(),
         font_variations: settings.font_variations.clone(),
+        hint_font: settings.hint_font,
         foreground_color: settings.foreground_color,
         background_color: settings.background_color,
         border_color: settings.border_color,

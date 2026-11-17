@@ -19,10 +19,10 @@ use super::{
 
 /// Pango state held by [`Entry`] for the lifetime of the widget.
 pub struct PangoBackend {
-    /// Kept alive as a lifetime anchor for the layout (GObject refcount).
-    /// The Pango layout internally holds a strong ref to its context, so this
-    /// field is deliberately not read after construction.
-    _context: pango::Context,
+    /// Kept alive as a lifetime anchor for the layout (GObject refcount);
+    /// read only by tests.
+    #[cfg_attr(not(test), allow(dead_code))]
+    pub(crate) context: pango::Context,
     pub(crate) layout: pango::Layout,
 }
 
@@ -38,6 +38,14 @@ impl PangoBackend {
         default_bg: crate::color::Color,
     ) -> Result<(Self, ResolvedCursorTheme)> {
         let context = pangocairo::functions::create_context(cr);
+        if !config.hint_font {
+            // Leave hinting to fontconfig unless asked to turn it off.
+            let mut options = cairo::FontOptions::new()
+                .map_err(|e| Error::Renderer(format!("font options: {e}")))?;
+            options.set_hint_style(cairo::HintStyle::None);
+            options.set_hint_metrics(cairo::HintMetrics::Off);
+            pangocairo::functions::context_set_font_options(&context, Some(&options));
+        }
 
         let mut font_desc = FontDescription::from_string(&config.font_name);
         font_desc.set_size(config.font_size as i32 * pango::SCALE);
@@ -105,13 +113,7 @@ impl PangoBackend {
             config.font_name,
         );
 
-        Ok((
-            Self {
-                _context: context,
-                layout,
-            },
-            resolved_cursor,
-        ))
+        Ok((Self { context, layout }, resolved_cursor))
     }
 }
 

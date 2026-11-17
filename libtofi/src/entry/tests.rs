@@ -611,3 +611,41 @@ mod pango_backend_tests {
         assert!(find_match_position("café", "afé").is_some());
     }
 }
+
+#[cfg(feature = "renderer")]
+mod hint_tests {
+    use crate::entry::{Entry, EntryConfig};
+
+    fn hint_style(hint_font: bool) -> cairo::HintStyle {
+        let (w, h) = (200u32, 100u32);
+        let mut buf = vec![0u8; (w * h * 4 * 2) as usize];
+        let config = EntryConfig {
+            hint_font,
+            ..EntryConfig::default()
+        };
+        // SAFETY: buf outlives the Entry, which is dropped at the end of this fn.
+        let entry = unsafe { Entry::new(buf.as_mut_ptr(), w, h, 120, config) }.unwrap();
+        use pango::glib::translate::ToGlibPtr as _;
+        // SAFETY: the context is alive; the options it returns are owned by
+        // it and only read here, before the Entry is dropped. pangocairo has
+        // no safe getter for them.
+        unsafe {
+            let ctx: *mut pango::ffi::PangoContext = entry.pango.context.to_glib_none().0;
+            let options = pangocairo::ffi::pango_cairo_context_get_font_options(ctx);
+            if options.is_null() {
+                return cairo::HintStyle::Default;
+            }
+            cairo::HintStyle::from(cairo::ffi::cairo_font_options_get_hint_style(options))
+        }
+    }
+
+    #[test]
+    fn hinting_is_left_to_fontconfig_by_default() {
+        assert_eq!(hint_style(true), cairo::HintStyle::Default);
+    }
+
+    #[test]
+    fn hint_font_false_turns_hinting_off() {
+        assert_eq!(hint_style(false), cairo::HintStyle::None);
+    }
+}
