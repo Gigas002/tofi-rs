@@ -5,7 +5,6 @@ description = "A Wayland application launcher — Rust port of tofi"
 edition.workspace = true
 license.workspace = true
 repository.workspace = true
-homepage.workspace = true
 keywords = ["wayland", "launcher", "tofi", "drun"]
 categories = ["command-line-utilities"]
 
