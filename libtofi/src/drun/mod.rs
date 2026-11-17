@@ -35,7 +35,7 @@ const DEFAULT_DATA_DIRS: &str = "/usr/local/share/:/usr/share/";
 ///
 /// If the file starts with a different line (e.g. a stale C-tofi cache), we
 /// treat it as invalid and trigger a fresh scan.
-const CACHE_HEADER: &str = "#tofi-rs-drun-v1";
+const CACHE_FORMAT: &str = "#tofi-rs-drun-v1";
 
 // ---------------------------------------------------------------------------
 // Data types
@@ -295,10 +295,23 @@ pub fn scan(dirs: &[PathBuf]) -> Vec<DesktopEntry> {
 // Cache
 // ---------------------------------------------------------------------------
 
+/// The cache's first line: its format, and the language and desktop the
+/// entries were localised and filtered (`OnlyShowIn`/`NotShowIn`) for, so a
+/// cache made for another one is rescanned rather than used.
+fn cache_header() -> String {
+    let desktop = std::env::var("XDG_CURRENT_DESKTOP").unwrap_or_default();
+    header_for(&current_locale(), &desktop)
+}
+
+fn header_for((lang, territory): &(String, String), desktop: &str) -> String {
+    format!("{CACHE_FORMAT} lang={lang}_{territory} desktop={desktop}")
+}
+
 /// Save `entries` to `path` in a null-byte–separated format.
 ///
-/// The first line is always `CACHE_HEADER` so that stale C-tofi caches can
-/// be detected and discarded.
+/// The first line is a header (see `cache_header`) so that caches in another
+/// format, or made for another language or desktop, can be detected and
+/// discarded.
 ///
 /// Record layout (after header, one per line):
 /// `{id}\0{name}\0{path}\0{keywords}\0{exec}\0{icon}\0{terminal}\n`
@@ -310,7 +323,7 @@ pub fn save_cache(entries: &[DesktopEntry], path: &Path) -> io::Result<()> {
     }
     let file = fs::File::create(path)?;
     let mut w = io::BufWriter::new(file);
-    writeln!(w, "{CACHE_HEADER}")?;
+    writeln!(w, "{}", cache_header())?;
     for e in entries {
         writeln!(
             w,
@@ -331,18 +344,18 @@ pub fn save_cache(entries: &[DesktopEntry], path: &Path) -> io::Result<()> {
 
 /// Load entries from a cache file produced by [`save_cache`].
 ///
-/// Returns `Err(InvalidData)` when the file does not start with the expected
-/// `CACHE_HEADER`, allowing callers to detect a stale C-tofi cache and
-/// trigger a fresh scan.
+/// Returns `Err(InvalidData)` when the file does not start with the header
+/// [`save_cache`] would write now: another format (such as C tofi's), or
+/// another language or desktop. Callers then scan afresh.
 pub fn load_cache(path: &Path) -> io::Result<Vec<DesktopEntry>> {
     let file = fs::File::open(path)?;
     let mut reader = io::BufReader::new(file);
     let mut header = String::new();
     reader.read_line(&mut header)?;
-    if header.trim_end() != CACHE_HEADER {
+    if header.trim_end() != cache_header() {
         return Err(io::Error::new(
             io::ErrorKind::InvalidData,
-            "cache header mismatch — stale or foreign cache format",
+            "made in another format, or for another language or desktop",
         ));
     }
     let mut entries = Vec::new();
@@ -400,8 +413,10 @@ pub fn entries_cached(dirs: &[PathBuf], cache_path: &Path) -> io::Result<Vec<Des
                 match load_cache(cache_path) {
                     Ok(entries) => Ok(entries),
                     Err(e) if e.kind() == io::ErrorKind::InvalidData => {
-                        tracing::warn!(
-                            "drun: cache at {} has wrong format ({}), rescanning",
+                        // Expected after an upgrade or a change of language
+                        // or desktop, so not worth a warning.
+                        tracing::debug!(
+                            "drun: cache at {} is out of date ({}), rescanning",
                             cache_path.display(),
                             e
                         );

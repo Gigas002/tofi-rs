@@ -192,6 +192,8 @@ Hidden=true
 
 #[test]
 fn cache_roundtrip_preserves_all_fields() {
+    // The cache header depends on LANG and XDG_CURRENT_DESKTOP.
+    let _g = ENV_LOCK.lock().unwrap_or_else(|e| e.into_inner());
     let dir = tempfile::tempdir().expect("tempdir");
     let cache = dir.path().join("tofi-drun");
     let entries = vec![DesktopEntry {
@@ -210,6 +212,8 @@ fn cache_roundtrip_preserves_all_fields() {
 
 #[test]
 fn cache_roundtrip_terminal_true() {
+    // The cache header depends on LANG and XDG_CURRENT_DESKTOP.
+    let _g = ENV_LOCK.lock().unwrap_or_else(|e| e.into_inner());
     let dir = tempfile::tempdir().expect("tempdir");
     let cache = dir.path().join("tofi-drun");
     let entries = vec![DesktopEntry {
@@ -777,6 +781,8 @@ fn application_dirs_includes_xdg_data_dirs_entries() {
 /// directories, and rewrite the cache file with the correct header.
 #[test]
 fn entries_cached_wrong_header_rescans_and_rewrites_cache() {
+    // The cache header depends on LANG and XDG_CURRENT_DESKTOP.
+    let _g = ENV_LOCK.lock().unwrap_or_else(|e| e.into_inner());
     let tmp = tempfile::tempdir().expect("tempdir");
 
     // Create an applications sub-directory containing one .desktop file.
@@ -815,7 +821,45 @@ some-app Some App /path  app  1
         .unwrap_or("")
         .to_owned();
     assert_eq!(
-        first_line, "#tofi-rs-drun-v1",
+        first_line,
+        cache_header(),
         "cache header wrong after rewrite: {first_line:?}"
     );
+}
+
+#[test]
+fn cache_header_names_the_language_and_desktop() {
+    let header = header_for(&("de".to_owned(), "AT".to_owned()), "sway");
+    assert_eq!(header, "#tofi-rs-drun-v1 lang=de_AT desktop=sway");
+}
+
+#[test]
+fn a_cache_for_another_language_or_desktop_is_rejected() {
+    // The cache header depends on LANG and XDG_CURRENT_DESKTOP.
+    let _g = ENV_LOCK.lock().unwrap_or_else(|e| e.into_inner());
+    let dir = tempfile::tempdir().unwrap();
+    let path = dir.path().join("cache");
+    let other = header_for(&("xx".to_owned(), "YY".to_owned()), "NoSuchDesktop");
+    fs::write(&path, format!("{other}\nid\0Name\0/p\0\0exec\0\00\n")).unwrap();
+    let err = load_cache(&path).unwrap_err();
+    assert_eq!(err.kind(), io::ErrorKind::InvalidData);
+}
+
+#[test]
+fn a_cache_saved_now_loads_back() {
+    // The cache header depends on LANG and XDG_CURRENT_DESKTOP.
+    let _g = ENV_LOCK.lock().unwrap_or_else(|e| e.into_inner());
+    let dir = tempfile::tempdir().unwrap();
+    let path = dir.path().join("cache");
+    let entry = DesktopEntry {
+        id: "a.desktop".into(),
+        name: "A".into(),
+        path: "/a.desktop".into(),
+        keywords: "k;".into(),
+        exec: "a".into(),
+        icon: String::new(),
+        terminal: false,
+    };
+    save_cache(std::slice::from_ref(&entry), &path).unwrap();
+    assert_eq!(load_cache(&path).unwrap(), vec![entry]);
 }
