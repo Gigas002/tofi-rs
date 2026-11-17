@@ -65,3 +65,6 @@ build/
 
 # Rust (workspace)
 /target
+
+# Coverage data written by instrumented binaries
+*.profraw
