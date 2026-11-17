@@ -151,6 +151,30 @@ mod entry_tests {
         assert_eq!(entry.first_result, 0);
     }
 
+    /// After paging wraps past the end, `first_result` can be smaller than
+    /// the last page size; going back must not underflow.
+    #[test]
+    fn select_prev_after_a_wrap_does_not_underflow() {
+        let (w, h) = (600u32, 400u32);
+        let mut buf = make_buf(w, h);
+        let mut entry = make_entry(&mut buf, w, h);
+
+        // 10 results, 4 per page: 8 + 4 wraps to first_result = 2. Then
+        // (horizontal mode, long names) only 1 fits.
+        entry.results = (0..10).map(|i| i.to_string()).collect();
+        entry.first_result = 8;
+        entry.num_results_drawn = 4;
+        entry.selection = 3;
+        entry.select_next();
+        assert_eq!(entry.first_result, 2);
+        entry.num_results_drawn = 1;
+
+        entry.select_prev();
+        // The result before #2 is #1.
+        assert_eq!(entry.first_result + entry.selection, 1);
+        assert!(entry.first_result <= 2);
+    }
+
     /// `select_next` increments selection within the visible page.
     #[test]
     fn select_next_increments_within_page() {
