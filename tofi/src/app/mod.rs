@@ -88,6 +88,13 @@ fn event_loop(
     // The query `entry.results` was last filtered for; it starts unfiltered.
     #[cfg(feature = "renderer")]
     let mut filtered_for = String::new();
+    // drun entries' keywords, in the order of `all_entries`; empty otherwise.
+    #[cfg(feature = "renderer")]
+    let keywords: Vec<String> = state
+        .drun_entries
+        .iter()
+        .map(|e| e.keywords.clone())
+        .collect();
 
     loop {
         event_queue.flush().expect("Wayland flush failed");
@@ -122,6 +129,7 @@ fn event_loop(
                 state,
                 event_queue,
                 &all_entries,
+                &keywords,
                 &mut filtered_for,
                 settings,
             );
@@ -224,13 +232,15 @@ fn handle_redraw(
     state: &mut libtofi_rs::wayland::WaylandState,
     event_queue: &mut libtofi_rs::wayland::EventQueue<libtofi_rs::wayland::WaylandState>,
     all_entries: &[String],
+    keywords: &[String],
     filtered_for: &mut String,
     settings: &Settings,
 ) {
     if let Some(entry) = state.entry.as_mut() {
         // Navigation redraws too; only a changed query needs a new list.
         if entry.input != *filtered_for {
-            entry.results = filter_utils::filter(all_entries, &entry.input, settings.algorithm);
+            entry.results =
+                filter_utils::filter(all_entries, keywords, &entry.input, settings.algorithm);
             filtered_for.clone_from(&entry.input);
             tracing::debug!(count = entry.results.len(), "results filtered");
         }

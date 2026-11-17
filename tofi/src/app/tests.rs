@@ -215,25 +215,56 @@ mod filter_tests {
     #[test]
     fn empty_query_keeps_everything_in_order() {
         let all = list(&["b", "a", "c"]);
-        assert_eq!(filter(&all, "", Normal), all);
+        assert_eq!(filter(&all, &[], "", Normal), all);
     }
 
     #[test]
     fn non_matches_are_dropped() {
         let all = list(&["firefox", "foot", "gimp"]);
-        assert_eq!(filter(&all, "f", Prefix), list(&["foot", "firefox"]));
+        assert_eq!(filter(&all, &[], "f", Prefix), list(&["foot", "firefox"]));
     }
 
     #[test]
     fn better_matches_come_first() {
         // Normal scores by how early the match starts.
         let all = list(&["xxfo", "fo", "xfo"]);
-        assert_eq!(filter(&all, "fo", Normal), list(&["fo", "xfo", "xxfo"]));
+        assert_eq!(
+            filter(&all, &[], "fo", Normal),
+            list(&["fo", "xfo", "xxfo"])
+        );
+    }
+
+    #[test]
+    fn keywords_match_when_the_name_does_not() {
+        let all = list(&["Firefox", "Foot"]);
+        let keywords = list(&["web;browser;", "terminal;"]);
+        assert_eq!(
+            filter(&all, &keywords, "browser", Normal),
+            list(&["Firefox"])
+        );
+    }
+
+    #[test]
+    fn name_matches_rank_above_keyword_matches() {
+        // "term" is at the very start of Foot's keywords, but a name match
+        // further in still wins.
+        let all = list(&["Foot", "xterm"]);
+        let keywords = list(&["terminal;", ""]);
+        assert_eq!(
+            filter(&all, &keywords, "term", Normal),
+            list(&["xterm", "Foot"])
+        );
+    }
+
+    #[test]
+    fn missing_keywords_are_fine() {
+        let all = list(&["a", "b"]);
+        assert_eq!(filter(&all, &list(&["x"]), "b", Normal), list(&["b"]));
     }
 
     #[test]
     fn equal_scores_keep_history_order() {
         let all = list(&["zfoo", "afoo", "mfoo"]);
-        assert_eq!(filter(&all, "foo", Normal), all);
+        assert_eq!(filter(&all, &[], "foo", Normal), all);
     }
 }

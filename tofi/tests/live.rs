@@ -174,3 +174,24 @@ fn moving_the_selection_does_not_refilter() {
     assert_eq!(tofi.stdout(), "aa\n");
     assert_eq!(tofi.stderr().matches("results filtered").count(), 1);
 }
+
+#[test]
+fn drun_finds_entries_by_keyword() {
+    let sway = sway_or_skip!();
+    let mut kb = Keyboard::new(&sway);
+    let home = Home::new();
+    let marker = home.file("launched");
+    home.desktop_entry(
+        "web",
+        &format!(
+            "Name=Netscape\nKeywords=browser;internet;\nExec=touch {}",
+            marker.display()
+        ),
+    );
+    home.desktop_entry("other", "Name=Browser Settings Viewer Unused\nExec=true");
+    let mut tofi = Tofi::start(&sway, &home, &["--mode", "drun"], "");
+    kb.type_text("internet");
+    kb.key("Return");
+    assert!(tofi.wait().success());
+    common::wait_for("the app to run", || marker.exists().then_some(()));
+}
