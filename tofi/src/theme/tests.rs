@@ -26,13 +26,13 @@ fn resolve_relative_with_slash_uses_config_dir() {
 
 #[test]
 fn dim_integer_becomes_pixels() {
-    assert_eq!(dim_to_unit(&Dim::Int(42)), UnitValue::pixels(42));
+    assert_eq!(dim_to_unit(&Dim::Int(42)), Some(UnitValue::pixels(42)));
 }
 
 #[test]
 fn dim_percent_string_becomes_percent() {
     assert_eq!(
-        dim_to_unit(&Dim::Str("45%".to_owned())),
+        dim_to_unit(&Dim::Str("45%".to_owned())).unwrap(),
         UnitValue::percent(45)
     );
 }
@@ -40,7 +40,7 @@ fn dim_percent_string_becomes_percent() {
 #[test]
 fn dim_plain_string_becomes_pixels() {
     assert_eq!(
-        dim_to_unit(&Dim::Str("100".to_owned())),
+        dim_to_unit(&Dim::Str("100".to_owned())).unwrap(),
         UnitValue::pixels(100)
     );
 }
@@ -94,11 +94,11 @@ padding_bottom = 0
 "##;
     let theme: Theme = toml::from_str(toml_str).unwrap();
     assert_eq!(
-        dim_to_unit(theme.window.width.as_ref().unwrap()),
+        dim_to_unit(theme.window.width.as_ref().unwrap()).unwrap(),
         UnitValue::percent(45)
     );
     assert_eq!(
-        dim_to_unit(theme.window.padding_bottom.as_ref().unwrap()),
+        dim_to_unit(theme.window.padding_bottom.as_ref().unwrap()).unwrap(),
         UnitValue::pixels(0)
     );
 }
@@ -120,7 +120,7 @@ fn load_example_theme_parses() {
     if !path.exists() {
         return;
     }
-    let theme = load(&path);
+    let theme = load(&path).0;
 
     assert_eq!(theme.results.spacing, Some(25));
     assert_eq!(
@@ -128,11 +128,11 @@ fn load_example_theme_parses() {
         Some("CaskaydiaCove Nerd Font Mono")
     );
     assert_eq!(
-        dim_to_unit(theme.window.width.as_ref().unwrap()),
+        dim_to_unit(theme.window.width.as_ref().unwrap()).unwrap(),
         UnitValue::percent(45)
     );
     assert_eq!(
-        dim_to_unit(theme.window.height.as_ref().unwrap()),
+        dim_to_unit(theme.window.height.as_ref().unwrap()).unwrap(),
         UnitValue::percent(60)
     );
     assert_eq!(theme.window.corner_radius, Some(50));
@@ -145,7 +145,7 @@ fn load_minimal_theme_has_all_none() {
     if !path.exists() {
         return;
     }
-    let theme = load(&path);
+    let theme = load(&path).0;
 
     assert!(theme.prompt.text.is_none());
     assert!(theme.prompt.padding.is_none());
@@ -169,7 +169,7 @@ fn load_maximal_theme_sets_all_fields() {
     if !path.exists() {
         return;
     }
-    let theme = load(&path);
+    let theme = load(&path).0;
 
     assert_eq!(theme.prompt.text.as_deref(), Some("> "));
     assert_eq!(theme.prompt.padding, Some(4));
@@ -182,11 +182,11 @@ fn load_maximal_theme_sets_all_fields() {
     assert_eq!(theme.window.anchor.as_deref(), Some("top"));
     assert_eq!(theme.window.margin_top, Some(10));
     assert_eq!(
-        dim_to_unit(theme.window.width.as_ref().unwrap()),
+        dim_to_unit(theme.window.width.as_ref().unwrap()).unwrap(),
         UnitValue::percent(80)
     );
     assert_eq!(
-        dim_to_unit(theme.window.height.as_ref().unwrap()),
+        dim_to_unit(theme.window.height.as_ref().unwrap()).unwrap(),
         UnitValue::percent(5)
     );
     assert_eq!(theme.window.corner_radius, Some(4));
@@ -196,4 +196,41 @@ fn load_maximal_theme_sets_all_fields() {
     assert_eq!(theme.input.cursor, Some(true));
     assert_eq!(theme.input.cursor_style.as_deref(), Some("block"));
     assert_eq!(theme.input.cursor_corner_radius, Some(2));
+}
+
+// ---------------------------------------------------------------------------
+// Invalid values
+// ---------------------------------------------------------------------------
+
+#[test]
+fn invalid_values_parse_to_none() {
+    assert_eq!(parse_anchor("middle"), None);
+    assert_eq!(parse_cursor_kind("beam"), None);
+    assert_eq!(parse_algorithm("smart"), None);
+    assert_eq!(parse_horizontal("diagonal"), None);
+    assert_eq!(dim_to_unit(&Dim::Str("wide".to_owned())), None);
+    assert_eq!(dim_to_unit(&Dim::Str("x%".to_owned())), None);
+}
+
+#[test]
+fn defaults_can_be_named() {
+    assert_eq!(parse_anchor("center"), Some(Anchor::Center));
+    assert_eq!(parse_cursor_kind("bar"), Some(CursorKind::Bar));
+    assert_eq!(
+        parse_algorithm("normal"),
+        Some(libtofi_rs::matching::MatchingAlgorithm::Normal)
+    );
+    assert_eq!(parse_horizontal("vertical"), Some(false));
+    assert_eq!(parse_anchor("Top-Left"), Some(Anchor::TopLeft));
+}
+
+#[test]
+fn unknown_theme_keys_are_reported() {
+    let f = tempfile::NamedTempFile::new().unwrap();
+    std::fs::write(f.path(), "[window]\nblur = 100\n").unwrap();
+    let (_, problems) = load(f.path());
+    assert!(
+        matches!(&problems[..], [crate::config::Problem::UnknownKey(m)] if m.contains("`window.blur`")),
+        "{problems:?}"
+    );
 }

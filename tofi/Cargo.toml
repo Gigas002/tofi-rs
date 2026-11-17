@@ -5,7 +5,6 @@ description = "A Wayland application launcher — Rust port of tofi"
 edition.workspace = true
 license.workspace = true
 repository.workspace = true
-homepage.workspace = true
 keywords = ["wayland", "launcher", "tofi", "drun"]
 categories = ["command-line-utilities"]
 
@@ -19,6 +18,7 @@ clap = { version = "4", features = ["derive"] }
 libtofi-rs = { path = "../libtofi", default-features = false }
 rustix = { version = "1", features = ["event"] }
 serde = { version = "1", features = ["derive"] }
+serde_ignored = "0.1"
 toml = { version = "1.1" }
 tracing = "0.1"
 tracing-subscriber = { version = "0.3", features = ["env-filter"], optional = true }
@@ -27,6 +27,10 @@ clap_complete_nushell = { version = "4", optional = true }
 
 [dev-dependencies]
 tempfile = "3"
+# tests/live.rs: a virtual keyboard on a headless sway.
+wayland-client = "0.31"
+wayland-protocols-misc = { version = "0.3", features = ["client"] }
+xkbcommon = "0.9"
 
 [features]
 default = [

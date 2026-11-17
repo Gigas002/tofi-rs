@@ -52,7 +52,8 @@ features = ""
 # Comma-separated OpenType variation axes (e.g. "wght=700"). Empty = none.
 variations = ""
 
-# Apply font hinting for crisper glyph edges on low-DPI displays.
+# true leaves glyph hinting to fontconfig (crisper on low-DPI displays);
+# false turns it off.
 hint = true
 
 [window]
@@ -100,7 +101,10 @@ padding_right = 8
 # Clip (mask) any content that falls outside the padding region.
 clip_to_padding = false
 
-# Scale the window dimensions with the output's HiDPI scale factor.
+# true: pixel values (window size, margins, font size, borders, padding) are
+# logical pixels, so tofi looks the same size on a scaled (HiDPI) output.
+# false: they are physical pixels, so tofi looks smaller on a scaled output.
+# Percentages are a share of the output either way.
 scale = true
 
 [cursor]

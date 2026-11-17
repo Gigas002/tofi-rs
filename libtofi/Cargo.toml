@@ -5,7 +5,6 @@ description = "Core library for the tofi Wayland application launcher"
 edition.workspace = true
 license.workspace = true
 repository.workspace = true
-homepage.workspace = true
 keywords = ["wayland", "launcher", "tofi", "layer-shell"]
 categories = ["gui"]
 readme = "../README.md"
@@ -18,7 +17,7 @@ walkdir = "2"
 tracing = "0.1"
 # Wayland stack — all three must resolve to the same wayland-client major.
 wayland-client = { version = "0.31", optional = true }
-wayland-protocols = { version = "0.32", features = ["client", "staging"], optional = true }
+wayland-protocols = { version = "0.32", features = ["client", "staging", "unstable"], optional = true }
 wayland-protocols-wlr = { version = "0.3", features = ["client"], optional = true }
 # XKB keyboard state — keymap parsing and modifier tracking.
 xkbcommon = { version = "0.9", optional = true }

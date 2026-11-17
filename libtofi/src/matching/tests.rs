@@ -245,3 +245,73 @@ fn filter_fuzzy_ranks_prefix_match_higher() {
     assert_eq!(results.entries()[0].string, "first");
     assert_eq!(results.entries()[1].string, "cafir");
 }
+
+// ── Fuzzy: dynamic programming vs. the exhaustive search ─────────────────────
+
+/// A small deterministic generator, so the test needs no `rand`.
+struct Lcg(u64);
+
+impl Lcg {
+    fn next(&mut self, n: usize) -> usize {
+        self.0 = self
+            .0
+            .wrapping_mul(6364136223846793005)
+            .wrapping_add(1442695040888963407);
+        ((self.0 >> 33) as usize) % n
+    }
+
+    fn string(&mut self, alphabet: &[char], max_len: usize) -> String {
+        let len = self.next(max_len + 1);
+        (0..len)
+            .map(|_| alphabet[self.next(alphabet.len())])
+            .collect()
+    }
+}
+
+#[test]
+fn fuzzy_best_score_equals_the_exhaustive_search() {
+    // Few letters, so there are many ways to match; plus case changes,
+    // separators and non-ASCII to exercise every bonus.
+    let hay_chars = ['a', 'b', 'A', 'B', '-', ' ', '_', 'é', 'É', '1'];
+    let pat_chars = ['a', 'b', 'A', 'é', '1', '-'];
+    let mut rng = Lcg(42);
+    let mut matched = 0;
+    for _ in 0..20_000 {
+        let hay = rng.string(&hay_chars, 14);
+        let pat = rng.string(&pat_chars, 4);
+        if pat.is_empty() {
+            continue;
+        }
+        let slow = fuzzy_match_recurse(&pat, &hay, None, 0, false, true);
+        let fast = best_fuzzy_score(&pat, &hay).unwrap_or(i32::MIN);
+        assert_eq!(fast, slow, "pattern {pat:?} in {hay:?}");
+        matched += usize::from(fast != i32::MIN);
+    }
+    assert!(
+        matched > 1000,
+        "too few matching cases ({matched}) to mean much"
+    );
+}
+
+#[test]
+fn fuzzy_repeated_letters_are_fast() {
+    // Exhaustive search took ~48 s for this one line.
+    let start = std::time::Instant::now();
+    let score = match_words(MatchingAlgorithm::Fuzzy, &"a".repeat(8), &"a".repeat(60));
+    assert_ne!(score, i32::MIN);
+    assert!(start.elapsed() < std::time::Duration::from_millis(100));
+}
+
+#[test]
+fn fuzzy_long_strings_still_take_the_first_match() {
+    // Over 100 characters only the first occurrence of each letter is tried,
+    // as upstream does. Here the first "a" scores worse than the one after
+    // "-", which the best-match search would pick.
+    let hay = format!("xa{}-ab", "y".repeat(100));
+    let len = hay.chars().count() as i32;
+    let base = -(len - 2);
+    let greedy = fuzzy_match_recurse("ab", &hay, None, base, true, true);
+    let best = base + best_fuzzy_score("ab", &hay).unwrap();
+    assert!(best > greedy);
+    assert_eq!(fuzzy_match("ab", &hay), greedy);
+}

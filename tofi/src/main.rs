@@ -9,6 +9,8 @@ mod config;
 #[cfg(feature = "history")]
 #[allow(dead_code)]
 mod history;
+#[cfg(feature = "logging")]
+mod logger;
 mod settings;
 mod theme;
 
@@ -17,42 +19,41 @@ use clap::Parser as _;
 fn main() {
     let cli = cli::Cli::parse();
 
-    // Load config early so [logging].level is available before subscriber init.
+    // Load config early so [logging].level is available before subscriber init;
+    // its problems are logged once logging is up. A missing default config is
+    // fine, a missing `--config` is not.
     let config_path = cli.config.clone().or_else(config::default_path);
-    let config = config_path
+    let (config, config_problems) = config_path
         .as_deref()
-        .filter(|p| p.exists())
+        .filter(|p| cli.config.is_some() || p.exists())
         .map(config::load)
         .unwrap_or_default();
 
     #[cfg(feature = "logging")]
-    {
-        let level = cli
-            .log_level
+    logger::init(
+        cli.log_level
             .as_deref()
             .or(config.logging.level.as_deref())
-            .unwrap_or("warn");
-        tracing_subscriber::fmt()
-            .with_env_filter(
-                tracing_subscriber::EnvFilter::try_from_default_env()
-                    .unwrap_or_else(|_| tracing_subscriber::EnvFilter::new(level)),
-            )
-            .init();
-    }
+            .unwrap_or("warn"),
+    );
 
     tracing::debug!("tofi starting");
-
-    let _lock =
-        libtofi_rs::lock::try_acquire_default().expect("Failed to check single-instance lock");
-    if _lock.is_none() {
-        tracing::warn!("Another tofi instance is already running");
-        std::process::exit(1);
+    for problem in &config_problems {
+        problem.log();
     }
 
     #[cfg(feature = "completions")]
     if let Some(shell) = cli.completions {
         completions::generate_completions(shell);
         return;
+    }
+
+    // Only one launcher at a time; printing completions doesn't count.
+    let _lock =
+        libtofi_rs::lock::try_acquire_default().expect("Failed to check single-instance lock");
+    if _lock.is_none() {
+        tracing::warn!("Another tofi instance is already running");
+        std::process::exit(1);
     }
 
     tracing::debug!(
@@ -67,11 +68,10 @@ fn main() {
             theme::resolve_path(name, config_dir)
         })
     });
-    let theme = theme_path
-        .as_deref()
-        .filter(|p| p.exists())
-        .map(theme::load)
-        .unwrap_or_default();
+    let (theme, theme_problems) = theme_path.as_deref().map(theme::load).unwrap_or_default();
+    for problem in &theme_problems {
+        problem.log();
+    }
 
     tracing::debug!(
         path = ?theme_path,

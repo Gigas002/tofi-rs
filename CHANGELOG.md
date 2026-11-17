@@ -1,14 +1,37 @@
 # Changelog
 
-## Unreleased
+## [1.2.0] - Unreleased
+
+libtofi-rs API change: `EntryConfig` gains a public `hint_font` field, so code that builds it with a struct literal must set it or use `..EntryConfig::default()`.
 
 ### Added
 
 - **`libtofi_rs::drun::exec_args` and `libtofi_rs::drun::split_args`.** `exec_args` turns a desktop entry's `Exec` value into an argument vector following the Desktop Entry Specification (string unescaping, double-quote quoting, per-argument field-code expansion); `split_args` is the underlying quote-aware splitter.
+- **`libtofi_rs::wayland::OutputInfo::logical_size` and `physical_size`.** The output's size in logical pixels (from `xdg-output` when available) and its rotated mode size.
 
 ### Fixed
 
+- **Config and theme mistakes are reported instead of silently ignored.** A file that isn't valid TOML (including a wrong type, like `size = "16"`) used to make tofi quietly use the defaults for *every* setting in it; it is still unusable, but now an error says so and where. Unknown keys (such as a misspelled name), a `--config` or theme file that doesn't exist, and invalid values (an unknown `anchor`, `mode`, `algorithm`, `cursor_style`, `[results].mode`, size or colour) are now logged; invalid values still fall back to their defaults. `"center"`, `"bar"`, `"normal"` and `"vertical"` are now accepted as values too.
+- **The drun list follows a change of language or desktop.** App names are localised and `OnlyShowIn`/`NotShowIn` depend on `XDG_CURRENT_DESKTOP`, but the cache was only refreshed when the application directories changed, so after switching `LANG` or compositor tofi kept showing the old names and apps. The cache now records both and is rebuilt when either differs.
+- **drun finds apps by their `Keywords` again**, as upstream tofi does: typing "browser" finds Firefox. The keywords were read and cached but never matched. A keyword match ranks below a name match.
+- **Fuzzy matching no longer freezes tofi.** It tried every way to match the query against each line, which is exponential: eight repeated letters against one 60-character line took 48 s, and ordinary queries took up to half a millisecond per line, so seconds per keystroke for a few thousand lines. It now finds the same best score in linear time (microseconds per line). Lines over 100 characters keep upstream's quicker first-match scoring.
+- **Moving the selection no longer re-filters the list.** Every redraw, including arrow keys and Tab, matched and sorted every entry again; now that only happens when the query changes.
+- **`tofi --completions <shell>` works while tofi is open.** It took the single-instance lock first, so it failed with "Another tofi instance is already running".
+- **A key held while tofi loses keyboard focus stops repeating.** Its release goes elsewhere, so it used to repeat until tofi exited.
+- **Pasting text with non-ASCII characters is reliable** (`clipboard` feature). The text arrives in chunks, and a chunk ending inside a multi-byte character was discarded along with the rest of the paste.
+- **Going back after the results wrapped around no longer empties the list.** In horizontal mode, where pages differ in size, moving back from a page reached by wrapping past the end could underflow the scroll position (a crash in debug builds).
+- **No more caches at fixed paths in `/tmp`.** With neither `XDG_CACHE_HOME` nor `HOME` set, the run and drun caches went to `/tmp/tofi-compgen` and `/tmp/tofi-drun`, where another user could plant a drun cache whose commands tofi would then launch. Without a cache directory tofi now scans every time instead.
+- **Logs go to stderr instead of stdout.** In `run` and `dmenu` mode stdout carries the selection, and a warning (shown at the default `warn` level) used to land in front of it, so `tofi --mode dmenu | …` passed log text to the script. Colour codes are now also only used when stderr is a terminal.
+- **Percentage sizes are right on scaled outputs.** `width` and `height` given in `%` were taken of the output's physical pixels but applied as logical ones, so `width = "50%"` filled 75 % of a 1.5×-scaled screen. They are now taken of the logical size, read from `xdg-output` when the compositor offers it (needed for fractional scales), else the physical size over the integer scale.
+- **`[window].scale = false` works.** It was read but ignored. As in upstream tofi, pixel values (window size, margins, font size, borders, padding) are then physical pixels and tofi draws 1:1 instead of at the output's scale.
+- **`[font].hint = false` works.** It was read but ignored; it now turns glyph hinting off. With `true` (the default) hinting is left to fontconfig as before.
+- **The text is drawn at the scale the window was sized for.** Without the fractional-scale protocol, the text used the first output's scale even when tofi opened on another output with a different scale.
+- **No more false "compositor will STRETCH" warning** with an edge anchor (`top`, `bottom`, `left`, `right`). A set width or height is kept and the window is centred along that edge, so the warning was wrong, and it appeared on every run.
 - **Quoted `Exec` arguments containing spaces are no longer split apart** ([#61](https://github.com/Gigas002/tofi-rs/issues/61)). E.g. `"--profile-directory=Profile 1"` in Chromium PWA entries is now passed as one argument, without the literal quotes. Field-code values (`%c`, `%k`, `%i`) containing spaces also stay a single argument, and the terminal command is split with the same quoting rules.
+
+### Changed
+
+- **`libtofi_rs::entry::EntryConfig` has a new field, `hint_font`.** Struct literals must set it or end in `..EntryConfig::default()` (default `true`).
 
 ### Deprecated
 

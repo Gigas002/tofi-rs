@@ -135,11 +135,64 @@ fn fuzzy_match(pattern: &str, s: &str) -> i32 {
     // Penalise all unmatched characters upfront.
     let base_score = UNMATCHED_LETTER_PENALTY * (slen - plen) as i32;
 
-    // For long strings, only find the first match (not the best) to avoid
-    // combinatorial explosion.
-    let first_match_only = slen > 100;
+    // For long strings, only find the first match (not the best), as
+    // upstream does.
+    if slen > 100 {
+        return fuzzy_match_recurse(pattern, s, None, base_score, true, true);
+    }
 
-    fuzzy_match_recurse(pattern, s, None, base_score, first_match_only, true)
+    match best_fuzzy_score(pattern, s) {
+        Some(best) => base_score.saturating_add(best),
+        None => i32::MIN,
+    }
+}
+
+/// The best total of [`compute_score`] over every way to match `pattern`'s
+/// characters, in order, against `haystack`'s; `None` when there is none.
+///
+/// Gives the same result as [`fuzzy_match_recurse`] without `first_match_only`,
+/// which tries every combination and so takes exponential time (seconds for
+/// a few repeated letters against one line). A match's score depends only on
+/// where it lands, the character before that, and whether it directly follows
+/// the previous match, so the best score with pattern character `i` at
+/// haystack position `k` follows from the best scores for `i - 1`: the one
+/// at `k - 1` (plus the adjacency bonus) or the best before that.
+fn best_fuzzy_score(pattern: &str, haystack: &str) -> Option<i32> {
+    let hay: Vec<char> = haystack.chars().collect();
+    let lower = |c: char| c.to_lowercase().next().unwrap_or(c);
+    let hay_lower: Vec<char> = hay.iter().copied().map(lower).collect();
+    // The score of a match at `k`, `jump` characters after the previous
+    // match (only 0 or not matters after the first pattern character).
+    let score_at = |k: usize, jump: i32, first: bool| {
+        compute_score(jump, first, hay[k], k.checked_sub(1).map(|j| hay[j]))
+    };
+
+    let mut prev_row: Vec<Option<i32>> = Vec::new();
+    for (i, pc) in pattern.chars().map(lower).enumerate() {
+        let row: Vec<Option<i32>> = if i == 0 {
+            (0..hay.len())
+                .map(|k| (hay_lower[k] == pc).then(|| score_at(k, k as i32, true)))
+                .collect()
+        } else {
+            let mut row = vec![None; hay.len()];
+            // Best of prev_row[..k - 1]: an earlier match with a gap after it.
+            let mut best_before: Option<i32> = None;
+            for k in 1..hay.len() {
+                if k >= 2 {
+                    best_before = best_before.max(prev_row[k - 2]);
+                }
+                if hay_lower[k] != pc {
+                    continue;
+                }
+                let adjacent = prev_row[k - 1].map(|s| s + score_at(k, 0, false));
+                let after_gap = best_before.map(|s| s + score_at(k, 1, false));
+                row[k] = adjacent.max(after_gap);
+            }
+            row
+        };
+        prev_row = row;
+    }
+    prev_row.into_iter().flatten().max()
 }
 
 /// Recursively match `pattern` against `haystack`, accumulating scores.

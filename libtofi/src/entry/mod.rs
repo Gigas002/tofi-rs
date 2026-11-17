@@ -142,6 +142,8 @@ pub struct EntryConfig {
     pub font_size: u32,
     pub font_features: String,
     pub font_variations: String,
+    /// Hint glyph outlines (fontconfig decides how); `false` turns hinting off.
+    pub hint_font: bool,
 
     // Colors
     pub foreground_color: Color,
@@ -193,6 +195,7 @@ impl Default for EntryConfig {
             font_size: 24,
             font_features: String::new(),
             font_variations: String::new(),
+            hint_font: true,
             foreground_color: Color {
                 r: 1.0,
                 g: 1.0,
@@ -519,8 +522,17 @@ impl Entry {
         let nsel = self.num_results_drawn.min(self.results.len()).max(1);
 
         if self.first_result > nsel {
-            self.first_result -= self.last_num_results_drawn;
-            self.selection = self.last_num_results_drawn.saturating_sub(1);
+            let page = self.last_num_results_drawn;
+            if (1..=self.first_result).contains(&page) {
+                // Back to the previous page, on its last result.
+                self.first_result -= page;
+                self.selection = page - 1;
+            } else {
+                // After wrapping around, the previous page's size is unknown:
+                // step back one result.
+                self.first_result -= 1;
+                self.selection = 0;
+            }
         } else if self.first_result > 0 {
             self.selection = self.first_result - 1;
             self.first_result = 0;

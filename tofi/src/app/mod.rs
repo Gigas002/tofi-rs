@@ -1,6 +1,8 @@
 //! Application entry point — Wayland wiring, event loop, and submission logic.
 #![deny(unsafe_code)]
 
+#[cfg(feature = "renderer")]
+mod filter_utils;
 mod history_utils;
 mod run_utils;
 mod submit_utils;
@@ -35,8 +37,10 @@ fn run_inner(settings: Settings) -> bool {
 
     let selected_output = select_output(&state.outputs, &settings.target_output);
     let (out_w, out_h) = output_size(selected_output);
-    tracing::debug!(width = out_w, height = out_h, "output size");
-    let surface_cfg = make_surface_config(&settings, out_w, out_h, selected_output.cloned());
+    let px_scale = pixel_scale(&settings, selected_output);
+    tracing::debug!(width = out_w, height = out_h, px_scale, "output size");
+    let surface_cfg =
+        make_surface_config(&settings, out_w, out_h, px_scale, selected_output.cloned());
     tracing::debug!(
         width = surface_cfg.width,
         height = surface_cfg.height,
@@ -81,6 +85,16 @@ fn event_loop(
 ) -> bool {
     #[cfg(not(feature = "renderer"))]
     let _ = all_entries;
+    // The query `entry.results` was last filtered for; it starts unfiltered.
+    #[cfg(feature = "renderer")]
+    let mut filtered_for = String::new();
+    // drun entries' keywords, in the order of `all_entries`; empty otherwise.
+    #[cfg(feature = "renderer")]
+    let keywords: Vec<String> = state
+        .drun_entries
+        .iter()
+        .map(|e| e.keywords.clone())
+        .collect();
 
     loop {
         event_queue.flush().expect("Wayland flush failed");
@@ -111,7 +125,14 @@ fn event_loop(
         if state.redraw {
             state.redraw = false;
             #[cfg(feature = "renderer")]
-            handle_redraw(state, event_queue, &all_entries, settings);
+            handle_redraw(
+                state,
+                event_queue,
+                &all_entries,
+                &keywords,
+                &mut filtered_for,
+                settings,
+            );
         }
     }
 }
@@ -211,27 +232,17 @@ fn handle_redraw(
     state: &mut libtofi_rs::wayland::WaylandState,
     event_queue: &mut libtofi_rs::wayland::EventQueue<libtofi_rs::wayland::WaylandState>,
     all_entries: &[String],
+    keywords: &[String],
+    filtered_for: &mut String,
     settings: &Settings,
 ) {
     if let Some(entry) = state.entry.as_mut() {
-        if entry.input.is_empty() {
-            entry.results = all_entries.to_vec();
-        } else {
-            let query = entry.input.clone();
-            let algorithm = settings.algorithm;
-            let mut scored: Vec<(i32, &String)> = all_entries
-                .iter()
-                .filter_map(|s| {
-                    let score = libtofi_rs::matching::match_words(algorithm, &query, s);
-                    if score > i32::MIN {
-                        Some((score, s))
-                    } else {
-                        None
-                    }
-                })
-                .collect();
-            scored.sort_by_key(|b| std::cmp::Reverse(b.0));
-            entry.results = scored.into_iter().map(|(_, s)| s.clone()).collect();
+        // Navigation redraws too; only a changed query needs a new list.
+        if entry.input != *filtered_for {
+            entry.results =
+                filter_utils::filter(all_entries, keywords, &entry.input, settings.algorithm);
+            filtered_for.clone_from(&entry.input);
+            tracing::debug!(count = entry.results.len(), "results filtered");
         }
         entry.update();
         entry.flush();
@@ -254,19 +265,18 @@ fn init_entry(
 ) -> Vec<String> {
     use libtofi_rs::entry::Entry;
 
-    let entry_config = make_entry_config(settings, width, height);
-
-    let scale_num = if state.fractional_scale != 0 {
-        state.fractional_scale
-    } else {
-        (state.outputs.first().map(|o| o.scale).unwrap_or(1) as u32) * 120
-    };
-
-    let (data_ptr, phys_w, phys_h) = {
+    let (data_ptr, phys_w, phys_h, buffer_scale) = {
         let surf = state.surface.as_mut().expect("surface must exist");
         let shm = surf.shm.as_mut().expect("SHM pool must exist");
         let ptr = shm.data_both_frames_ptr();
-        (ptr, surf.phys_width, surf.phys_height)
+        (ptr, surf.phys_width, surf.phys_height, surf.scale)
+    };
+    // With `scale = false`, theme lengths are physical pixels: draw 1:1.
+    let scale_num = if settings.scale { buffer_scale } else { 120 };
+    let entry_config = if settings.scale {
+        make_entry_config(settings, width, height)
+    } else {
+        make_entry_config(settings, phys_w, phys_h)
     };
 
     let mut entry = unsafe { Entry::new(data_ptr, phys_w, phys_h, scale_num, entry_config) }
@@ -311,19 +321,12 @@ fn select_output<'a>(
     }
 }
 
+/// The logical size of `output`, which percentages and margins refer to.
 #[cfg(feature = "wayland")]
 fn output_size(output: Option<&libtofi_rs::wayland::OutputInfo>) -> (u32, u32) {
     output
-        .map(|o| {
-            use libtofi_rs::wayland::OutputTransform;
-            match o.transform {
-                OutputTransform::_90
-                | OutputTransform::_270
-                | OutputTransform::Flipped90
-                | OutputTransform::Flipped270 => (o.height as u32, o.width as u32),
-                _ => (o.width as u32, o.height as u32),
-            }
-        })
+        .map(libtofi_rs::wayland::OutputInfo::logical_size)
+        .filter(|&(w, h)| w > 0 && h > 0)
         .unwrap_or((1920, 1080))
 }
 
@@ -336,25 +339,51 @@ fn px(uv: &crate::theme::UnitValue, dim: u32) -> u32 {
     }
 }
 
+/// Physical pixels per logical pixel that the theme's pixel values must be
+/// divided by to become logical: the output's scale with `scale = false`
+/// (values are physical pixels), else 1.
+#[cfg(feature = "wayland")]
+fn pixel_scale(settings: &Settings, output: Option<&libtofi_rs::wayland::OutputInfo>) -> f64 {
+    if settings.scale {
+        return 1.0;
+    }
+    output
+        .map(|o| (o.physical_size(), o.logical_size()))
+        .filter(|&(_, (lw, _))| lw > 0)
+        .map(|((pw, _), (lw, _))| pw as f64 / lw as f64)
+        .unwrap_or(1.0)
+}
+
+/// Like [`px`], but a pixel value is divided by `px_scale` (see [`pixel_scale`]);
+/// a percentage of a logical `dim` is already logical.
+#[cfg(feature = "wayland")]
+fn logical_px(uv: &crate::theme::UnitValue, dim: u32, px_scale: f64) -> u32 {
+    if uv.is_percent {
+        px(uv, dim)
+    } else {
+        (uv.value as f64 / px_scale).round() as u32
+    }
+}
+
 #[cfg(feature = "wayland")]
 fn make_surface_config(
     settings: &Settings,
     out_w: u32,
     out_h: u32,
+    px_scale: f64,
     output: Option<libtofi_rs::wayland::OutputInfo>,
 ) -> libtofi_rs::wayland::surface::SurfaceConfig {
     use submit_utils::anchor_to_layer;
-    let width = px(&settings.width, out_w);
-    let height = px(&settings.height, out_h);
+    let l = |uv, dim| logical_px(uv, dim, px_scale);
     libtofi_rs::wayland::surface::SurfaceConfig {
-        width,
-        height,
+        width: l(&settings.width, out_w),
+        height: l(&settings.height, out_h),
         anchor: anchor_to_layer(settings.anchor),
         exclusive_zone: -1,
-        margin_top: px(&settings.margin_top, out_h) as i32,
-        margin_right: px(&settings.margin_right, out_w) as i32,
-        margin_bottom: px(&settings.margin_bottom, out_h) as i32,
-        margin_left: px(&settings.margin_left, out_w) as i32,
+        margin_top: l(&settings.margin_top, out_h) as i32,
+        margin_right: l(&settings.margin_right, out_w) as i32,
+        margin_bottom: l(&settings.margin_bottom, out_h) as i32,
+        margin_left: l(&settings.margin_left, out_w) as i32,
         output,
     }
 }
@@ -371,6 +400,7 @@ fn make_entry_config(
         font_size: settings.font_size,
         font_features: settings.font_features.clone(),
         font_variations: settings.font_variations.clone(),
+        hint_font: settings.hint_font,
         foreground_color: settings.foreground_color,
         background_color: settings.background_color,
         border_color: settings.border_color,
@@ -436,10 +466,14 @@ fn load_mode_entries(
         }
         LaunchMode::Drun => {
             let dirs = libtofi_rs::drun::application_dirs();
-            let cache_path = libtofi_rs::drun::default_cache_path()
-                .unwrap_or_else(|| std::path::PathBuf::from("/tmp/tofi-drun"));
-            let mut entries =
-                libtofi_rs::drun::entries_cached(&dirs, &cache_path).unwrap_or_default();
+            // Without a cache directory, don't cache: a fixed path in /tmp
+            // could be planted by another user, and the cache holds commands.
+            let mut entries = match libtofi_rs::drun::default_cache_path() {
+                Some(cache_path) => {
+                    libtofi_rs::drun::entries_cached(&dirs, &cache_path).unwrap_or_default()
+                }
+                None => libtofi_rs::drun::scan(&dirs),
+            };
             #[cfg(feature = "history")]
             if settings.use_history
                 && let Some(hp) =

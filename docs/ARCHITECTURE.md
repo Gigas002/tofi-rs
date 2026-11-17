@@ -219,6 +219,9 @@ Use the **`tracing`** ecosystem for structured logging.
 
 - Place cross-module and end-to-end tests in `<crate>/tests/`.
 - Use temporary directories and fixtures from `examples/` where applicable.
+- `tofi/tests/live.rs` runs the real binary in a private headless sway and types
+  into it with a virtual keyboard. It needs `sway` on `PATH` and is skipped
+  without it, unless `TOFI_LIVE_TESTS=1` (set in CI), where that is a failure.
 
 ### 6.3 Coverage expectations
 

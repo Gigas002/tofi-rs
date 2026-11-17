@@ -24,6 +24,28 @@ mod run_commands_tests {
     }
 
     #[test]
+    fn without_a_cache_dir_nothing_is_cached() {
+        use super::super::run_utils::commands_maybe_cached;
+        let dir = tempfile::tempdir().unwrap();
+        make_exe(dir.path(), "foo");
+        let before: Vec<_> = fs::read_dir(dir.path()).unwrap().collect();
+        let commands = commands_maybe_cached(dir.path().to_str().unwrap(), None);
+        assert_eq!(commands, vec!["foo".to_owned()]);
+        let after: Vec<_> = fs::read_dir(dir.path()).unwrap().collect();
+        assert_eq!(before.len(), after.len());
+    }
+
+    #[test]
+    fn with_a_cache_dir_the_commands_are_cached() {
+        use super::super::run_utils::commands_maybe_cached;
+        let dir = tempfile::tempdir().unwrap();
+        make_exe(dir.path(), "foo");
+        let cache = dir.path().join("cache/tofi-compgen");
+        commands_maybe_cached(dir.path().to_str().unwrap(), Some(&cache));
+        assert_eq!(fs::read_to_string(&cache).unwrap(), "foo\n");
+    }
+
+    #[test]
     fn scan_returns_executable_names() {
         let dir = tempfile::tempdir().unwrap();
         make_exe(dir.path(), "foo");
@@ -177,5 +199,94 @@ mod launch_argv_tests {
     #[test]
     fn empty_exec_gives_empty_argv() {
         assert!(launch_argv(&entry("", false), None).is_empty());
+    }
+}
+
+// ── Sizes ─────────────────────────────────────────────────────────────────────
+
+#[cfg(feature = "wayland")]
+mod size_tests {
+    use super::super::logical_px;
+    use crate::theme::UnitValue;
+
+    #[test]
+    fn pixels_are_divided_by_the_pixel_scale() {
+        assert_eq!(logical_px(&UnitValue::pixels(400), 640, 1.0), 400);
+        assert_eq!(logical_px(&UnitValue::pixels(400), 640, 2.0), 200);
+        assert_eq!(logical_px(&UnitValue::pixels(400), 640, 1.5), 267);
+    }
+
+    #[test]
+    fn percentages_ignore_the_pixel_scale() {
+        assert_eq!(logical_px(&UnitValue::percent(50), 640, 2.0), 320);
+        assert_eq!(logical_px(&UnitValue::percent(50), 640, 1.0), 320);
+    }
+}
+
+// ── Filtering ─────────────────────────────────────────────────────────────────
+
+#[cfg(feature = "renderer")]
+mod filter_tests {
+    use super::super::filter_utils::filter;
+    use libtofi_rs::matching::MatchingAlgorithm::{Normal, Prefix};
+
+    fn list(items: &[&str]) -> Vec<String> {
+        items.iter().map(|s| (*s).to_owned()).collect()
+    }
+
+    #[test]
+    fn empty_query_keeps_everything_in_order() {
+        let all = list(&["b", "a", "c"]);
+        assert_eq!(filter(&all, &[], "", Normal), all);
+    }
+
+    #[test]
+    fn non_matches_are_dropped() {
+        let all = list(&["firefox", "foot", "gimp"]);
+        assert_eq!(filter(&all, &[], "f", Prefix), list(&["foot", "firefox"]));
+    }
+
+    #[test]
+    fn better_matches_come_first() {
+        // Normal scores by how early the match starts.
+        let all = list(&["xxfo", "fo", "xfo"]);
+        assert_eq!(
+            filter(&all, &[], "fo", Normal),
+            list(&["fo", "xfo", "xxfo"])
+        );
+    }
+
+    #[test]
+    fn keywords_match_when_the_name_does_not() {
+        let all = list(&["Firefox", "Foot"]);
+        let keywords = list(&["web;browser;", "terminal;"]);
+        assert_eq!(
+            filter(&all, &keywords, "browser", Normal),
+            list(&["Firefox"])
+        );
+    }
+
+    #[test]
+    fn name_matches_rank_above_keyword_matches() {
+        // "term" is at the very start of Foot's keywords, but a name match
+        // further in still wins.
+        let all = list(&["Foot", "xterm"]);
+        let keywords = list(&["terminal;", ""]);
+        assert_eq!(
+            filter(&all, &keywords, "term", Normal),
+            list(&["xterm", "Foot"])
+        );
+    }
+
+    #[test]
+    fn missing_keywords_are_fine() {
+        let all = list(&["a", "b"]);
+        assert_eq!(filter(&all, &list(&["x"]), "b", Normal), list(&["b"]));
+    }
+
+    #[test]
+    fn equal_scores_keep_history_order() {
+        let all = list(&["zfoo", "afoo", "mfoo"]);
+        assert_eq!(filter(&all, &[], "foo", Normal), all);
     }
 }

@@ -229,6 +229,12 @@ impl KeyboardState {
         }
     }
 
+    /// Stop repeating whatever key is held, e.g. when focus is lost and its
+    /// release will never arrive.
+    pub fn stop_repeat(&mut self) {
+        self.repeat.active = false;
+    }
+
     /// Advance the repeat deadline after a repeat event fires.
     pub fn advance_repeat(&mut self) {
         if self.repeat.rate > 0 {

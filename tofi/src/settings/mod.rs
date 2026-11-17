@@ -9,8 +9,8 @@ use libtofi_rs::matching::MatchingAlgorithm;
 use crate::cli::Cli;
 use crate::config::Config;
 use crate::theme::{
-    self, Anchor, Cursor, CursorKind, TextStyle, Theme, UnitValue, dim_to_unit, parse_anchor,
-    parse_cursor_kind, parse_hex_color,
+    self, Anchor, Cursor, CursorKind, Dim, TextStyle, Theme, UnitValue, dim_to_unit, parse_anchor,
+    parse_cursor_kind, parse_hex_color, parse_horizontal,
 };
 
 // ── LaunchMode ────────────────────────────────────────────────────────────────
@@ -22,14 +22,39 @@ pub enum LaunchMode {
     Dmenu,
 }
 
-pub(crate) fn detect_mode(mode: Option<&str>) -> LaunchMode {
+pub(crate) fn parse_mode(mode: &str) -> Option<LaunchMode> {
     match mode {
-        Some("run") => LaunchMode::Run,
-        Some("dmenu") => LaunchMode::Dmenu,
-        Some("drun") => LaunchMode::Drun,
-        None => LaunchMode::Drun,
-        _ => LaunchMode::Drun,
+        "run" => Some(LaunchMode::Run),
+        "dmenu" => Some(LaunchMode::Dmenu),
+        "drun" => Some(LaunchMode::Drun),
+        _ => None,
     }
+}
+
+/// The launch mode; `drun` when unset or invalid.
+pub(crate) fn detect_mode(mode: Option<&str>) -> LaunchMode {
+    valid("mode", mode, parse_mode).unwrap_or(LaunchMode::Drun)
+}
+
+/// Parse the value of `key`, if set, warning when it is invalid (the caller
+/// then uses the default).
+fn valid<T>(key: &str, raw: Option<&str>, parse: impl FnOnce(&str) -> Option<T>) -> Option<T> {
+    let raw = raw?;
+    let parsed = parse(raw);
+    if parsed.is_none() {
+        tracing::warn!("invalid {key} {raw:?}; using the default");
+    }
+    parsed
+}
+
+/// [`valid`] for a size, which may be an integer or a string.
+fn valid_dim(key: &str, dim: Option<&Dim>) -> Option<UnitValue> {
+    let dim = dim?;
+    let parsed = dim_to_unit(dim);
+    if parsed.is_none() {
+        tracing::warn!("invalid {key} {dim:?}; using the default");
+    }
+    parsed
 }
 
 // ── Settings ──────────────────────────────────────────────────────────────────
@@ -101,24 +126,16 @@ pub struct Settings {
 /// Merge CLI overrides, config file, and theme into concrete [`Settings`].
 pub fn build(cli: &Cli, config: &Config, theme: &Theme) -> Settings {
     // ── Visual defaults ───────────────────────────────────────────────────────
-    let width = theme
-        .window
-        .width
-        .as_ref()
-        .map(dim_to_unit)
-        .unwrap_or(UnitValue::pixels(1280));
-    let height = theme
-        .window
-        .height
-        .as_ref()
-        .map(dim_to_unit)
-        .unwrap_or(UnitValue::pixels(720));
-    let anchor = theme
-        .window
-        .anchor
-        .as_deref()
-        .map(parse_anchor)
-        .unwrap_or(Anchor::Center);
+    let width =
+        valid_dim("window.width", theme.window.width.as_ref()).unwrap_or(UnitValue::pixels(1280));
+    let height =
+        valid_dim("window.height", theme.window.height.as_ref()).unwrap_or(UnitValue::pixels(720));
+    let anchor = valid(
+        "window.anchor",
+        theme.window.anchor.as_deref(),
+        parse_anchor,
+    )
+    .unwrap_or(Anchor::Center);
     let margin_top = theme
         .window
         .margin_top
@@ -147,88 +164,71 @@ pub fn build(cli: &Cli, config: &Config, theme: &Theme) -> Settings {
     let font_variations = theme.font.variations.clone().unwrap_or_default();
     let hint_font = theme.font.hint.unwrap_or(true);
 
-    let background_color = theme
-        .window
-        .background_color
-        .as_deref()
-        .and_then(parse_hex_color)
-        .unwrap_or(Color {
-            r: 0.106,
-            g: 0.114,
-            b: 0.118,
-            a: 1.0,
-        });
-    let foreground_color = theme
-        .text
-        .color
-        .as_deref()
-        .and_then(parse_hex_color)
+    let background_color = valid(
+        "window.background_color",
+        theme.window.background_color.as_deref(),
+        parse_hex_color,
+    )
+    .unwrap_or(Color {
+        r: 0.106,
+        g: 0.114,
+        b: 0.118,
+        a: 1.0,
+    });
+    let foreground_color = valid("text.color", theme.text.color.as_deref(), parse_hex_color)
         .unwrap_or(Color {
             r: 1.0,
             g: 1.0,
             b: 1.0,
             a: 1.0,
         });
-    let border_color = theme
-        .window
-        .border_color
-        .as_deref()
-        .and_then(parse_hex_color)
-        .unwrap_or(Color {
-            r: 0.976,
-            g: 0.149,
-            b: 0.447,
-            a: 1.0,
-        });
-    let outline_color = theme
-        .window
-        .outline_color
-        .as_deref()
-        .and_then(parse_hex_color)
-        .unwrap_or(Color {
-            r: 0.031,
-            g: 0.031,
-            b: 0.0,
-            a: 1.0,
-        });
-    let selection_highlight_color = theme
-        .text
-        .selection_match_color
-        .as_deref()
-        .and_then(parse_hex_color)
-        .unwrap_or(Color {
-            r: 0.0,
-            g: 0.0,
-            b: 0.0,
-            a: 0.0,
-        });
+    let border_color = valid(
+        "window.border_color",
+        theme.window.border_color.as_deref(),
+        parse_hex_color,
+    )
+    .unwrap_or(Color {
+        r: 0.976,
+        g: 0.149,
+        b: 0.447,
+        a: 1.0,
+    });
+    let outline_color = valid(
+        "window.outline_color",
+        theme.window.outline_color.as_deref(),
+        parse_hex_color,
+    )
+    .unwrap_or(Color {
+        r: 0.031,
+        g: 0.031,
+        b: 0.0,
+        a: 1.0,
+    });
+    let selection_highlight_color = valid(
+        "text.selection_match_color",
+        theme.text.selection_match_color.as_deref(),
+        parse_hex_color,
+    )
+    .unwrap_or(Color {
+        r: 0.0,
+        g: 0.0,
+        b: 0.0,
+        a: 0.0,
+    });
     let corner_radius = theme.window.corner_radius.unwrap_or(0);
     let border_width = theme.window.border_width.unwrap_or(12);
     let outline_width = theme.window.outline_width.unwrap_or(4);
 
-    let padding_top = theme
-        .window
-        .padding_top
-        .as_ref()
-        .map(dim_to_unit)
+    let padding_top = valid_dim("window.padding_top", theme.window.padding_top.as_ref())
         .unwrap_or(UnitValue::pixels(8));
-    let padding_bottom = theme
-        .window
-        .padding_bottom
-        .as_ref()
-        .map(dim_to_unit)
+    let padding_bottom = valid_dim(
+        "window.padding_bottom",
+        theme.window.padding_bottom.as_ref(),
+    )
+    .unwrap_or(UnitValue::pixels(8));
+    let padding_left = valid_dim("window.padding_left", theme.window.padding_left.as_ref())
         .unwrap_or(UnitValue::pixels(8));
-    let padding_left = theme
-        .window
-        .padding_left
-        .as_ref()
-        .map(dim_to_unit)
-        .unwrap_or(UnitValue::pixels(8));
-    let padding_right = theme
-        .window
-        .padding_right
-        .as_ref()
-        .map(dim_to_unit)
+    let padding_right = valid_dim("window.padding_right", theme.window.padding_right.as_ref())
         .unwrap_or(UnitValue::pixels(8));
     let clip_to_padding = theme.window.clip_to_padding.unwrap_or(true);
 
@@ -241,12 +241,12 @@ pub fn build(cli: &Cli, config: &Config, theme: &Theme) -> Settings {
     let prompt_padding = theme.prompt.padding.unwrap_or(0);
     let num_results = theme.results.count.unwrap_or(0);
     let result_spacing = theme.results.spacing.unwrap_or(0);
-    let horizontal = theme
-        .results
-        .mode
-        .as_deref()
-        .map(|m| m.eq_ignore_ascii_case("horizontal"))
-        .unwrap_or(false);
+    let horizontal = valid(
+        "results.mode",
+        theme.results.mode.as_deref(),
+        parse_horizontal,
+    )
+    .unwrap_or(false);
 
     let hide_cursor = theme.cursor.hide.unwrap_or(false);
     let hide_input = theme.input.hide.unwrap_or(false);
@@ -259,54 +259,70 @@ pub fn build(cli: &Cli, config: &Config, theme: &Theme) -> Settings {
 
     let cursor = Cursor {
         show: theme.input.cursor.unwrap_or(false),
-        kind: theme
-            .input
-            .cursor_style
-            .as_deref()
-            .map(parse_cursor_kind)
-            .unwrap_or(CursorKind::Bar),
-        color: theme
-            .input
-            .cursor_color
-            .as_deref()
-            .and_then(parse_hex_color),
-        text_color: theme
-            .input
-            .cursor_background
-            .as_deref()
-            .and_then(parse_hex_color),
+        kind: valid(
+            "input.cursor_style",
+            theme.input.cursor_style.as_deref(),
+            parse_cursor_kind,
+        )
+        .unwrap_or(CursorKind::Bar),
+        color: valid(
+            "input.cursor_color",
+            theme.input.cursor_color.as_deref(),
+            parse_hex_color,
+        ),
+        text_color: valid(
+            "input.cursor_background",
+            theme.input.cursor_background.as_deref(),
+            parse_hex_color,
+        ),
         corner_radius: theme.input.cursor_corner_radius.unwrap_or(0),
         thickness: theme.input.cursor_thickness,
     };
 
     let prompt_style = TextStyle {
-        foreground_color: theme.text.prompt_color.as_deref().and_then(parse_hex_color),
+        foreground_color: valid(
+            "text.prompt_color",
+            theme.text.prompt_color.as_deref(),
+            parse_hex_color,
+        ),
         ..TextStyle::default()
     };
     let input_style = TextStyle {
-        foreground_color: theme.text.input_color.as_deref().and_then(parse_hex_color),
+        foreground_color: valid(
+            "text.input_color",
+            theme.text.input_color.as_deref(),
+            parse_hex_color,
+        ),
         ..TextStyle::default()
     };
     let default_result_style = TextStyle {
-        foreground_color: theme.text.match_color.as_deref().and_then(parse_hex_color),
+        foreground_color: valid(
+            "text.match_color",
+            theme.text.match_color.as_deref(),
+            parse_hex_color,
+        ),
         ..TextStyle::default()
     };
     let alternate_result_style = TextStyle {
-        foreground_color: theme.text.match_color.as_deref().and_then(parse_hex_color),
+        foreground_color: valid(
+            "text.match_color",
+            theme.text.match_color.as_deref(),
+            parse_hex_color,
+        ),
         ..TextStyle::default()
     };
     let selection_style = TextStyle {
-        foreground_color: theme
-            .text
-            .selection_color
-            .as_deref()
-            .and_then(parse_hex_color)
-            .or(Some(Color {
-                r: 0.976,
-                g: 0.149,
-                b: 0.447,
-                a: 1.0,
-            })),
+        foreground_color: valid(
+            "text.selection_color",
+            theme.text.selection_color.as_deref(),
+            parse_hex_color,
+        )
+        .or(Some(Color {
+            r: 0.976,
+            g: 0.149,
+            b: 0.447,
+            a: 1.0,
+        })),
         ..TextStyle::default()
     };
 
@@ -324,12 +340,14 @@ pub fn build(cli: &Cli, config: &Config, theme: &Theme) -> Settings {
         .clone()
         .or_else(|| config.base.terminal.clone().filter(|s| !s.is_empty()));
 
-    let algorithm = cli
-        .algorithm
-        .as_deref()
-        .or(config.matching.algorithm.as_deref())
-        .map(theme::parse_algorithm)
-        .unwrap_or(MatchingAlgorithm::Normal);
+    let algorithm = valid(
+        "algorithm",
+        cli.algorithm
+            .as_deref()
+            .or(config.matching.algorithm.as_deref()),
+        theme::parse_algorithm,
+    )
+    .unwrap_or(MatchingAlgorithm::Normal);
 
     let require_match = config.matching.require.unwrap_or(true);
 

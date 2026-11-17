@@ -27,6 +27,8 @@ pub struct ClipboardState {
     /// Read end of the pipe used to receive clipboard data.
     /// `None` when no paste is in progress; dropping closes the fd.
     pub read_fd: Option<OwnedFd>,
+    /// The start of a character split across reads of the paste pipe.
+    pending: Vec<u8>,
 }
 
 impl ClipboardState {
@@ -40,11 +42,18 @@ impl ClipboardState {
         // Dropping OwnedFd closes the file descriptor.
         self.read_fd = None;
         self.mime_type = None;
+        self.pending.clear();
     }
 
     /// Close the clipboard pipe after paste is complete or on error.
     pub fn finish_paste(&mut self) {
         self.read_fd = None;
+        self.pending.clear();
+    }
+
+    /// Decode a chunk read from the paste pipe; see [`decode_chunk`].
+    pub fn decode(&mut self, chunk: &[u8]) -> String {
+        decode_chunk(&mut self.pending, chunk)
     }
 
     /// Start a paste: open a non-blocking pipe, ask the compositor to write
@@ -81,4 +90,41 @@ impl ClipboardState {
         tracing::debug!("Clipboard paste started");
         true
     }
+}
+
+/// Decode `chunk`, following the bytes left in `pending` by the previous
+/// chunk, as UTF-8.
+///
+/// Reads can split a character; its first bytes stay in `pending` for the
+/// next call. Invalid bytes are dropped.
+pub fn decode_chunk(pending: &mut Vec<u8>, chunk: &[u8]) -> String {
+    pending.extend_from_slice(chunk);
+    let mut text = String::new();
+    let mut rest: &[u8] = pending;
+    loop {
+        match std::str::from_utf8(rest) {
+            Ok(valid) => {
+                text.push_str(valid);
+                rest = &[];
+                break;
+            }
+            Err(e) => {
+                let (valid, after) = rest.split_at(e.valid_up_to());
+                // The first `valid_up_to` bytes are valid UTF-8.
+                text.push_str(std::str::from_utf8(valid).unwrap_or_default());
+                match e.error_len() {
+                    // Invalid bytes: drop them and go on.
+                    Some(len) => rest = &after[len..],
+                    // An incomplete character at the end: keep it.
+                    None => {
+                        rest = after;
+                        break;
+                    }
+                }
+            }
+        }
+    }
+    let keep = rest.len();
+    pending.drain(..pending.len() - keep);
+    text
 }

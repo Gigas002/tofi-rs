@@ -195,24 +195,14 @@ pub enum Dim {
     Int(u32),
 }
 
-pub(crate) fn dim_to_unit(d: &Dim) -> UnitValue {
+/// `45` → 45 px, `"45%"` → 45 %, `"45"` → 45 px; `None` for anything else.
+pub(crate) fn dim_to_unit(d: &Dim) -> Option<UnitValue> {
     match d {
-        Dim::Int(n) => UnitValue::pixels(*n),
-        Dim::Str(s) => {
-            if let Some(pct) = s.strip_suffix('%') {
-                pct.trim()
-                    .parse()
-                    .ok()
-                    .map(UnitValue::percent)
-                    .unwrap_or(UnitValue::pixels(0))
-            } else {
-                s.trim()
-                    .parse()
-                    .ok()
-                    .map(UnitValue::pixels)
-                    .unwrap_or(UnitValue::pixels(0))
-            }
-        }
+        Dim::Int(n) => Some(UnitValue::pixels(*n)),
+        Dim::Str(s) => match s.trim().strip_suffix('%') {
+            Some(pct) => pct.trim().parse().ok().map(UnitValue::percent),
+            None => s.trim().parse().ok().map(UnitValue::pixels),
+        },
     }
 }
 
@@ -240,9 +230,10 @@ pub fn resolve_path(name: &str, config_dir: Option<&Path>) -> Option<PathBuf> {
 
 // ── Loading ───────────────────────────────────────────────────────────────────
 
-pub fn load(path: &Path) -> Theme {
-    let s = std::fs::read_to_string(path).unwrap_or_default();
-    toml::from_str(&s).unwrap_or_default()
+/// Load the theme at `path`, with any problems found; a file that can't be
+/// read or parsed gives the defaults.
+pub fn load(path: &Path) -> (Theme, Vec<crate::config::Problem>) {
+    crate::config::load_toml(path)
 }
 
 // ── Helpers (used by settings::build) ────────────────────────────────────────
@@ -273,8 +264,8 @@ pub(crate) fn parse_hex_color(s: &str) -> Option<Color> {
     })
 }
 
-pub(crate) fn parse_anchor(s: &str) -> Anchor {
-    match s.to_lowercase().replace('-', "_").as_str() {
+pub(crate) fn parse_anchor(s: &str) -> Option<Anchor> {
+    Some(match s.to_lowercase().replace('-', "_").as_str() {
         "top_left" => Anchor::TopLeft,
         "top" => Anchor::Top,
         "top_right" => Anchor::TopRight,
@@ -283,24 +274,36 @@ pub(crate) fn parse_anchor(s: &str) -> Anchor {
         "bottom" => Anchor::Bottom,
         "bottom_left" => Anchor::BottomLeft,
         "left" => Anchor::Left,
-        _ => Anchor::Center,
-    }
+        "center" => Anchor::Center,
+        _ => return None,
+    })
 }
 
-pub(crate) fn parse_cursor_kind(s: &str) -> CursorKind {
-    match s.to_lowercase().as_str() {
+pub(crate) fn parse_cursor_kind(s: &str) -> Option<CursorKind> {
+    Some(match s.to_lowercase().as_str() {
+        "bar" => CursorKind::Bar,
         "block" => CursorKind::Block,
         "underscore" => CursorKind::Underscore,
-        _ => CursorKind::Bar,
-    }
+        _ => return None,
+    })
 }
 
-pub(crate) fn parse_algorithm(s: &str) -> libtofi_rs::matching::MatchingAlgorithm {
+pub(crate) fn parse_algorithm(s: &str) -> Option<libtofi_rs::matching::MatchingAlgorithm> {
     use libtofi_rs::matching::MatchingAlgorithm;
-    match s.to_lowercase().as_str() {
+    Some(match s.to_lowercase().as_str() {
+        "normal" => MatchingAlgorithm::Normal,
         "fuzzy" => MatchingAlgorithm::Fuzzy,
         "prefix" => MatchingAlgorithm::Prefix,
-        _ => MatchingAlgorithm::Normal,
+        _ => return None,
+    })
+}
+
+/// `[results].mode`: `true` for `"horizontal"`, `false` for `"vertical"`.
+pub(crate) fn parse_horizontal(s: &str) -> Option<bool> {
+    match s.to_lowercase().as_str() {
+        "horizontal" => Some(true),
+        "vertical" => Some(false),
+        _ => None,
     }
 }
 

@@ -21,7 +21,7 @@ algorithm = "fuzzy"
 # Require a result match before accepting input; false = print raw input.
 require = false
 
-# Restrict input to printable ASCII characters only.
+# Treat dmenu input as plain ASCII: skip Unicode normalisation of its lines.
 ascii = true
 
 [history]
