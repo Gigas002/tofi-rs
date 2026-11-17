@@ -6,6 +6,9 @@ on:
 
 env:
   CARGO_TERM_COLOR: always
+  # tofi/tests/live.rs runs tofi in a headless sway; fail instead of skipping
+  # when sway is missing.
+  TOFI_LIVE_TESTS: "1"
 
 permissions:
   contents: read
@@ -20,7 +23,7 @@ jobs:
           components: llvm-tools-preview
       - name: Build cache
         uses: Swatinem/rust-cache@v2
-      - name: Install system dependencies
+      - name: Install system dependencies, and sway and a font for the live tests
         run: |
           sudo apt-get update
           sudo apt-get install -y \
@@ -29,7 +32,9 @@ jobs:
             libcairo2-dev \
             libpango1.0-dev \
             libharfbuzz-dev \
-            libxkbcommon-dev
+            libxkbcommon-dev \
+            sway \
+            fonts-dejavu-core
       - name: Install cargo-llvm-cov
         uses: taiki-e/install-action@v2
         with:
