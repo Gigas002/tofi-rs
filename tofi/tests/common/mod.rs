@@ -377,6 +377,8 @@ impl Tofi {
             .args(args)
             .env_clear()
             .env("PATH", std::env::var_os("PATH").unwrap_or_default())
+            // Under cargo llvm-cov, where to write coverage data.
+            .envs(std::env::var_os("LLVM_PROFILE_FILE").map(|v| ("LLVM_PROFILE_FILE", v)))
             .env("XDG_RUNTIME_DIR", sway.runtime_dir())
             .env("WAYLAND_DISPLAY", &sway.display)
             .env("HOME", home.file("home"))
