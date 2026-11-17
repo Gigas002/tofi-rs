@@ -5,10 +5,12 @@
 ### Added
 
 - **`libtofi_rs::drun::exec_args` and `libtofi_rs::drun::split_args`.** `exec_args` turns a desktop entry's `Exec` value into an argument vector following the Desktop Entry Specification (string unescaping, double-quote quoting, per-argument field-code expansion); `split_args` is the underlying quote-aware splitter.
+- **`libtofi_rs::wayland::OutputInfo::logical_size` and `physical_size`.** The output's size in logical pixels (from `xdg-output` when available) and its rotated mode size.
 
 ### Fixed
 
 - **Logs go to stderr instead of stdout.** In `run` and `dmenu` mode stdout carries the selection, and a warning (shown at the default `warn` level) used to land in front of it, so `tofi --mode dmenu | …` passed log text to the script. Colour codes are now also only used when stderr is a terminal.
+- **Percentage sizes are right on scaled outputs.** `width` and `height` given in `%` were taken of the output's physical pixels but applied as logical ones, so `width = "50%"` filled 75 % of a 1.5×-scaled screen. They are now taken of the logical size, read from `xdg-output` when the compositor offers it (needed for fractional scales), else the physical size over the integer scale.
 - **No more false "compositor will STRETCH" warning** with an edge anchor (`top`, `bottom`, `left`, `right`). A set width or height is kept and the window is centred along that edge, so the warning was wrong, and it appeared on every run.
 - **Quoted `Exec` arguments containing spaces are no longer split apart** ([#61](https://github.com/Gigas002/tofi-rs/issues/61)). E.g. `"--profile-directory=Profile 1"` in Chromium PWA entries is now passed as one argument, without the literal quotes. Field-code values (`%c`, `%k`, `%i`) containing spaces also stay a single argument, and the terminal command is split with the same quoting rules.
 

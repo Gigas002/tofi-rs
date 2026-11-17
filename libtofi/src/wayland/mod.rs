@@ -22,6 +22,7 @@ use wayland_protocols::wp::{
     fractional_scale::v1::client::{wp_fractional_scale_manager_v1, wp_fractional_scale_v1},
     viewporter::client::{wp_viewport, wp_viewporter},
 };
+use wayland_protocols::xdg::xdg_output::zv1::client::{zxdg_output_manager_v1, zxdg_output_v1};
 use wayland_protocols_wlr::layer_shell::v1::client::{zwlr_layer_shell_v1, zwlr_layer_surface_v1};
 
 use crate::{Error, Result};
@@ -64,6 +65,8 @@ pub struct OutputInfo {
     /// When this is `_90`, `_270`, `Flipped90`, or `Flipped270` the physical
     /// width and height are swapped relative to the logical output rectangle.
     pub transform: wl_output::Transform,
+    /// Logical size from `zxdg_output_v1`, when the compositor offers it.
+    xdg_logical_size: Option<(i32, i32)>,
 }
 
 impl OutputInfo {
@@ -75,8 +78,52 @@ impl OutputInfo {
             width: 0,
             height: 0,
             transform: wl_output::Transform::Normal,
+            xdg_logical_size: None,
         }
     }
+
+    /// The current mode's size in physical pixels, as the output is rotated.
+    pub fn physical_size(&self) -> (u32, u32) {
+        rotated_size(self.width, self.height, self.transform)
+    }
+
+    /// The output's size in logical pixels: the unit of layer-surface sizes
+    /// and margins.
+    ///
+    /// Taken from `zxdg_output_v1` when available, since only it knows a
+    /// fractional scale; otherwise the physical size divided by the integer
+    /// `wl_output` scale.
+    pub fn logical_size(&self) -> (u32, u32) {
+        logical_size(self.physical_size(), self.scale, self.xdg_logical_size)
+    }
+}
+
+/// `width`×`height` of a mode, swapped when `transform` rotates by 90°/270°.
+pub(crate) fn rotated_size(width: i32, height: i32, transform: wl_output::Transform) -> (u32, u32) {
+    let (w, h) = (width.max(0) as u32, height.max(0) as u32);
+    match transform {
+        wl_output::Transform::_90
+        | wl_output::Transform::_270
+        | wl_output::Transform::Flipped90
+        | wl_output::Transform::Flipped270 => (h, w),
+        _ => (w, h),
+    }
+}
+
+/// The logical size: `xdg` when known, else `physical` / `scale`.
+pub(crate) fn logical_size(
+    physical: (u32, u32),
+    scale: i32,
+    xdg: Option<(i32, i32)>,
+) -> (u32, u32) {
+    if let Some((w, h)) = xdg
+        && w > 0
+        && h > 0
+    {
+        return (w as u32, h as u32);
+    }
+    let scale = scale.max(1) as u32;
+    (physical.0 / scale, physical.1 / scale)
 }
 
 // ── WaylandState ─────────────────────────────────────────────────────────────
@@ -103,6 +150,8 @@ pub struct WaylandState {
         Option<wp_fractional_scale_manager_v1::WpFractionalScaleManagerV1>,
     /// All advertised outputs; names/modes populated after the second roundtrip.
     pub outputs: Vec<OutputInfo>,
+    /// `zxdg_output_manager_v1` — optional; gives outputs' logical sizes.
+    xdg_output_manager: Option<zxdg_output_manager_v1::ZxdgOutputManagerV1>,
 
     /// `wl_keyboard` obtained from `wl_seat` capabilities.
     pub keyboard: Option<wl_keyboard::WlKeyboard>,
@@ -166,6 +215,7 @@ impl WaylandState {
             viewporter: None,
             fractional_scale_manager: None,
             outputs: Vec::new(),
+            xdg_output_manager: None,
             #[cfg(feature = "clipboard")]
             data_device_manager: None,
             #[cfg(feature = "clipboard")]
@@ -251,6 +301,11 @@ impl Dispatch<wl_registry::WlRegistry, ()> for WaylandState {
             "wp_viewporter" => {
                 state.viewporter = Some(registry.bind(name, 1, qh, ()));
                 tracing::debug!("Bound wp_viewporter v1");
+            }
+            "zxdg_output_manager_v1" => {
+                let v = version.min(3);
+                state.xdg_output_manager = Some(registry.bind(name, v, qh, ()));
+                tracing::debug!("Bound zxdg_output_manager_v1 v{v}");
             }
             "wp_fractional_scale_manager_v1" => {
                 state.fractional_scale_manager = Some(registry.bind(name, 1, qh, ()));
@@ -494,6 +549,39 @@ impl Dispatch<wl_output::WlOutput, usize> for WaylandState {
                 );
             }
             _ => {}
+        }
+    }
+}
+
+// `zxdg_output_manager_v1` has no events; impl required but never called.
+impl Dispatch<zxdg_output_manager_v1::ZxdgOutputManagerV1, ()> for WaylandState {
+    fn event(
+        _: &mut Self,
+        _: &zxdg_output_manager_v1::ZxdgOutputManagerV1,
+        _event: zxdg_output_manager_v1::Event,
+        _: &(),
+        _: &Connection,
+        _: &QueueHandle<Self>,
+    ) {
+    }
+}
+
+/// `zxdg_output_v1` events — record the output's logical size; the index into
+/// [`WaylandState::outputs`] is passed as user data.
+impl Dispatch<zxdg_output_v1::ZxdgOutputV1, usize> for WaylandState {
+    fn event(
+        state: &mut Self,
+        _: &zxdg_output_v1::ZxdgOutputV1,
+        event: zxdg_output_v1::Event,
+        data: &usize,
+        _: &Connection,
+        _: &QueueHandle<Self>,
+    ) {
+        if let zxdg_output_v1::Event::LogicalSize { width, height } = event
+            && let Some(info) = state.outputs.get_mut(*data)
+        {
+            info.xdg_logical_size = Some((width, height));
+            tracing::debug!("Output {data}: logical size {width}×{height}");
         }
     }
 }
@@ -954,6 +1042,13 @@ pub fn connect() -> Result<(WaylandState, EventQueue<WaylandState>)> {
         .map_err(|e| Error::Wayland(e.to_string()))?;
     tracing::debug!("First roundtrip done");
 
+    // Ask for each output's logical size; it arrives in the next roundtrip.
+    if let Some(manager) = state.xdg_output_manager.as_ref() {
+        for (i, info) in state.outputs.iter().enumerate() {
+            manager.get_xdg_output(&info.output, &qh, i);
+        }
+    }
+
     tracing::debug!("Second roundtrip: receiving output info");
     event_queue
         .roundtrip(&mut state)
@@ -1058,3 +1153,6 @@ pub fn read_clipboard(state: &mut WaylandState) {
         }
     }
 }
+
+#[cfg(test)]
+mod tests;

@@ -311,19 +311,12 @@ fn select_output<'a>(
     }
 }
 
+/// The logical size of `output`, which percentages and margins refer to.
 #[cfg(feature = "wayland")]
 fn output_size(output: Option<&libtofi_rs::wayland::OutputInfo>) -> (u32, u32) {
     output
-        .map(|o| {
-            use libtofi_rs::wayland::OutputTransform;
-            match o.transform {
-                OutputTransform::_90
-                | OutputTransform::_270
-                | OutputTransform::Flipped90
-                | OutputTransform::Flipped270 => (o.height as u32, o.width as u32),
-                _ => (o.width as u32, o.height as u32),
-            }
-        })
+        .map(libtofi_rs::wayland::OutputInfo::logical_size)
+        .filter(|&(w, h)| w > 0 && h > 0)
         .unwrap_or((1920, 1080))
 }
 

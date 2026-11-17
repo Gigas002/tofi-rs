@@ -109,3 +109,18 @@ fn edge_anchors_log_no_warnings() {
     assert!(log.contains("compositor configure → 640×300"), "{log}");
     assert!(!log.contains("WARN"), "{log}");
 }
+
+#[test]
+fn percentages_are_of_the_logical_output_size() {
+    // 1280×720 at scale 1.5 is 853×480 logical.
+    let sway = sway_or_skip!("1.5");
+    let mut kb = Keyboard::new(&sway);
+    let home = Home::new();
+    home.theme("[window]\nwidth = \"50%\"\nheight = \"50%\"\n");
+    let mut tofi = Tofi::start(&sway, &home, &["--mode", "dmenu"], ITEMS);
+    kb.key("Escape");
+    tofi.wait();
+    let log = tofi.stderr();
+    assert!(log.contains("compositor configure → 426×240"), "{log}");
+    assert!(log.contains("Physical buffer: 639×360"), "{log}");
+}
