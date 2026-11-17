@@ -1,6 +1,8 @@
 # Changelog
 
-## Unreleased
+## [1.2.0] - Unreleased
+
+libtofi-rs API change: `EntryConfig` gains a public `hint_font` field, so code that builds it with a struct literal must set it or use `..EntryConfig::default()`.
 
 ### Added
 
