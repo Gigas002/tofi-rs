@@ -42,17 +42,18 @@ fn main() {
         problem.log();
     }
 
+    #[cfg(feature = "completions")]
+    if let Some(shell) = cli.completions {
+        completions::generate_completions(shell);
+        return;
+    }
+
+    // Only one launcher at a time; printing completions doesn't count.
     let _lock =
         libtofi_rs::lock::try_acquire_default().expect("Failed to check single-instance lock");
     if _lock.is_none() {
         tracing::warn!("Another tofi instance is already running");
         std::process::exit(1);
-    }
-
-    #[cfg(feature = "completions")]
-    if let Some(shell) = cli.completions {
-        completions::generate_completions(shell);
-        return;
     }
 
     tracing::debug!(
