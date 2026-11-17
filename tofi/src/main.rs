@@ -9,6 +9,8 @@ mod config;
 #[cfg(feature = "history")]
 #[allow(dead_code)]
 mod history;
+#[cfg(feature = "logging")]
+mod logger;
 mod settings;
 mod theme;
 
@@ -26,19 +28,12 @@ fn main() {
         .unwrap_or_default();
 
     #[cfg(feature = "logging")]
-    {
-        let level = cli
-            .log_level
+    logger::init(
+        cli.log_level
             .as_deref()
             .or(config.logging.level.as_deref())
-            .unwrap_or("warn");
-        tracing_subscriber::fmt()
-            .with_env_filter(
-                tracing_subscriber::EnvFilter::try_from_default_env()
-                    .unwrap_or_else(|_| tracing_subscriber::EnvFilter::new(level)),
-            )
-            .init();
-    }
+            .unwrap_or("warn"),
+    );
 
     tracing::debug!("tofi starting");
 

@@ -8,6 +8,7 @@
 
 ### Fixed
 
+- **Logs go to stderr instead of stdout.** In `run` and `dmenu` mode stdout carries the selection, and a warning (shown at the default `warn` level) used to land in front of it, so `tofi --mode dmenu | …` passed log text to the script. Colour codes are now also only used when stderr is a terminal.
 - **Quoted `Exec` arguments containing spaces are no longer split apart** ([#61](https://github.com/Gigas002/tofi-rs/issues/61)). E.g. `"--profile-directory=Profile 1"` in Chromium PWA entries is now passed as one argument, without the literal quotes. Field-code values (`%c`, `%k`, `%i`) containing spaces also stay a single argument, and the terminal command is split with the same quoting rules.
 
 ### Deprecated
