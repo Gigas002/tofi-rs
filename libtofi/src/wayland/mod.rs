@@ -1123,27 +1123,21 @@ pub fn read_clipboard(state: &mut WaylandState) {
             tracing::debug!("Clipboard paste complete (EOF)");
         }
         Ok(n) => {
-            // Insert received bytes as UTF-8 characters into the entry input.
-            match std::str::from_utf8(&buf[..n]) {
-                Ok(text) => {
-                    if let Some(entry) = state.entry.as_mut() {
-                        for c in text.chars() {
-                            crate::input::add_char(
-                                &mut entry.input,
-                                &mut entry.cursor_position,
-                                c,
-                                crate::entry::MAX_INPUT_LENGTH,
-                            );
-                        }
-                        entry.reset_selection();
-                    }
-                    state.redraw = true;
+            // Insert the received text at the cursor; a character split
+            // across reads is completed by the next one.
+            let text = state.clipboard.decode(&buf[..n]);
+            if let Some(entry) = state.entry.as_mut() {
+                for c in text.chars() {
+                    crate::input::add_char(
+                        &mut entry.input,
+                        &mut entry.cursor_position,
+                        c,
+                        crate::entry::MAX_INPUT_LENGTH,
+                    );
                 }
-                Err(_) => {
-                    tracing::warn!("Clipboard data is not valid UTF-8; discarding chunk");
-                    state.clipboard.finish_paste();
-                }
+                entry.reset_selection();
             }
+            state.redraw = true;
         }
         Err(rustix::io::Errno::AGAIN) => {
             // No data available right now — will retry on next poll wakeup.
