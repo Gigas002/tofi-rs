@@ -195,3 +195,17 @@ fn drun_finds_entries_by_keyword() {
     assert!(tofi.wait().success());
     common::wait_for("the app to run", || marker.exists().then_some(()));
 }
+
+#[test]
+fn config_mistakes_are_logged() {
+    let sway = sway_or_skip!();
+    let mut kb = Keyboard::new(&sway);
+    let home = Home::new();
+    home.theme("[window]\nblur = 100\nanchor = \"middle\"\n");
+    let mut tofi = Tofi::start(&sway, &home, &["--mode", "dmenu"], ITEMS);
+    kb.key("Escape");
+    tofi.wait();
+    let log = tofi.stderr();
+    assert!(log.contains("unknown key `window.blur` ignored"), "{log}");
+    assert!(log.contains("invalid window.anchor \"middle\""), "{log}");
+}

@@ -19,11 +19,13 @@ use clap::Parser as _;
 fn main() {
     let cli = cli::Cli::parse();
 
-    // Load config early so [logging].level is available before subscriber init.
+    // Load config early so [logging].level is available before subscriber init;
+    // its problems are logged once logging is up. A missing default config is
+    // fine, a missing `--config` is not.
     let config_path = cli.config.clone().or_else(config::default_path);
-    let config = config_path
+    let (config, config_problems) = config_path
         .as_deref()
-        .filter(|p| p.exists())
+        .filter(|p| cli.config.is_some() || p.exists())
         .map(config::load)
         .unwrap_or_default();
 
@@ -36,6 +38,9 @@ fn main() {
     );
 
     tracing::debug!("tofi starting");
+    for problem in &config_problems {
+        problem.log();
+    }
 
     let _lock =
         libtofi_rs::lock::try_acquire_default().expect("Failed to check single-instance lock");
@@ -62,11 +67,10 @@ fn main() {
             theme::resolve_path(name, config_dir)
         })
     });
-    let theme = theme_path
-        .as_deref()
-        .filter(|p| p.exists())
-        .map(theme::load)
-        .unwrap_or_default();
+    let (theme, theme_problems) = theme_path.as_deref().map(theme::load).unwrap_or_default();
+    for problem in &theme_problems {
+        problem.log();
+    }
 
     tracing::debug!(
         path = ?theme_path,

@@ -9,6 +9,7 @@
 
 ### Fixed
 
+- **Config and theme mistakes are reported instead of silently ignored.** A file that isn't valid TOML (including a wrong type, like `size = "16"`) used to make tofi quietly use the defaults for *every* setting in it; it is still unusable, but now an error says so and where. Unknown keys (such as a misspelled name), a `--config` or theme file that doesn't exist, and invalid values (an unknown `anchor`, `mode`, `algorithm`, `cursor_style`, `[results].mode`, size or colour) are now logged; invalid values still fall back to their defaults. `"center"`, `"bar"`, `"normal"` and `"vertical"` are now accepted as values too.
 - **drun finds apps by their `Keywords` again**, as upstream tofi does: typing "browser" finds Firefox. The keywords were read and cached but never matched. A keyword match ranks below a name match.
 - **Fuzzy matching no longer freezes tofi.** It tried every way to match the query against each line, which is exponential: eight repeated letters against one 60-character line took 48 s, and ordinary queries took up to half a millisecond per line, so seconds per keystroke for a few thousand lines. It now finds the same best score in linear time (microseconds per line). Lines over 100 characters keep upstream's quicker first-match scoring.
 - **Moving the selection no longer re-filters the list.** Every redraw, including arrow keys and Tab, matched and sorted every entry again; now that only happens when the query changes.

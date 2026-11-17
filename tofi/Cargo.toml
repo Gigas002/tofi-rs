@@ -19,6 +19,7 @@ clap = { version = "4", features = ["derive"] }
 libtofi-rs = { path = "../libtofi", default-features = false }
 rustix = { version = "1", features = ["event"] }
 serde = { version = "1", features = ["derive"] }
+serde_ignored = "0.1"
 toml = { version = "1.1" }
 tracing = "0.1"
 tracing-subscriber = { version = "0.3", features = ["env-filter"], optional = true }

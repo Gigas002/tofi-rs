@@ -175,8 +175,8 @@ fn build_from_example_files() {
         return;
     }
 
-    let config = crate::config::load(&config_path);
-    let theme = crate::theme::load(&theme_path);
+    let config = crate::config::load(&config_path).0;
+    let theme = crate::theme::load(&theme_path).0;
     let cli = Cli::try_parse_from(["tofi"]).unwrap();
     let s = build(&cli, &config, &theme);
 
@@ -198,8 +198,8 @@ fn build_from_minimal_files_uses_defaults() {
         return;
     }
 
-    let config = crate::config::load(&config_path);
-    let theme = crate::theme::load(&theme_path);
+    let config = crate::config::load(&config_path).0;
+    let theme = crate::theme::load(&theme_path).0;
     let cli = Cli::try_parse_from(["tofi"]).unwrap();
     let s = build(&cli, &config, &theme);
 
@@ -228,8 +228,8 @@ fn build_from_maximal_files_sets_all_options() {
         return;
     }
 
-    let config = crate::config::load(&config_path);
-    let theme = crate::theme::load(&theme_path);
+    let config = crate::config::load(&config_path).0;
+    let theme = crate::theme::load(&theme_path).0;
     let cli = Cli::try_parse_from(["tofi"]).unwrap();
     let s = build(&cli, &config, &theme);
 
@@ -251,4 +251,90 @@ fn build_from_maximal_files_sets_all_options() {
     assert!(s.horizontal);
     assert!(s.hide_cursor);
     assert!(s.cursor.show);
+}
+
+// ── Warnings for invalid values ───────────────────────────────────────────────
+
+#[cfg(feature = "logging")]
+mod warnings {
+    use std::sync::{Arc, Mutex};
+
+    use clap::Parser as _;
+
+    use crate::cli::Cli;
+    use crate::config::Config;
+    use crate::theme::Theme;
+
+    #[derive(Clone, Default)]
+    struct Buf(Arc<Mutex<Vec<u8>>>);
+
+    impl std::io::Write for Buf {
+        fn write(&mut self, b: &[u8]) -> std::io::Result<usize> {
+            self.0.lock().unwrap().extend_from_slice(b);
+            Ok(b.len())
+        }
+        fn flush(&mut self) -> std::io::Result<()> {
+            Ok(())
+        }
+    }
+
+    /// Run `build` and return what it logged.
+    fn build_logs(args: &[&str], config: &str, theme: &str) -> (super::super::Settings, String) {
+        let buf = Buf::default();
+        let writer = buf.clone();
+        let subscriber = tracing_subscriber::fmt()
+            .with_writer(move || writer.clone())
+            .with_ansi(false)
+            .finish();
+        let cli = Cli::try_parse_from(args).unwrap();
+        let config: Config = toml::from_str(config).unwrap();
+        let theme: Theme = toml::from_str(theme).unwrap();
+        let settings = tracing::subscriber::with_default(subscriber, || {
+            super::super::build(&cli, &config, &theme)
+        });
+        let logs = String::from_utf8(buf.0.lock().unwrap().clone()).unwrap();
+        (settings, logs)
+    }
+
+    #[test]
+    fn invalid_theme_values_warn_and_use_defaults() {
+        let (settings, logs) = build_logs(
+            &["tofi"],
+            "",
+            "[window]\nanchor = \"middle\"\nwidth = \"wide\"\nbackground_color = \"black\"\n\
+             [results]\nmode = \"diagonal\"\n[input]\ncursor_style = \"beam\"\n",
+        );
+        assert_eq!(settings.anchor, crate::theme::Anchor::Center);
+        for key in [
+            "invalid window.anchor \"middle\"",
+            "invalid window.width",
+            "invalid window.background_color \"black\"",
+            "invalid results.mode \"diagonal\"",
+            "invalid input.cursor_style \"beam\"",
+        ] {
+            assert!(logs.contains(key), "missing {key:?} in:\n{logs}");
+        }
+    }
+
+    #[test]
+    fn invalid_mode_and_algorithm_warn() {
+        let (settings, logs) = build_logs(
+            &["tofi", "--mode", "drnu"],
+            "[matching]\nalgorithm = \"smart\"\n",
+            "",
+        );
+        assert_eq!(settings.mode, super::super::LaunchMode::Drun);
+        assert!(logs.contains("invalid mode \"drnu\""), "{logs}");
+        assert!(logs.contains("invalid algorithm \"smart\""), "{logs}");
+    }
+
+    #[test]
+    fn valid_values_do_not_warn() {
+        let (_, logs) = build_logs(
+            &["tofi", "--mode", "run"],
+            "[matching]\nalgorithm = \"fuzzy\"\n",
+            "[window]\nanchor = \"top\"\nwidth = \"50%\"\nbackground_color = \"#000000\"\n",
+        );
+        assert!(logs.is_empty(), "{logs}");
+    }
 }
