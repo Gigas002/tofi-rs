@@ -94,3 +94,18 @@ fn history_ranks_the_last_pick_first() {
         assert_eq!(tofi.stdout(), "gamma\n");
     }
 }
+
+#[test]
+fn edge_anchors_log_no_warnings() {
+    let sway = sway_or_skip!();
+    let mut kb = Keyboard::new(&sway);
+    let home = Home::new();
+    // "top" anchors top, left and right; sway keeps the width and centres it.
+    home.theme("[window]\nanchor = \"top\"\nwidth = 640\nheight = 300\n");
+    let mut tofi = Tofi::start(&sway, &home, &["--mode", "dmenu"], ITEMS);
+    kb.key("Escape");
+    tofi.wait();
+    let log = tofi.stderr();
+    assert!(log.contains("compositor configure → 640×300"), "{log}");
+    assert!(!log.contains("WARN"), "{log}");
+}

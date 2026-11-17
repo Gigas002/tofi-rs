@@ -153,25 +153,6 @@ pub fn create_surface(
         cfg.anchor.contains(zwlr_layer_surface_v1::Anchor::Left),
         cfg.anchor.contains(zwlr_layer_surface_v1::Anchor::Right),
     );
-    if cfg.anchor.contains(zwlr_layer_surface_v1::Anchor::Top)
-        && cfg.anchor.contains(zwlr_layer_surface_v1::Anchor::Bottom)
-    {
-        tracing::warn!(
-            "Layer surface: top+bottom anchored simultaneously — compositor will STRETCH \
-             surface to fill output height, ignoring set_size height={}",
-            cfg.height
-        );
-    }
-    if cfg.anchor.contains(zwlr_layer_surface_v1::Anchor::Left)
-        && cfg.anchor.contains(zwlr_layer_surface_v1::Anchor::Right)
-    {
-        tracing::warn!(
-            "Layer surface: left+right anchored simultaneously — compositor will STRETCH \
-             surface to fill output width, ignoring set_size width={}",
-            cfg.width
-        );
-    }
-
     layer_surface.set_anchor(cfg.anchor);
     layer_surface.set_exclusive_zone(cfg.exclusive_zone);
     tracing::debug!("Layer surface: exclusive_zone={}", cfg.exclusive_zone);
@@ -189,11 +170,12 @@ pub fn create_surface(
         cfg.margin_left,
     );
 
-    // Layer surface size is always in logical pixels.
+    // Layer surface size is always in logical pixels. A non-zero size along
+    // an axis whose opposite edges are both anchored is kept, and the surface
+    // is centred between them; only 0 asks the compositor to stretch it.
     layer_surface.set_size(cfg.width, cfg.height);
     tracing::debug!(
-        "Layer surface: set_size requested={}×{} logical (compositor may override if \
-         opposite edges are both anchored)",
+        "Layer surface: set_size requested={}×{} logical",
         cfg.width,
         cfg.height,
     );
@@ -280,8 +262,7 @@ pub fn create_surface(
     );
     if logical_w != cfg.width || logical_h != cfg.height {
         tracing::warn!(
-            "Layer surface: compositor OVERRODE requested size {}×{} → actual {}×{} \
-             (likely because opposite anchor edges are both set)",
+            "Layer surface: compositor changed the requested size {}×{} to {}×{}",
             cfg.width,
             cfg.height,
             logical_w,
