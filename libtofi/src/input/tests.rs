@@ -574,6 +574,16 @@ mod keyboard_tests {
     }
 
     #[test]
+    fn stop_repeat_stops_any_key() {
+        let mut ks = KeyboardState::new(true);
+        ks.set_repeat_info(25, 600);
+        ks.arm_repeat(42);
+        ks.stop_repeat();
+        assert!(!ks.repeat.active);
+        assert_eq!(ks.repeat.timeout(), None, "the event loop stops waking up");
+    }
+
+    #[test]
     fn disarm_repeat_nonmatching_keycode_stays_active() {
         let mut ks = KeyboardState::new(true);
         ks.arm_repeat(42);

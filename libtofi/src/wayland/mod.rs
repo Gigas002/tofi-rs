@@ -422,6 +422,8 @@ impl Dispatch<wl_keyboard::WlKeyboard, ()> for WaylandState {
             }
             wl_keyboard::Event::Leave { .. } => {
                 tracing::debug!("wl_keyboard: Leave (surface lost keyboard focus)");
+                // A key held now is released elsewhere; don't repeat it forever.
+                state.keyboard_state.stop_repeat();
             }
 
             // ── Key ───────────────────────────────────────────────────────────
