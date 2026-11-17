@@ -158,3 +158,19 @@ fn scale_false_takes_pixels_as_physical_and_draws_1_to_1() {
         "{log}"
     );
 }
+
+#[test]
+fn moving_the_selection_does_not_refilter() {
+    let sway = sway_or_skip!();
+    let mut kb = Keyboard::new(&sway);
+    let home = Home::new();
+    let mut tofi = Tofi::start(&sway, &home, &["--mode", "dmenu"], "aa\nab\nac\nb\n");
+    kb.type_text("a");
+    for _ in 0..3 {
+        kb.key("Down");
+    }
+    kb.key("Return");
+    assert!(tofi.wait().success());
+    assert_eq!(tofi.stdout(), "aa\n");
+    assert_eq!(tofi.stderr().matches("results filtered").count(), 1);
+}

@@ -1,6 +1,8 @@
 //! Application entry point — Wayland wiring, event loop, and submission logic.
 #![deny(unsafe_code)]
 
+#[cfg(feature = "renderer")]
+mod filter_utils;
 mod history_utils;
 mod run_utils;
 mod submit_utils;
@@ -83,6 +85,9 @@ fn event_loop(
 ) -> bool {
     #[cfg(not(feature = "renderer"))]
     let _ = all_entries;
+    // The query `entry.results` was last filtered for; it starts unfiltered.
+    #[cfg(feature = "renderer")]
+    let mut filtered_for = String::new();
 
     loop {
         event_queue.flush().expect("Wayland flush failed");
@@ -113,7 +118,13 @@ fn event_loop(
         if state.redraw {
             state.redraw = false;
             #[cfg(feature = "renderer")]
-            handle_redraw(state, event_queue, &all_entries, settings);
+            handle_redraw(
+                state,
+                event_queue,
+                &all_entries,
+                &mut filtered_for,
+                settings,
+            );
         }
     }
 }
@@ -213,27 +224,15 @@ fn handle_redraw(
     state: &mut libtofi_rs::wayland::WaylandState,
     event_queue: &mut libtofi_rs::wayland::EventQueue<libtofi_rs::wayland::WaylandState>,
     all_entries: &[String],
+    filtered_for: &mut String,
     settings: &Settings,
 ) {
     if let Some(entry) = state.entry.as_mut() {
-        if entry.input.is_empty() {
-            entry.results = all_entries.to_vec();
-        } else {
-            let query = entry.input.clone();
-            let algorithm = settings.algorithm;
-            let mut scored: Vec<(i32, &String)> = all_entries
-                .iter()
-                .filter_map(|s| {
-                    let score = libtofi_rs::matching::match_words(algorithm, &query, s);
-                    if score > i32::MIN {
-                        Some((score, s))
-                    } else {
-                        None
-                    }
-                })
-                .collect();
-            scored.sort_by_key(|b| std::cmp::Reverse(b.0));
-            entry.results = scored.into_iter().map(|(_, s)| s.clone()).collect();
+        // Navigation redraws too; only a changed query needs a new list.
+        if entry.input != *filtered_for {
+            entry.results = filter_utils::filter(all_entries, &entry.input, settings.algorithm);
+            filtered_for.clone_from(&entry.input);
+            tracing::debug!(count = entry.results.len(), "results filtered");
         }
         entry.update();
         entry.flush();

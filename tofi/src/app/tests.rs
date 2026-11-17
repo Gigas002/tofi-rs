@@ -200,3 +200,40 @@ mod size_tests {
         assert_eq!(logical_px(&UnitValue::percent(50), 640, 1.0), 320);
     }
 }
+
+// ── Filtering ─────────────────────────────────────────────────────────────────
+
+#[cfg(feature = "renderer")]
+mod filter_tests {
+    use super::super::filter_utils::filter;
+    use libtofi_rs::matching::MatchingAlgorithm::{Normal, Prefix};
+
+    fn list(items: &[&str]) -> Vec<String> {
+        items.iter().map(|s| (*s).to_owned()).collect()
+    }
+
+    #[test]
+    fn empty_query_keeps_everything_in_order() {
+        let all = list(&["b", "a", "c"]);
+        assert_eq!(filter(&all, "", Normal), all);
+    }
+
+    #[test]
+    fn non_matches_are_dropped() {
+        let all = list(&["firefox", "foot", "gimp"]);
+        assert_eq!(filter(&all, "f", Prefix), list(&["foot", "firefox"]));
+    }
+
+    #[test]
+    fn better_matches_come_first() {
+        // Normal scores by how early the match starts.
+        let all = list(&["xxfo", "fo", "xfo"]);
+        assert_eq!(filter(&all, "fo", Normal), list(&["fo", "xfo", "xxfo"]));
+    }
+
+    #[test]
+    fn equal_scores_keep_history_order() {
+        let all = list(&["zfoo", "afoo", "mfoo"]);
+        assert_eq!(filter(&all, "foo", Normal), all);
+    }
+}

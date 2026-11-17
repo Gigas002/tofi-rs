@@ -10,6 +10,7 @@
 ### Fixed
 
 - **Fuzzy matching no longer freezes tofi.** It tried every way to match the query against each line, which is exponential: eight repeated letters against one 60-character line took 48 s, and ordinary queries took up to half a millisecond per line, so seconds per keystroke for a few thousand lines. It now finds the same best score in linear time (microseconds per line). Lines over 100 characters keep upstream's quicker first-match scoring.
+- **Moving the selection no longer re-filters the list.** Every redraw, including arrow keys and Tab, matched and sorted every entry again; now that only happens when the query changes.
 - **Logs go to stderr instead of stdout.** In `run` and `dmenu` mode stdout carries the selection, and a warning (shown at the default `warn` level) used to land in front of it, so `tofi --mode dmenu | …` passed log text to the script. Colour codes are now also only used when stderr is a terminal.
 - **Percentage sizes are right on scaled outputs.** `width` and `height` given in `%` were taken of the output's physical pixels but applied as logical ones, so `width = "50%"` filled 75 % of a 1.5×-scaled screen. They are now taken of the logical size, read from `xdg-output` when the compositor offers it (needed for fractional scales), else the physical size over the integer scale.
 - **`[window].scale = false` works.** It was read but ignored. As in upstream tofi, pixel values (window size, margins, font size, borders, padding) are then physical pixels and tofi draws 1:1 instead of at the output's scale.
