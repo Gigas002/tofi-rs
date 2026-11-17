@@ -799,7 +799,7 @@ fn entries_cached_wrong_header_rescans_and_rewrites_cache() {
     fs::write(
         &cache_path,
         "#stale-c-tofi-cache
-some-app Some App /path  app  1
+some-app\0Some App\0/path\0\0app\0\x001
 ",
     )
     .expect("write bad cache");
