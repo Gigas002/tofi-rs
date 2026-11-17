@@ -35,3 +35,5 @@ tofi reads its settings from two separate TOML files:
 | `~/.config/tofi/themes/<name>.toml` | Visual settings (colors, fonts, window geometry) |
 
 The theme file is referenced by the `[base].theme` key in the config, or overridden on the command line with `--theme <path>`.
+
+Mistakes in either file (unknown keys, invalid values, invalid TOML) are logged to stderr, like all of tofi's messages; stdout only ever carries the selection. Run `tofi --log-level debug` to see more. Annotated examples are in [`examples/`](examples/).

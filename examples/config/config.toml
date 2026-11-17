@@ -26,12 +26,12 @@ terminal = "alacritty"
 algorithm = "normal"
 
 # When true, pressing Enter with no matching result does nothing.
-# When false, the raw typed text is printed (run mode) or ignored (drun mode).
-# Can be provided via CLI: tofi --require-match <bool>
+# When false, the raw typed text is printed (run and dmenu modes); drun mode
+# always needs a match.
 require = true
 
-# Restrict input to printable ASCII characters only.
-# Can be provided via CLI: tofi --ascii-input <bool>
+# Treat dmenu input as plain ASCII: skip Unicode normalisation of its lines,
+# which is faster for very long lists.
 ascii = false
 
 [history]
@@ -39,9 +39,9 @@ ascii = false
 # Can be provided via CLI: tofi --history <bool>
 history = true
 
-# Custom path for the history file.
-# Defaults to the standard XDG cache location when unset.
-# Can be provided via CLI: tofi --history-file <path>
+# Custom path for the history file. When unset, run and drun mode use
+# $XDG_STATE_HOME/tofi-history and tofi-drun-history (~/.local/state/ by
+# default); dmenu mode only keeps history when this is set.
 # path = "/path/to/histfile"
 
 [logging]
