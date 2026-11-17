@@ -179,3 +179,24 @@ mod launch_argv_tests {
         assert!(launch_argv(&entry("", false), None).is_empty());
     }
 }
+
+// ── Sizes ─────────────────────────────────────────────────────────────────────
+
+#[cfg(feature = "wayland")]
+mod size_tests {
+    use super::super::logical_px;
+    use crate::theme::UnitValue;
+
+    #[test]
+    fn pixels_are_divided_by_the_pixel_scale() {
+        assert_eq!(logical_px(&UnitValue::pixels(400), 640, 1.0), 400);
+        assert_eq!(logical_px(&UnitValue::pixels(400), 640, 2.0), 200);
+        assert_eq!(logical_px(&UnitValue::pixels(400), 640, 1.5), 267);
+    }
+
+    #[test]
+    fn percentages_ignore_the_pixel_scale() {
+        assert_eq!(logical_px(&UnitValue::percent(50), 640, 2.0), 320);
+        assert_eq!(logical_px(&UnitValue::percent(50), 640, 1.0), 320);
+    }
+}

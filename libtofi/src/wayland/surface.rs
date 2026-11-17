@@ -64,6 +64,8 @@ pub struct SurfaceState {
     pub phys_width: u32,
     /// Physical height in pixels (logical × scale).
     pub phys_height: u32,
+    /// The scale the buffer was sized for, as a numerator over 120.
+    pub scale: u32,
     /// `true` once `ack_configure` has been sent.
     pub configured: bool,
     /// Double-buffered SHM pool; `None` until after the configure roundtrip.
@@ -225,6 +227,7 @@ pub fn create_surface(
         height: cfg.height,
         phys_width: cfg.width, // updated after configure roundtrip
         phys_height: cfg.height,
+        scale: 120,
         configured: false,
         shm: None,
         index: 0,
@@ -318,6 +321,7 @@ pub fn create_surface(
     if let Some(s) = state.surface.as_mut() {
         s.phys_width = phys_w;
         s.phys_height = phys_h;
+        s.scale = effective_scale;
     }
 
     // ── 9. Set viewport destination to logical size ───────────────────────────

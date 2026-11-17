@@ -124,3 +124,37 @@ fn percentages_are_of_the_logical_output_size() {
     assert!(log.contains("compositor configure → 426×240"), "{log}");
     assert!(log.contains("Physical buffer: 639×360"), "{log}");
 }
+
+#[test]
+fn scale_true_doubles_the_buffer_at_scale_2() {
+    let sway = sway_or_skip!("2");
+    let mut kb = Keyboard::new(&sway);
+    let home = Home::new();
+    home.theme("[window]\nwidth = 400\nheight = 200\n");
+    let mut tofi = Tofi::start(&sway, &home, &["--mode", "dmenu"], ITEMS);
+    kb.key("Escape");
+    tofi.wait();
+    let log = tofi.stderr();
+    assert!(log.contains("compositor configure → 400×200"), "{log}");
+    assert!(
+        log.contains("Entry::new 800×400 physical, scale=2.0000"),
+        "{log}"
+    );
+}
+
+#[test]
+fn scale_false_takes_pixels_as_physical_and_draws_1_to_1() {
+    let sway = sway_or_skip!("2");
+    let mut kb = Keyboard::new(&sway);
+    let home = Home::new();
+    home.theme("[window]\nwidth = 400\nheight = 200\nscale = false\n");
+    let mut tofi = Tofi::start(&sway, &home, &["--mode", "dmenu"], ITEMS);
+    kb.key("Escape");
+    tofi.wait();
+    let log = tofi.stderr();
+    assert!(log.contains("compositor configure → 200×100"), "{log}");
+    assert!(
+        log.contains("Entry::new 400×200 physical, scale=1.0000"),
+        "{log}"
+    );
+}
