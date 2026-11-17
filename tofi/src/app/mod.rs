@@ -466,10 +466,14 @@ fn load_mode_entries(
         }
         LaunchMode::Drun => {
             let dirs = libtofi_rs::drun::application_dirs();
-            let cache_path = libtofi_rs::drun::default_cache_path()
-                .unwrap_or_else(|| std::path::PathBuf::from("/tmp/tofi-drun"));
-            let mut entries =
-                libtofi_rs::drun::entries_cached(&dirs, &cache_path).unwrap_or_default();
+            // Without a cache directory, don't cache: a fixed path in /tmp
+            // could be planted by another user, and the cache holds commands.
+            let mut entries = match libtofi_rs::drun::default_cache_path() {
+                Some(cache_path) => {
+                    libtofi_rs::drun::entries_cached(&dirs, &cache_path).unwrap_or_default()
+                }
+                None => libtofi_rs::drun::scan(&dirs),
+            };
             #[cfg(feature = "history")]
             if settings.use_history
                 && let Some(hp) =

@@ -24,6 +24,28 @@ mod run_commands_tests {
     }
 
     #[test]
+    fn without_a_cache_dir_nothing_is_cached() {
+        use super::super::run_utils::commands_maybe_cached;
+        let dir = tempfile::tempdir().unwrap();
+        make_exe(dir.path(), "foo");
+        let before: Vec<_> = fs::read_dir(dir.path()).unwrap().collect();
+        let commands = commands_maybe_cached(dir.path().to_str().unwrap(), None);
+        assert_eq!(commands, vec!["foo".to_owned()]);
+        let after: Vec<_> = fs::read_dir(dir.path()).unwrap().collect();
+        assert_eq!(before.len(), after.len());
+    }
+
+    #[test]
+    fn with_a_cache_dir_the_commands_are_cached() {
+        use super::super::run_utils::commands_maybe_cached;
+        let dir = tempfile::tempdir().unwrap();
+        make_exe(dir.path(), "foo");
+        let cache = dir.path().join("cache/tofi-compgen");
+        commands_maybe_cached(dir.path().to_str().unwrap(), Some(&cache));
+        assert_eq!(fs::read_to_string(&cache).unwrap(), "foo\n");
+    }
+
+    #[test]
     fn scan_returns_executable_names() {
         let dir = tempfile::tempdir().unwrap();
         make_exe(dir.path(), "foo");

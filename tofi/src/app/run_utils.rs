@@ -1,9 +1,22 @@
 #[cfg(feature = "renderer")]
 pub(crate) fn run_commands_cached() -> Vec<String> {
     let path_var = std::env::var("PATH").unwrap_or_default();
-    let cache_path =
-        run_commands_cache_path().unwrap_or_else(|| std::path::PathBuf::from("/tmp/tofi-compgen"));
-    commands_cached(&path_var, &cache_path).unwrap_or_default()
+    commands_maybe_cached(&path_var, run_commands_cache_path().as_deref())
+}
+
+/// The commands on `path_var`, cached at `cache_path` if there is one.
+///
+/// Without a cache directory nothing is cached: a fixed path in a shared
+/// directory such as /tmp could be planted or replaced by another user.
+#[cfg(feature = "renderer")]
+pub(crate) fn commands_maybe_cached(
+    path_var: &str,
+    cache_path: Option<&std::path::Path>,
+) -> Vec<String> {
+    match cache_path {
+        Some(path) => commands_cached(path_var, path).unwrap_or_default(),
+        None => scan(path_var),
+    }
 }
 
 #[cfg(feature = "renderer")]
